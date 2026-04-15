@@ -10,7 +10,6 @@ import pytest
 from telemetry.collectors.prometheus_collector import PrometheusCollector
 from telemetry.feature_names import M_CPU_UTIL, METRICS_DIM
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -66,7 +65,15 @@ class TestCpuUtilisation:
                 _prom_result({"pod": "pod-a", "service": "svc-a", "namespace": "ewat"}, 0.3),
             ]),
             "kube_pod_container_resource_limits": _success_response([
-                _prom_result({"pod": "pod-a", "service": "svc-a", "namespace": "ewat", "resource": "cpu"}, 1.0),
+                _prom_result(
+                    {
+                        "pod": "pod-a",
+                        "service": "svc-a",
+                        "namespace": "ewat",
+                        "resource": "cpu",
+                    },
+                    1.0,
+                ),
             ]),
         }
         collector = _make_collector(responses)
@@ -107,7 +114,15 @@ class TestCpuUtilisation:
             ]),
             "kube_pod_container_resource_limits": _success_response([
                 # limit=0 is invalid and must not be stored
-                _prom_result({"pod": "p1", "service": "svc-c", "namespace": "ewat", "resource": "cpu"}, 0.0),
+                _prom_result(
+                    {
+                        "pod": "p1",
+                        "service": "svc-c",
+                        "namespace": "ewat",
+                        "resource": "cpu",
+                    },
+                    0.0,
+                ),
             ]),
         }
         collector = _make_collector(responses)
@@ -124,8 +139,24 @@ class TestCpuUtilisation:
                 _prom_result({"pod": "p2", "service": "svc-d", "namespace": "ewat"}, 0.9),
             ]),
             "kube_pod_container_resource_limits": _success_response([
-                _prom_result({"pod": "p1", "service": "svc-d", "namespace": "ewat", "resource": "cpu"}, 1.0),
-                _prom_result({"pod": "p2", "service": "svc-d", "namespace": "ewat", "resource": "cpu"}, 1.0),
+                _prom_result(
+                    {
+                        "pod": "p1",
+                        "service": "svc-d",
+                        "namespace": "ewat",
+                        "resource": "cpu",
+                    },
+                    1.0,
+                ),
+                _prom_result(
+                    {
+                        "pod": "p2",
+                        "service": "svc-d",
+                        "namespace": "ewat",
+                        "resource": "cpu",
+                    },
+                    1.0,
+                ),
             ]),
         }
         collector = _make_collector(responses)
@@ -141,7 +172,10 @@ class TestCpuUtilisation:
         M_t = np.full((1, METRICS_DIM), np.nan, dtype=np.float32)
         raw = {
             "ram_usage": [
-                _prom_result({"pod": "pod-no-limit", "service": "svc-ram", "namespace": "ewat"}, 256.0),
+                _prom_result(
+                    {"pod": "pod-no-limit", "service": "svc-ram", "namespace": "ewat"},
+                    256.0,
+                ),
             ],
             "ram_limit": [],
         }

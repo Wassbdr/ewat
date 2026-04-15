@@ -22,7 +22,6 @@ from telemetry.collectors.trace_collector import (
 )
 from telemetry.feature_names import LOGS_DIM, TRACES_DIM
 
-
 # ---------------------------------------------------------------------------
 # In-memory backends
 # ---------------------------------------------------------------------------
@@ -255,6 +254,29 @@ class TestLogCollector:
         )
         L_t, services = collector.collect()
         assert np.all(np.isnan(L_t))
+
+    def test_semantic_disabled_keeps_nan(self):
+        svc_idx = {"svc-a": 0}
+
+        class _DummyScorer:
+            centroid = np.ones(3, dtype=np.float32)
+
+            def score(self, _lines):
+                return 0.42
+
+        collector = LogCollector(
+            backend=InMemoryLogBackend(self._make_records()),
+            semantic_scorers={"svc-a": _DummyScorer()},
+            semantic_enabled=False,
+        )
+        L_t, _ = collector.collect(service_index=svc_idx)
+        assert np.isnan(L_t[0, 2])
+
+    def test_collect_with_records_returns_raw_records(self):
+        records = self._make_records()
+        collector = LogCollector(backend=InMemoryLogBackend(records))
+        _L_t, _services, raw_records = collector.collect_with_records()
+        assert len(raw_records) == len(records)
 
 
 # ---------------------------------------------------------------------------

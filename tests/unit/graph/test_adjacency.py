@@ -16,7 +16,6 @@ from graph.adjacency import (
 )
 from graph.types import ServiceGraph, WeightedEdge
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

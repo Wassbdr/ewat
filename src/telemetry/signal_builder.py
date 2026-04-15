@@ -23,10 +23,10 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from telemetry.feature_names import LOGS_SLICE, METRICS_SLICE, SIGNAL_DIM, TRACES_SLICE
 from telemetry.collectors.log_collector import LogCollector
 from telemetry.collectors.prometheus_collector import PrometheusCollector
 from telemetry.collectors.trace_collector import TraceCollector
+from telemetry.feature_names import LOGS_SLICE, METRICS_SLICE, SIGNAL_DIM, TRACES_SLICE
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +45,14 @@ class SignalSnapshot:
         Unix timestamp (seconds) at which the snapshot was collected.
     n_nan:
         Total number of NaN cells in S (diagnostic).
+    log_records:
+        Raw log lines used to compute L(t) for this snapshot window.
     """
 
     S: npt.NDArray[np.float32]
     services: list[str]
     timestamp: float
+    log_records: list[Any] = field(default_factory=list)
     n_nan: int = field(init=False)
 
     def __post_init__(self) -> None:
@@ -106,7 +109,12 @@ class SignalBuilder:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_config(cls, cfg: Any) -> "SignalBuilder":
+    def from_config(
+        cls,
+        cfg: Any,
+        *,
+        semantic_enabled: bool = True,
+    ) -> SignalBuilder:
         """Construct a SignalBuilder from a Hydra/OmegaConf config object.
 
         Parameters
@@ -158,7 +166,7 @@ class SignalBuilder:
             from telemetry.collectors.log_collector import LokiBackend
 
             log_backend = LokiBackend(endpoint=loki_url, namespace=ns)
-            logs = LogCollector(backend=log_backend)
+            logs = LogCollector(backend=log_backend, semantic_enabled=semantic_enabled)
         else:
             logger.warning(
                 "No loki.endpoint configured; L(t) will be partial (lexical "
@@ -187,19 +195,30 @@ class SignalBuilder:
         """
         ts = timestamp or time.time()
 
-        # Step 1: discover services (use Prometheus as the primary discoverer)
-        services, svc_idx = self._get_service_index(ts)
-        n = len(services)
+        # Step 1 + 2: single Prometheus call for both service discovery and M(t).
+        # Previously _get_service_index() called collect() for discovery and then
+        # build() called it again to fill M(t) — two round-trips that doubled the
+        # fallback warnings on every 15-second tick.
+        M_t_raw: npt.NDArray[np.float32] | None = None
+        raw_services: list[str] = []
 
-        S_t = np.full((n, SIGNAL_DIM), float("nan"), dtype=np.float32)
-
-        # Step 2: fill M(t)
         if self._prometheus is not None:
             try:
-                M_t, _ = self._prometheus.collect(timestamp=ts, service_index=svc_idx)
-                S_t[:, METRICS_SLICE] = M_t
+                M_t_raw, raw_services = self._prometheus.collect(timestamp=ts)
             except Exception:
                 logger.exception("PrometheusCollector.collect() failed")
+
+        services, svc_idx = self._build_service_index(raw_services)
+        n = len(services)
+        S_t = np.full((n, SIGNAL_DIM), float("nan"), dtype=np.float32)
+
+        # Align the already-fetched M(t) rows to the canonical service order.
+        if M_t_raw is not None and n > 0:
+            disc_idx = {s: i for i, s in enumerate(raw_services)}
+            for svc, row in svc_idx.items():
+                src = disc_idx.get(svc)
+                if src is not None:
+                    S_t[row, METRICS_SLICE] = M_t_raw[src]
 
         # Step 3: fill T(t)
         if self._traces is not None:
@@ -212,12 +231,18 @@ class SignalBuilder:
         # Step 4: fill L(t)
         if self._logs is not None:
             try:
-                L_t, _ = self._logs.collect(timestamp=ts, service_index=svc_idx)
+                L_t, _, log_records = self._logs.collect_with_records(
+                    timestamp=ts,
+                    service_index=svc_idx,
+                )
                 S_t[:, LOGS_SLICE] = L_t
             except Exception:
                 logger.exception("LogCollector.collect() failed")
+                log_records = []
+        else:
+            log_records = []
 
-        snapshot = SignalSnapshot(S=S_t, services=services, timestamp=ts)
+        snapshot = SignalSnapshot(S=S_t, services=services, timestamp=ts, log_records=log_records)
 
         if snapshot.n_nan > 0:
             nan_frac = snapshot.n_nan / S_t.size
@@ -234,21 +259,15 @@ class SignalBuilder:
     # Internal
     # ------------------------------------------------------------------
 
-    def _get_service_index(self, ts: float) -> tuple[list[str], dict[str, int]]:
-        """Discover the canonical service list.
+    def _build_service_index(
+        self, discovered: list[str]
+    ) -> tuple[list[str], dict[str, int]]:
+        """Merge explicitly configured services with Prometheus-discovered ones.
 
-        Priority: explicit list → Prometheus discovery → empty fallback.
+        Priority: explicit list (if set) unioned with discovered; else discovered only.
         """
         if self._services is not None:
-            services = sorted(self._services)
-            return services, {s: i for i, s in enumerate(services)}
-
-        if self._prometheus is not None:
-            try:
-                _M, services = self._prometheus.collect(timestamp=ts)
-                svc_idx = {s: i for i, s in enumerate(services)}
-                return services, svc_idx
-            except Exception:
-                logger.exception("Service discovery via Prometheus failed")
-
-        return [], {}
+            services = sorted(set(self._services) | set(discovered))
+        else:
+            services = sorted(set(discovered))
+        return services, {s: i for i, s in enumerate(services)}

@@ -25,16 +25,21 @@ Aggregation (pod → service):
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
-import statistics
+import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
 from telemetry.feature_names import TRACES_DIM
+from telemetry.features.aggregation import (
+    aggregate_median,
+    aggregate_p99_union,
+)
 
 # Local column indices within T_t (shape N×6) — NOT global S(t) indices
 _T_SPAN_DUR_MED = 0
@@ -43,11 +48,6 @@ _T_TRACE_DEPTH = 2
 _T_FAN_OUT = 3
 _T_RETRY_RATE = 4
 _T_LATENCY_CV = 5
-from telemetry.features.aggregation import (
-    aggregate_median,
-    aggregate_p99_union,
-    aggregate_volume_weighted,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -168,11 +168,19 @@ class JaegerBackend(SpanQueryBackend):
 
         self._endpoint = endpoint.rstrip("/")
         self._namespace = namespace
-        self._timeout = timeout
+        self._timeout = min(timeout, 5.0)  # hard cap: fail fast per service
         self._limit = limit
         self._service_allowlist = service_allowlist
 
-        _retry = Retry(total=3, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
+        # Retry only on transient HTTP 5xx — NOT on read/connect timeouts.
+        # With timeout=5s per request and no timeout retries, a slow Jaeger
+        # service fails fast instead of blocking for 40 s (10 s × 4 attempts).
+        _retry = Retry(
+            total=2,
+            backoff_factor=0.3,
+            status_forcelist=[500, 502, 503, 504],
+            raise_on_status=False,
+        )
         _adapter = HTTPAdapter(max_retries=_retry)
         self._session = requests.Session()
         self._session.mount("http://", _adapter)
@@ -406,6 +414,10 @@ class TraceCollector:
         self._backend = backend
         self._window_s = window_s
         self._services = services
+        # Cache last-fetched spans so the graph builder can reuse them without
+        # a second Jaeger round-trip per sample tick.
+        self._cached_spans: list[Span] | None = None
+        self._cached_ts: float = 0.0
 
     def collect(
         self,
@@ -434,6 +446,8 @@ class TraceCollector:
         ts = timestamp or time.time()
         self._sync_backend_allowlist(service_index)
         spans = self._backend.fetch_spans(ts - self._window_s, ts)
+        self._cached_spans = spans
+        self._cached_ts = ts
 
         services, svc_idx = self._resolve_services(spans, service_index)
         n = len(services)
@@ -445,6 +459,27 @@ class TraceCollector:
         trace_structs = _compute_trace_structures(spans)
         self._fill_features(T_t, svc_idx, spans, trace_structs)
         return T_t, services
+
+    def get_cached_spans(self, max_age_s: float = 30.0) -> list[Span] | None:
+        """Return spans from the last ``collect()`` call if still fresh.
+
+        Parameters
+        ----------
+        max_age_s:
+            Maximum age in seconds for the cache to be considered valid.
+            Default 30 s covers one sample interval.
+
+        Returns
+        -------
+        list[Span] or None if cache is empty or stale.
+        """
+        import time as _time
+
+        if self._cached_spans is None:
+            return None
+        if _time.time() - self._cached_ts > max_age_s:
+            return None
+        return self._cached_spans
 
     def _sync_backend_allowlist(self, service_index: dict[str, int] | None) -> None:
         """Propagate canonical service names to backends that support allowlists.

@@ -53,7 +53,7 @@ class SemanticAnomalyScorer:
     # Public API
     # ------------------------------------------------------------------
 
-    def fit(self, reference_lines: list[str]) -> "SemanticAnomalyScorer":
+    def fit(self, reference_lines: list[str]) -> SemanticAnomalyScorer:
         """Compute μ_v from reference log lines.
 
         Parameters
@@ -106,7 +106,7 @@ class SemanticAnomalyScorer:
             raise RuntimeError("No centroid to save; call fit() first")
         np.save(path, self._centroid)
 
-    def load_centroid(self, path: str | Path) -> "SemanticAnomalyScorer":
+    def load_centroid(self, path: str | Path) -> SemanticAnomalyScorer:
         """Load μ_v from a .npy file.
 
         Parameters
@@ -129,6 +129,17 @@ class SemanticAnomalyScorer:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def warmup(self) -> None:
+        """Pre-load the SentenceBERT model into memory.
+
+        Call this at process startup rather than letting the model load lazily
+        mid-run.  A lazy load during collection triggers a ~1.5 GB PyTorch
+        allocation at an unpredictable point, which can OOM-kill WSL when
+        Prometheus/Jaeger port-forwards are already consuming memory.
+        """
+        self._load_model()
+        logger.info("SemanticAnomalyScorer: model '%s' pre-loaded", self._model_name)
 
     def _load_model(self) -> None:
         if self._model is None:

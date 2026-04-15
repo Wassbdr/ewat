@@ -296,7 +296,15 @@ class ServiceGraphBuilder:
         ServiceGraph
         """
         ts = timestamp or time.time()
-        spans = self._fetch_spans_from_collector(trace_collector, ts - window_s, ts)
+        # Reuse spans cached by the last TraceCollector.collect() call (same tick)
+        # to avoid a second Jaeger round-trip per sample.
+        cached = None
+        if hasattr(trace_collector, "get_cached_spans"):
+            cached = trace_collector.get_cached_spans(max_age_s=30.0)
+        if cached is not None:
+            spans = cached
+        else:
+            spans = self._fetch_spans_from_collector(trace_collector, ts - window_s, ts)
         return self.build(spans, services=services, timestamp=ts)
 
     def _fetch_spans_from_collector(

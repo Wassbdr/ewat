@@ -20,9 +20,9 @@ _STRIP_PATTERN = re.compile(
     r"""
     (?:
         \d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?  # ISO timestamp
-        |\d{10,13}                                                                     # epoch sec/ms
-        |\[?(?:DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|CRITICAL)\]?                       # log level
-        |\x1B\[[0-9;]*m                                                               # ANSI colours
+        |\d{10,13}  # epoch sec/ms
+        |\[?(?:DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|CRITICAL)\]?  # log level
+        |\x1B\[[0-9;]*m  # ANSI colours
     )
     """,
     re.VERBOSE | re.IGNORECASE,

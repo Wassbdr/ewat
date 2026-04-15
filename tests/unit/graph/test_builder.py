@@ -6,12 +6,10 @@ Uses synthetic spans to validate edge detection, aggregation, and filtering.
 from __future__ import annotations
 
 import pytest
-import numpy as np
 
 from graph.builder import ServiceGraphBuilder
 from graph.types import ServiceGraph
 from telemetry.collectors.trace_collector import Span
-
 
 # ---------------------------------------------------------------------------
 # Fixtures: synthetic span topologies

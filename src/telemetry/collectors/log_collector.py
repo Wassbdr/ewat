@@ -26,21 +26,21 @@ from __future__ import annotations
 import logging
 import re
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import numpy.typing as npt
 
 from telemetry.feature_names import LOGS_DIM
+from telemetry.features.aggregation import aggregate_volume_weighted
+from telemetry.features.lexical import lexical_entropy
+from telemetry.features.semantic import SemanticAnomalyScorer
 
 # Local column indices within L_t (shape N×4) — NOT global S(t) indices
 _L_ERROR_RATE = 0
 _L_WARN_RATE = 1
 _L_SEMANTIC_ANOMALY = 2
 _L_LEXICAL_ENTROPY = 3
-from telemetry.features.aggregation import aggregate_median, aggregate_volume_weighted
-from telemetry.features.lexical import lexical_entropy
-from telemetry.features.semantic import SemanticAnomalyScorer
 
 logger = logging.getLogger(__name__)
 
@@ -138,10 +138,15 @@ class LokiBackend(LogQueryBackend):
 
         self._endpoint = endpoint.rstrip("/")
         self._namespace = namespace
-        self._timeout = timeout
+        self._timeout = min(timeout, 5.0)  # hard cap: fail fast
         self._limit = limit
 
-        _retry = Retry(total=3, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
+        _retry = Retry(
+            total=2,
+            backoff_factor=0.3,
+            status_forcelist=[500, 502, 503, 504],
+            raise_on_status=False,
+        )
         _adapter = HTTPAdapter(max_retries=_retry)
         self._session = requests.Session()
         self._session.mount("http://", _adapter)
@@ -255,11 +260,13 @@ class LogCollector:
         window_s: float = 120.0,
         semantic_scorers: dict[str, SemanticAnomalyScorer] | None = None,
         services: list[str] | None = None,
+        semantic_enabled: bool = True,
     ) -> None:
         self._backend = backend
         self._window_s = window_s
         self._semantic_scorers: dict[str, SemanticAnomalyScorer] = semantic_scorers or {}
         self._services = services
+        self._semantic_enabled = semantic_enabled
 
     # ------------------------------------------------------------------
     # Centroid fitting
@@ -268,7 +275,7 @@ class LogCollector:
     def fit_semantic_centroid(
         self,
         reference_records: list[LogRecord],
-    ) -> "LogCollector":
+    ) -> LogCollector:
         """Compute per-service SentenceBERT centroids from reference log records.
 
         Intended to be called once on a representative "normal" window
@@ -291,7 +298,11 @@ class LogCollector:
         for svc, lines in svc_lines.items():
             scorer = self._semantic_scorers.setdefault(svc, SemanticAnomalyScorer())
             scorer.fit(lines)
-            logger.info("LogCollector: fitted centroid for service '%s' (%d lines)", svc, len(lines))
+            logger.info(
+                "LogCollector: fitted centroid for service '%s' (%d lines)",
+                svc,
+                len(lines),
+            )
 
         return self
 
@@ -304,6 +315,17 @@ class LogCollector:
         timestamp: float | None = None,
         service_index: dict[str, int] | None = None,
     ) -> tuple[npt.NDArray[np.float32], list[str]]:
+        L_t, services, _ = self.collect_with_records(
+            timestamp=timestamp,
+            service_index=service_index,
+        )
+        return L_t, services
+
+    def collect_with_records(
+        self,
+        timestamp: float | None = None,
+        service_index: dict[str, int] | None = None,
+    ) -> tuple[npt.NDArray[np.float32], list[str], list[LogRecord]]:
         """Return L(t) for the window ending at ``timestamp``.
 
         Parameters
@@ -331,10 +353,10 @@ class LogCollector:
         L_t = np.full((n, LOGS_DIM), float("nan"), dtype=np.float32)
 
         if not records:
-            return L_t, services
+            return L_t, services, []
 
         self._fill_features(L_t, svc_idx, records)
-        return L_t, services
+        return L_t, services, records
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -408,6 +430,10 @@ class LogCollector:
 
             # Semantic anomaly — requires fitted centroid
             scorer = self._semantic_scorers.get(svc)
-            if scorer is not None and scorer.centroid is not None:
+            if (
+                self._semantic_enabled
+                and scorer is not None
+                and scorer.centroid is not None
+            ):
                 L_t[row, _L_SEMANTIC_ANOMALY] = scorer.score(lines)
             # else: stays NaN until centroid is fitted

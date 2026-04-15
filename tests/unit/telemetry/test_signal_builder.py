@@ -6,17 +6,15 @@ Uses stub collectors that return controlled data so no live cluster is needed.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from telemetry.feature_names import (
+    FEATURE_NAMES,
     LOGS_SLICE,
     METRICS_SLICE,
     SIGNAL_DIM,
     TRACES_SLICE,
-    FEATURE_NAMES,
 )
 from telemetry.signal_builder import SignalBuilder, SignalSnapshot
-
 
 # ---------------------------------------------------------------------------
 # Stub collectors

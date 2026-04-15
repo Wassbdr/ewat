@@ -242,6 +242,9 @@ class PrometheusCollector:
         self._session.mount("https://", _adapter)
         # Records whether each query key used its fallback path at last collect()
         self._query_used_fallback: dict[str, bool] = {}
+        # Keys for which the fallback warning has already been emitted once.
+        # Avoids flooding logs every 15 s when Istio metrics are absent.
+        self._fallback_warned: set[str] = set()
 
     # ------------------------------------------------------------------
     # Public API
@@ -313,11 +316,13 @@ class PrometheusCollector:
                 data = self._instant_query(fallback, ts)
                 if data:
                     used_fallback = True
-                    logger.warning(
-                        "PrometheusCollector: primary query '%s' empty; "
-                        "using OTel SDK fallback PromQL",
-                        key,
-                    )
+                    if key not in self._fallback_warned:
+                        self._fallback_warned.add(key)
+                        logger.warning(
+                            "PrometheusCollector: primary query '%s' empty; "
+                            "using OTel SDK fallback PromQL (logged once per session)",
+                            key,
+                        )
             results[key] = data
             self._query_used_fallback[key] = used_fallback
         return results

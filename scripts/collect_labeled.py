@@ -10,11 +10,13 @@ import platform
 import subprocess
 import sys
 import time
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from omegaconf import OmegaConf
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -25,11 +27,11 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from graph.builder import ServiceGraphBuilder  # noqa: E402
+from graph.diagnostics import stats_to_dict  # noqa: E402
 from scripts.chaos_injector import ChaosInjector  # noqa: E402
 from scripts.snapshot_collector import SnapshotBatch, SnapshotCollector  # noqa: E402
 from telemetry.signal_builder import SignalBuilder  # noqa: E402
 from utils.seeding import seed_everything  # noqa: E402
-from utils.serialization import save_run_dataset  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -79,21 +81,100 @@ def _parse_duration(duration: str | int | float) -> float:
     return float(text)
 
 
-def _concat_batches(
-    batches: list[SnapshotBatch],
-    services: list[str],
-) -> tuple[np.ndarray, list, list, list]:
-    signal_parts = [batch.signal for batch in batches if batch.signal.size > 0]
-    signal_tensor = (
-        np.concatenate(signal_parts, axis=0).astype(np.float32)
-        if signal_parts
-        else np.zeros((0, len(services), 17), dtype=np.float32)
-    )
+def _persist_batch_chunk(chunk_dir: Path, chunk_idx: int, batch: SnapshotBatch) -> dict[str, Any]:
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    chunk_name = f"chunk_{chunk_idx:06d}"
+    signal_path = chunk_dir / f"{chunk_name}.signal.npy"
+    adjacency_path = chunk_dir / f"{chunk_name}.adj.npy"
+    labels_path = chunk_dir / f"{chunk_name}.labels.jsonl"
+    stats_path = chunk_dir / f"{chunk_name}.stats.jsonl"
+    manifest_path = chunk_dir / f"{chunk_name}.manifest.json"
 
-    graphs = [graph for batch in batches for graph in batch.graphs]
-    labels = [label for batch in batches for label in batch.labels]
-    stats = [stat for batch in batches for stat in batch.graph_stats]
-    return signal_tensor, graphs, labels, stats
+    signal = batch.signal.astype(np.float32)
+    np.save(signal_path, signal)
+
+    if batch.graphs:
+        adjacency = np.stack([g.adjacency_tensor() for g in batch.graphs], axis=0).astype(np.float32)
+    else:
+        n = len(batch.services)
+        adjacency = np.zeros((0, n, n, 3), dtype=np.float32)
+    np.save(adjacency_path, adjacency)
+
+    with labels_path.open("w", encoding="utf-8") as f:
+        for label in batch.labels:
+            f.write(json.dumps(asdict(label), ensure_ascii=True) + "\n")
+
+    with stats_path.open("w", encoding="utf-8") as f:
+        for stat in batch.graph_stats:
+            f.write(json.dumps(stats_to_dict(stat), ensure_ascii=True) + "\n")
+
+    manifest = {
+        "chunk_name": chunk_name,
+        "n_rows": int(signal.shape[0]),
+        "signal_path": signal_path.name,
+        "adjacency_path": adjacency_path.name,
+        "labels_path": labels_path.name,
+        "stats_path": stats_path.name,
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    return rows
+
+
+def _materialize_from_chunks(
+    run_dir: Path,
+    services: list[str],
+) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]], list[dict[str, Any]]]:
+    chunk_dir = run_dir / "chunks"
+    manifests = sorted(chunk_dir.glob("chunk_*.manifest.json"))
+    total_rows = 0
+    manifest_payloads: list[dict[str, Any]] = []
+    for manifest_path in manifests:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_payloads.append(payload)
+        total_rows += int(payload["n_rows"])
+
+    n_services = len(services)
+    signal = np.zeros((total_rows, n_services, 17), dtype=np.float32)
+    adjacency = np.zeros((total_rows, n_services, n_services, 3), dtype=np.float32)
+    labels_rows: list[dict[str, Any]] = []
+    stats_rows: list[dict[str, Any]] = []
+
+    cursor = 0
+    for payload in manifest_payloads:
+        n_rows = int(payload["n_rows"])
+        if n_rows <= 0:
+            continue
+        signal_chunk = np.load(chunk_dir / payload["signal_path"])
+        adj_chunk = np.load(chunk_dir / payload["adjacency_path"])
+        signal[cursor : cursor + n_rows] = signal_chunk
+        adjacency[cursor : cursor + n_rows] = adj_chunk
+        labels_rows.extend(_read_jsonl(chunk_dir / payload["labels_path"]))
+        stats_rows.extend(_read_jsonl(chunk_dir / payload["stats_path"]))
+        cursor += n_rows
+
+    return signal, adjacency, labels_rows, stats_rows
+
+
+def _write_parquet(df: pd.DataFrame, output_path: Path) -> None:
+    for engine in ("pyarrow", "fastparquet"):
+        try:
+            df.to_parquet(output_path, index=False, engine=engine)
+            return
+        except Exception:
+            continue
+    raise RuntimeError("Unable to write parquet file. Install pyarrow or fastparquet.")
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -116,6 +197,31 @@ def _apply_endpoint_mode(base_cfg: Any, endpoint_mode: str) -> None:
     )
 
 
+def _warmup_semantic_model(signal_builder: "SignalBuilder") -> None:
+    """Pre-load SentenceBERT into memory before the collection loop starts.
+
+    Lazy loading mid-run allocates ~1.5 GB of PyTorch memory at an unpredictable
+    point (end of first baseline window), which can crash WSL under memory pressure.
+    Loading eagerly at startup makes the failure visible immediately and avoids a
+    mid-run OOM.
+    """
+    logs = getattr(signal_builder, "_logs", None)
+    if logs is None:
+        return
+    scorers = getattr(logs, "_semantic_scorers", {})
+    # Scorers dict may be empty before the first fit; instantiate one temporarily
+    # just to trigger the PyTorch import and model download/load.
+    from telemetry.features.semantic import SemanticAnomalyScorer
+
+    probe = scorers.get(next(iter(scorers), None)) if scorers else None
+    if probe is None:
+        probe = SemanticAnomalyScorer()
+    try:
+        probe.warmup()
+    except Exception:
+        logger.warning("SentenceBERT pre-load failed; model will load lazily", exc_info=True)
+
+
 def collect_once(
     config_path: Path,
     base_config_path: Path,
@@ -131,16 +237,20 @@ def collect_once(
     seed_everything(seed)
 
     collection_cfg = cfg["collection"]
+    semantic_cfg = collection_cfg.get("semantic", {})
+    semantic_mode = str(semantic_cfg.get("mode", "online")).lower()
+    if semantic_mode not in {"online", "offline"}:
+        msg = f"Invalid collection.semantic.mode='{semantic_mode}', expected online|offline"
+        raise ValueError(msg)
+    semantic_enabled = semantic_mode == "online"
 
-    signal_builder = SignalBuilder.from_config(base_cfg)
+    signal_builder = SignalBuilder.from_config(base_cfg, semantic_enabled=semantic_enabled)
     graph_builder = ServiceGraphBuilder.from_config(base_cfg)
 
-    sample_interval_s = float(collection_cfg["sample_interval_s"])
-    collector = SnapshotCollector(
-        signal_builder=signal_builder,
-        graph_builder=graph_builder,
-        sample_interval_s=sample_interval_s,
-    )
+    # Pre-load SentenceBERT (PyTorch ~1.5 GB) at startup so it doesn't OOM WSL
+    # mid-run when port-forwards are already consuming memory.
+    if semantic_enabled:
+        _warmup_semantic_model(signal_builder)
 
     injector = ChaosInjector(
         namespace=collection_cfg.get("namespace", "ewat"),
@@ -170,9 +280,24 @@ def collect_once(
 
     logger.info("Starting collection run: %s", run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
+    chunk_dir = run_dir / "chunks"
+    raw_logs_path = run_dir / "raw_logs.jsonl"
 
-    all_batches: list[SnapshotBatch] = []
+    def _append_raw_log(payload: dict[str, Any]) -> None:
+        with raw_logs_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+
+    sample_interval_s = float(collection_cfg["sample_interval_s"])
+    collector = SnapshotCollector(
+        signal_builder=signal_builder,
+        graph_builder=graph_builder,
+        sample_interval_s=sample_interval_s,
+        semantic_fit_enabled=semantic_enabled,
+        raw_logs_hook=_append_raw_log if semantic_mode == "offline" else None,
+    )
+
     canonical_services: list[str] | None = None
+    chunk_idx = 0
 
     for scenario_name in scenarios:
         if scenario_name not in registry:
@@ -196,7 +321,8 @@ def collect_once(
                 services=canonical_services,
             )
             canonical_services = baseline_batch.services
-            all_batches.append(baseline_batch)
+            _persist_batch_chunk(chunk_dir, chunk_idx, baseline_batch)
+            chunk_idx += 1
 
             pre_batch = collector.collect_for_duration(
                 duration_s=pre_injection_s,
@@ -208,7 +334,8 @@ def collect_once(
                 episode_id=episode_id,
                 services=canonical_services,
             )
-            all_batches.append(pre_batch)
+            _persist_batch_chunk(chunk_dir, chunk_idx, pre_batch)
+            chunk_idx += 1
 
             injector.apply(scenario_name)
             try:
@@ -222,7 +349,8 @@ def collect_once(
                     episode_id=episode_id,
                     services=canonical_services,
                 )
-                all_batches.append(inj_batch)
+                _persist_batch_chunk(chunk_dir, chunk_idx, inj_batch)
+                chunk_idx += 1
             finally:
                 injector.delete(scenario_name)
 
@@ -236,14 +364,15 @@ def collect_once(
                 episode_id=episode_id,
                 services=canonical_services,
             )
-            all_batches.append(recovery_batch)
+            _persist_batch_chunk(chunk_dir, chunk_idx, recovery_batch)
+            chunk_idx += 1
 
             if cool_down_s > 0:
                 logger.info("Cooling down %.1fs", cool_down_s)
                 time.sleep(cool_down_s)
 
     services = canonical_services or []
-    signal_tensor, graphs, labels, stats = _concat_batches(all_batches, services)
+    signal_tensor, adjacency_tensor, labels_rows, stats_rows = _materialize_from_chunks(run_dir, services)
 
     metadata = {
         "run_id": run_id,
@@ -254,6 +383,8 @@ def collect_once(
         "n_services": len(services),
         "signal_dim": int(signal_tensor.shape[2]) if signal_tensor.ndim == 3 else 0,
         "dry_run": dry_run,
+        "semantic_mode": semantic_mode,
+        "semantic_postprocessed": False,
         "runtime": {
             "python_version": sys.version.split()[0],
             "platform": platform.platform(),
@@ -268,15 +399,49 @@ def collect_once(
         "git_commit": _safe_git_commit(repo_root),
     }
 
-    save_run_dataset(
-        run_dir=run_dir,
-        metadata=metadata,
-        signal_tensor=signal_tensor,
-        graph_sequence=graphs,
-        labels=labels,
-        graph_stats=stats,
-        services=services,
-    )
+    np.savez_compressed(run_dir / "signal.npz", signal=signal_tensor)
+    np.savez_compressed(run_dir / "signal_mask.npz", missing_mask=np.isnan(signal_tensor))
+    np.savez_compressed(run_dir / "adjacency.npz", adjacency=adjacency_tensor)
+    with (run_dir / "services.json").open("w", encoding="utf-8") as f:
+        json.dump(services, f, indent=2)
+
+    labels_df = pd.DataFrame(labels_rows)
+    if not labels_df.empty:
+        labels_df = labels_df.sort_values("timestamp").reset_index(drop=True)
+    else:
+        labels_df = pd.DataFrame(
+            columns=[
+                "timestamp",
+                "regime",
+                "category",
+                "scenario",
+                "target_services",
+                "chaos_resource",
+                "episode_id",
+                "drift_flag",
+            ]
+        )
+    if not labels_df.empty:
+        labels_df["target_service"] = labels_df["target_services"].apply(
+            lambda xs: xs[0] if isinstance(xs, list) and xs else ""
+        )
+        labels_df["target_services"] = labels_df["target_services"].apply(json.dumps)
+        labels_df["is_injection"] = labels_df["regime"] == "injection"
+    else:
+        labels_df["target_service"] = pd.Series(dtype="object")
+        labels_df["target_services"] = pd.Series(dtype="object")
+        labels_df["is_injection"] = pd.Series(dtype="bool")
+    _write_parquet(labels_df, run_dir / "labels.parquet")
+
+    stats_df = pd.DataFrame(stats_rows)
+    if not stats_df.empty and len(stats_df) == len(labels_df):
+        stats_df["regime"] = labels_df["regime"]
+        stats_df["scenario"] = labels_df["scenario"]
+        stats_df["category"] = labels_df["category"]
+        stats_df["episode_id"] = labels_df["episode_id"]
+    stats_df.to_csv(run_dir / "graph_stats.csv", index=False)
+    with (run_dir / "metadata.json").open("w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
 
     logger.info("Run saved to %s", run_dir)
     return run_dir

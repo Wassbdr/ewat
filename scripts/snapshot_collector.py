@@ -7,6 +7,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -42,12 +43,16 @@ class SnapshotCollector:
         signal_builder: SignalBuilder,
         graph_builder: ServiceGraphBuilder,
         sample_interval_s: float = 15.0,
+        semantic_fit_enabled: bool = True,
+        raw_logs_hook: Callable[[dict], None] | None = None,
     ) -> None:
         if sample_interval_s <= 0:
             raise ValueError("sample_interval_s must be > 0")
         self._signal_builder = signal_builder
         self._graph_builder = graph_builder
         self._sample_interval_s = sample_interval_s
+        self._semantic_fit_enabled = semantic_fit_enabled
+        self._raw_logs_hook = raw_logs_hook
 
     def collect_for_duration(
         self,
@@ -102,13 +107,24 @@ class SnapshotCollector:
 
         canonical_services = list(services) if services else None
 
+        n_samples = 0
         while True:
             now = time.time()
             if now < next_tick:
                 time.sleep(next_tick - now)
                 now = time.time()
 
+            elapsed = now - start
+            remaining = max(0.0, deadline - now)
+            logger.info(
+                "  [%s] sample=%d elapsed=%.0fs remaining=%.0fs",
+                regime,
+                n_samples,
+                elapsed,
+                remaining,
+            )
             snapshot = self._signal_builder.build(timestamp=now)
+            n_samples += 1
             if canonical_services is None:
                 canonical_services = list(snapshot.services)
 
@@ -129,6 +145,22 @@ class SnapshotCollector:
                     episode_id=episode_id,
                 )
             )
+            if self._raw_logs_hook and snapshot.log_records:
+                for record in snapshot.log_records:
+                    self._raw_logs_hook(
+                        {
+                            "timestamp": now,
+                            "service_name": record.service_name,
+                            "pod_name": record.pod_name,
+                            "level": record.level,
+                            "body": record.body,
+                            "regime": regime,
+                            "category": category,
+                            "scenario": scenario,
+                            "episode_id": episode_id,
+                            "chaos_resource": chaos_resource,
+                        }
+                    )
 
             next_tick += self._sample_interval_s
             if now >= deadline:
@@ -147,7 +179,7 @@ class SnapshotCollector:
         # The SentenceBERT scorer only needs a reference fit once — we do it
         # at the end of the first normal segment so it is ready for all
         # subsequent regimes without requiring manual intervention.
-        if regime == "normal":
+        if self._semantic_fit_enabled and regime == "normal":
             t_start = start
             t_end = time.time()
             self._maybe_fit_semantic_centroid(t_start, t_end, canonical_services)
@@ -200,7 +232,10 @@ class SnapshotCollector:
         try:
             log_collector.fit_semantic_centroid(reference_records)
         except Exception:
-            logger.warning("_maybe_fit_semantic_centroid: centroid fit failed; L_SEMANTIC_ANOMALY will be NaN")
+            logger.warning(
+                "_maybe_fit_semantic_centroid: centroid fit failed; "
+                "L_SEMANTIC_ANOMALY will be NaN"
+            )
 
     def _build_graph(self, timestamp: float, services: list[str]) -> ServiceGraph:
         trace_collector = getattr(self._signal_builder, "_traces", None)
