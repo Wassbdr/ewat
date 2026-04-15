@@ -1,0 +1,259 @@
+# =============================================================================
+# EWAT — OpenTelemetry Demo (Astronomy Shop) Helm Values Override
+# =============================================================================
+#
+# Deployer avec :
+#   helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+#   helm install ewat-demo open-telemetry/opentelemetry-demo \
+#     -n ewat -f k8s/apps/otel-demo-values.yaml
+#
+# Ajusté pour :
+#   - Cluster observit-cluster1 (6 nœuds utiles, ~4-6 GB RAM dispo)
+#   - Namespace ewat (namespace-admin)
+#   - Backends existants (Prometheus, Jaeger, Loki)
+#   - Empreinte mémoire réduite
+# =============================================================================
+
+# Namespace cible explicite
+global:
+  namespace: ewat
+
+# ---------------------------------------------------------------------------
+# Désactiver les backends d'observabilité embarqués
+# On utilise ceux déjà déployés sur le cluster
+# ---------------------------------------------------------------------------
+jaeger:
+  enabled: false
+
+prometheus:
+  enabled: false
+
+grafana:
+  enabled: false
+
+opensearch:
+  enabled: false
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry Collector — configurer pour exporter vers infra existante
+# ---------------------------------------------------------------------------
+opentelemetry-collector:
+  mode: deployment
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  config:
+    exporters:
+      # Traces → Jaeger existant via OTLP gRPC
+      otlp/jaeger:
+        endpoint: "rca-jaeger.rca-sandbox.svc.cluster.local:4317"
+        tls:
+          insecure: true
+      # Métriques → Prometheus existant (remote write ou OTLP)
+      otlphttp/prometheus:
+        endpoint: "http://rca-prometheus-server.rca-sandbox.svc.cluster.local:80"
+      # Logs → Loki existant
+      otlphttp/loki:
+        endpoint: "http://loki-gateway.monitoring-logs.svc.cluster.local:80/otlp"
+    service:
+      pipelines:
+        traces:
+          exporters:
+            - otlp/jaeger
+        metrics:
+          exporters:
+            - otlphttp/prometheus
+        logs:
+          exporters:
+            - otlphttp/loki
+
+# ---------------------------------------------------------------------------
+# Resource defaults pour tous les composants
+# Réduit pour cluster de dev (6 nœuds)
+# ---------------------------------------------------------------------------
+default:
+  env:
+    - name: OTEL_SERVICE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.labels['app.kubernetes.io/component']
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# ---------------------------------------------------------------------------
+# Composants applicatifs — ajustements individuels
+# ---------------------------------------------------------------------------
+components:
+  # ── Frontend & Proxy ────────────────────────────────────────────────────
+  frontendProxy:
+    enabled: true
+    resources:
+      limits:
+        cpu: 200m
+        memory: 128Mi
+    service:
+      type: ClusterIP
+
+  frontend:
+    enabled: true
+    resources:
+      limits:
+        cpu: 300m
+        memory: 256Mi
+
+  # ── Core business services ──────────────────────────────────────────────
+  checkout:
+    enabled: true
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  cart:
+    enabled: true
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  payment:
+    enabled: true
+    resources:
+      limits:
+        cpu: 150m
+        memory: 128Mi
+
+  productCatalog:
+    enabled: true
+    resources:
+      limits:
+        cpu: 150m
+        memory: 128Mi
+
+  recommendation:
+    enabled: true
+    resources:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+
+  shipping:
+    enabled: true
+    resources:
+      limits:
+        cpu: 150m
+        memory: 128Mi
+
+  quote:
+    enabled: true
+    resources:
+      limits:
+        cpu: 150m
+        memory: 128Mi
+
+  currency:
+    enabled: true
+    resources:
+      limits:
+        cpu: 150m
+        memory: 128Mi
+
+  email:
+    enabled: true
+    resources:
+      limits:
+        cpu: 150m
+        memory: 128Mi
+
+  ad:
+    enabled: true
+    resources:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+
+  # ── Infrastructure services ─────────────────────────────────────────────
+  accounting:
+    enabled: true
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  fraudDetection:
+    enabled: true
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  # ── Feature flags ──────────────────────────────────────────────────────
+  flagd:
+    enabled: true
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  flagdUi:
+    enabled: false  # Pas nécessaire pour la collecte de données
+
+  # ── Backends de données ─────────────────────────────────────────────────
+  kafka:
+    enabled: true
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 200m
+        memory: 512Mi
+
+  valkey:
+    enabled: true
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  postgres:
+    enabled: true
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  # ── Load Generator ─────────────────────────────────────────────────────
+  loadGenerator:
+    enabled: true
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    env:
+      - name: LOCUST_USERS
+        value: "5"  # Trafic modéré en baseline, augmenté par scripts
+      - name: LOCUST_SPAWN_RATE
+        value: "1"
+
+  # ── Services désactivés (économie de ressources) ────────────────────────
+  imageProvider:
+    enabled: false  # nginx statique, pas utile pour le pipeline
+
+  reactNativeApp:
+    enabled: false  # App mobile, hors scope
+
+  llm:
+    enabled: false  # LLM service, consommation excessive pour ce use case
+
+  productReviews:
+    enabled: false  # Dépend du LLM, désactivé avec lui

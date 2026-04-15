@@ -1,0 +1,27 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: ewat-network-loss
+  namespace: ewat
+  labels:
+    ewat.scenario: network_loss
+    ewat.category: hard
+spec:
+  action: loss
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: frontend
+  direction: to
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - ewat
+      labelSelectors:
+        app.kubernetes.io/component: checkout
+  loss:
+    loss: "100"
+  duration: "1m"

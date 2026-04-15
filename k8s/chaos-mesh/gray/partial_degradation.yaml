@@ -1,0 +1,25 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: ewat-partial-degradation
+  namespace: ewat
+  labels:
+    ewat.scenario: partial_degradation
+    ewat.category: gray
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: recommendation
+  delay:
+    latency: "200ms"
+    jitter: "100ms"
+    correlation: "50"
+  loss:
+    loss: "30"
+    correlation: "25"
+  direction: both
+  duration: "3m"

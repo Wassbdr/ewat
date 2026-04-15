@@ -1,0 +1,22 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: ewat-resource-leak
+  namespace: ewat
+  labels:
+    ewat.scenario: resource_leak
+    ewat.category: contention
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: frontend
+  stressors:
+    memory:
+      workers: 1
+      size: "128MB"
+      # Using a single worker with moderate size to simulate gradual leak
+      # The script will apply this incrementally
+  duration: "5m"

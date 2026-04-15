@@ -1,0 +1,14 @@
+collection:
+  namespace: ewat
+  output_root: data/raw
+
+  sample_interval_s: 15
+
+  baseline_s: 1m
+  pre_injection_s: 30s
+  recovery_s: 30s
+  cool_down_s: 0s
+
+  repetitions: 1
+  scenarios:
+    - crash

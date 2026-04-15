@@ -1,0 +1,19 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: ewat-cascade-error-catalog
+  namespace: ewat
+  labels:
+    ewat.scenario: cascade_error
+    ewat.category: systemic
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: productcatalog
+  target: Request
+  port: 8080
+  abort: true
+  duration: "3m"

@@ -1,0 +1,28 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: ewat-backpressure-kafka
+  namespace: ewat
+  labels:
+    ewat.scenario: backpressure_kafka
+    ewat.category: systemic
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: accounting
+  delay:
+    latency: "2000ms"
+    jitter: "500ms"
+  direction: from
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - ewat
+      labelSelectors:
+        app.kubernetes.io/component: kafka
+  duration: "3m"

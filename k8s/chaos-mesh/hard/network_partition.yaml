@@ -1,0 +1,25 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: ewat-network-partition
+  namespace: ewat
+  labels:
+    ewat.scenario: network_partition
+    ewat.category: hard
+spec:
+  action: partition
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: checkout
+  direction: both
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - ewat
+      labelSelectors:
+        app.kubernetes.io/component: payment
+  duration: "2m"

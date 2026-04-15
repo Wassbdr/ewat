@@ -1,0 +1,17 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: ewat-crash
+  namespace: ewat
+  labels:
+    ewat.scenario: crash
+    ewat.category: hard
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: frontend
+  duration: "30s"

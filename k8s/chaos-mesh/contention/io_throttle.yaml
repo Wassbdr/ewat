@@ -1,0 +1,21 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: ewat-io-throttle
+  namespace: ewat
+  labels:
+    ewat.scenario: io_throttle
+    ewat.category: contention
+spec:
+  action: latency
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: accounting
+  volumePath: /data
+  path: "/data/**/*"
+  delay: "1s"
+  percent: 80
+  duration: "3m"

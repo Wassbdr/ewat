@@ -1,0 +1,22 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: ewat-fail-slow-latency
+  namespace: ewat
+  labels:
+    ewat.scenario: fail_slow_latency
+    ewat.category: gray
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: payment
+  delay:
+    latency: "500ms"
+    jitter: "50ms"
+    correlation: "25"
+  direction: both
+  duration: "3m"

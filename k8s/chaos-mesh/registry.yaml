@@ -1,0 +1,283 @@
+# =============================================================================
+# EWAT Chaos Mesh — Scenario Registry
+# =============================================================================
+# Maps each ontology leaf type to its injection mechanism.
+# Used by scripts/chaos_injector.py to orchestrate experiments.
+#
+# Fields:
+#   name:        Unique scenario identifier (matches filename)
+#   category:    Ontology mode (hard, gray, systemic, contention, config)
+#   kind:        Chaos Mesh CRD kind, or "kubectl" for manual injection
+#   file:        Path to scenario YAML/shell relative to k8s/chaos-mesh/
+#   duration:    Default injection duration
+#   targets:     OTel Demo services targeted
+#   description: Human-readable description
+#   min_episodes: Minimum repetitions for contrastive learning
+# =============================================================================
+
+scenarios:
+  # ── HARD FAILURES ─────────────────────────────────────────────────────────
+  - name: crash
+    category: hard
+    kind: PodChaos
+    file: hard/crash.yaml
+    duration: 30s
+    targets: [frontend, checkout, payment]
+    description: "Kill target pod immediately"
+    min_episodes: 20
+
+  - name: crash_loop
+    category: hard
+    kind: PodChaos
+    file: hard/crash_loop.yaml
+    duration: 2m
+    targets: [cart, shipping]
+    description: "Repeated pod kills causing CrashLoopBackOff"
+    min_episodes: 20
+
+  - name: oom
+    category: hard
+    kind: StressChaos
+    file: hard/oom.yaml
+    duration: 1m
+    targets: [recommendation, productcatalog]
+    description: "Memory stress exceeding container limits, triggering OOMKill"
+    min_episodes: 20
+
+  - name: network_partition
+    category: hard
+    kind: NetworkChaos
+    file: hard/network_partition.yaml
+    duration: 2m
+    targets: [checkout, payment]
+    description: "Full network partition between checkout and payment"
+    min_episodes: 20
+
+  - name: network_loss
+    category: hard
+    kind: NetworkChaos
+    file: hard/network_loss.yaml
+    duration: 1m
+    targets: [frontend, checkout]
+    description: "100% packet loss between frontend and checkout"
+    min_episodes: 20
+
+  - name: image_pull_error
+    category: hard
+    kind: kubectl
+    file: hard/image_pull_error.sh
+    duration: 3m
+    targets: [ad]
+    description: "Set invalid image tag causing ImagePullBackOff"
+    min_episodes: 20
+
+  - name: node_drain
+    category: hard
+    kind: kubectl
+    file: hard/node_drain.sh
+    duration: 2m
+    targets: []
+    description: "Drain a worker node, forcing pod evictions"
+    min_episodes: 20
+
+  # ── GRAY FAILURES ─────────────────────────────────────────────────────────
+  - name: fail_slow_cpu
+    category: gray
+    kind: StressChaos
+    file: gray/fail_slow_cpu.yaml
+    duration: 3m
+    targets: [checkout]
+    description: "CPU stress causing slow response times"
+    min_episodes: 20
+
+  - name: fail_slow_latency
+    category: gray
+    kind: NetworkChaos
+    file: gray/fail_slow_latency.yaml
+    duration: 3m
+    targets: [payment, shipping]
+    description: "Network delay 500ms on target services"
+    min_episodes: 20
+
+  - name: partial_degradation
+    category: gray
+    kind: NetworkChaos
+    file: gray/partial_degradation.yaml
+    duration: 3m
+    targets: [recommendation]
+    description: "30% packet loss + 200ms delay"
+    min_episodes: 20
+
+  - name: jitter
+    category: gray
+    kind: NetworkChaos
+    file: gray/jitter.yaml
+    duration: 2m
+    targets: [currency]
+    description: "Low base delay with high jitter (50ms ± 200ms)"
+    min_episodes: 20
+
+  - name: intermittent_error
+    category: gray
+    kind: HTTPChaos
+    file: gray/intermittent_error.yaml
+    duration: 3m
+    targets: [productcatalog]
+    description: "20% HTTP request abort rate"
+    min_episodes: 20
+
+  - name: probe_misconfig
+    category: gray
+    kind: kubectl
+    file: gray/probe_misconfig.sh
+    duration: 3m
+    targets: [cart]
+    description: "Misconfigured readiness probe causing rolling restarts"
+    min_episodes: 20
+
+  # ── SYSTEMIC FAILURES ─────────────────────────────────────────────────────
+  - name: cascade_latency
+    category: systemic
+    kind: NetworkChaos
+    file: systemic/cascade_latency.yaml
+    duration: 3m
+    targets: [checkout, payment]
+    description: "Cascading latency: delay on checkout + delay on payment"
+    min_episodes: 20
+
+  - name: cascade_error
+    category: systemic
+    kind: HTTPChaos
+    file: systemic/cascade_error.yaml
+    duration: 3m
+    targets: [productcatalog, recommendation]
+    description: "Error cascade: failures on catalog propagate to recommendation and frontend"
+    min_episodes: 20
+
+  - name: metastable_load
+    category: systemic
+    kind: StressChaos
+    file: systemic/metastable_load.yaml
+    duration: 5m
+    targets: [frontend, checkout]
+    description: "CPU stress combined with Locust traffic spike"
+    min_episodes: 20
+
+  - name: backpressure_kafka
+    category: systemic
+    kind: NetworkChaos
+    file: systemic/backpressure_kafka.yaml
+    duration: 3m
+    targets: [kafka]
+    description: "Delay on Kafka consumer causing queue accumulation"
+    min_episodes: 20
+
+  - name: thundering_herd
+    category: systemic
+    kind: kubectl
+    file: systemic/thundering_herd.sh
+    duration: 3m
+    targets: [frontend]
+    description: "10× Locust concurrent users spike"
+    min_episodes: 20
+
+  # ── CONTENTION FAILURES ────────────────────────────────────────────────────
+  - name: cpu_starvation
+    category: contention
+    kind: StressChaos
+    file: contention/cpu_starvation.yaml
+    duration: 3m
+    targets: [frontend, checkout]
+    description: "Heavy CPU stress (4 workers, 100% load)"
+    min_episodes: 20
+
+  - name: memory_pressure
+    category: contention
+    kind: StressChaos
+    file: contention/memory_pressure.yaml
+    duration: 3m
+    targets: [recommendation]
+    description: "Memory stress at 512MB with 2 workers"
+    min_episodes: 20
+
+  - name: io_throttle
+    category: contention
+    kind: IOChaos
+    file: contention/io_throttle.yaml
+    duration: 3m
+    targets: [accounting]
+    description: "1s I/O latency on data volume (affects PostgreSQL)"
+    min_episodes: 20
+
+  - name: io_error
+    category: contention
+    kind: IOChaos
+    file: contention/io_error.yaml
+    duration: 2m
+    targets: [accounting]
+    description: "I/O errors (errno=5 EIO) on data volume"
+    min_episodes: 20
+
+  - name: net_saturation
+    category: contention
+    kind: NetworkChaos
+    file: contention/net_saturation.yaml
+    duration: 3m
+    targets: [shipping]
+    description: "Bandwidth limitation simulating network saturation"
+    min_episodes: 20
+
+  - name: noisy_neighbor
+    category: contention
+    kind: StressChaos
+    file: contention/noisy_neighbor.yaml
+    duration: 3m
+    targets: [cart]
+    description: "CPU stress on co-located pod simulating noisy neighbor"
+    min_episodes: 20
+
+  - name: resource_leak
+    category: contention
+    kind: StressChaos
+    file: contention/resource_leak.yaml
+    duration: 5m
+    targets: [frontend]
+    description: "Gradually increasing memory consumption simulating a leak"
+    min_episodes: 20
+
+  # ── CONFIG FAILURES ────────────────────────────────────────────────────────
+  - name: routing_error
+    category: config
+    kind: kubectl
+    file: config/routing_error.sh
+    duration: 3m
+    targets: [checkout]
+    description: "Service selector mismatch causing upstream resolution failure"
+    min_episodes: 20
+
+  - name: bad_limits
+    category: config
+    kind: kubectl
+    file: config/bad_limits.sh
+    duration: 3m
+    targets: [checkout]
+    description: "CPU limit set to 10m causing extreme throttling"
+    min_episodes: 20
+
+  - name: bad_env_config
+    category: config
+    kind: kubectl
+    file: config/bad_env_config.sh
+    duration: 3m
+    targets: [payment]
+    description: "Missing critical environment variable"
+    min_episodes: 20
+
+  - name: misconfigured_hpa
+    category: config
+    kind: kubectl
+    file: config/misconfigured_hpa.sh
+    duration: 5m
+    targets: [frontend]
+    description: "HPA min=max=1 preventing autoscaling under load"
+    min_episodes: 20

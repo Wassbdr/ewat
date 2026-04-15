@@ -1,0 +1,43 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: ewat-cascade-latency
+  namespace: ewat
+  labels:
+    ewat.scenario: cascade_latency
+    ewat.category: systemic
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: checkout
+  delay:
+    latency: "300ms"
+    jitter: "50ms"
+  direction: both
+  duration: "3m"
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: ewat-cascade-latency-payment
+  namespace: ewat
+  labels:
+    ewat.scenario: cascade_latency
+    ewat.category: systemic
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: payment
+  delay:
+    latency: "500ms"
+    jitter: "100ms"
+  direction: both
+  duration: "3m"

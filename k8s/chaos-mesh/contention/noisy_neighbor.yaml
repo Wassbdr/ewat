@@ -1,0 +1,20 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: ewat-noisy-neighbor
+  namespace: ewat
+  labels:
+    ewat.scenario: noisy_neighbor
+    ewat.category: contention
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: cart
+  stressors:
+    cpu:
+      workers: 3
+      load: 80
+  duration: "3m"

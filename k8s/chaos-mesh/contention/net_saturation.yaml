@@ -1,0 +1,22 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: ewat-net-saturation
+  namespace: ewat
+  labels:
+    ewat.scenario: net_saturation
+    ewat.category: contention
+spec:
+  action: bandwidth
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: shipping
+  bandwidth:
+    rate: "100kbps"
+    limit: 100
+    buffer: 10000
+  direction: both
+  duration: "3m"

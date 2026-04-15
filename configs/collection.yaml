@@ -1,0 +1,59 @@
+collection:
+  namespace: ewat
+  output_root: data/raw
+
+  # Sampling
+  sample_interval_s: 15
+
+  # Segment durations
+  baseline_s: 5m
+  pre_injection_s: 1m
+  recovery_s: 2m
+  cool_down_s: 5m
+
+  # Experiment scheduling — 20 repetitions per scenario (required for H1/H2/H3)
+  repetitions: 20
+
+  # All 29 scenarios with injection files present.
+  # Run order: hard → gray → systemic → contention → config.
+  # NOTE: node_drain drains a real cluster worker node — run separately and
+  #       only after coordinating with the cluster admin. Commented out below.
+  scenarios:
+    # ── HARD ──────────────────────────────────────────────────────────────────
+    - crash
+    - crash_loop
+    - oom
+    - network_partition
+    - network_loss
+    - image_pull_error
+    # - node_drain  # requires draining a worker node; coordinate with admin
+
+    # ── GRAY ──────────────────────────────────────────────────────────────────
+    - fail_slow_cpu
+    - fail_slow_latency
+    - partial_degradation
+    - jitter
+    - intermittent_error
+    - probe_misconfig
+
+    # ── SYSTEMIC ──────────────────────────────────────────────────────────────
+    - cascade_latency
+    - cascade_error
+    - metastable_load
+    - backpressure_kafka
+    - thundering_herd
+
+    # ── CONTENTION ────────────────────────────────────────────────────────────
+    - cpu_starvation
+    - memory_pressure
+    - io_throttle
+    - io_error
+    - net_saturation
+    - noisy_neighbor
+    - resource_leak
+
+    # ── CONFIG ────────────────────────────────────────────────────────────────
+    - routing_error
+    - bad_limits
+    - bad_env_config
+    - misconfigured_hpa

@@ -1,0 +1,144 @@
+cluster:
+  name: "observit-cluster1"
+  context: "observit-cluster1"
+  api_endpoint: "https://rancher.devolab.lan/k8s/clusters/c-m-wggchl9h"
+  k8s_version: "v1.32.7+rke2r1"
+  nodes_total: 9
+  nodes_ready: 8
+  node_not_ready: "observit-cluster1-workers-58w74-mwxb2"
+  namespace: "ewat"
+  user: "wassim.badraoui@devoteam.com"
+  access_level: "namespace-admin"
+
+telemetry:
+  prometheus:
+    endpoint: "http://prometheus-server.monitoring-metrics.svc.cluster.local:80"
+    scrape_interval_s: 15
+  jaeger:
+    endpoint: "http://rca-jaeger.rca-sandbox.svc.cluster.local:16686"
+  loki:
+    endpoint: "http://loki-gateway.monitoring-logs.svc.cluster.local:80"
+  otel_collector:
+    # Central gateway Deployment (no hostPorts — replaces stuck DaemonSet agents)
+    otlp_grpc_endpoint: "http://otel-collector.ewat.svc.cluster.local:4317"
+    otlp_http_endpoint: "http://otel-collector.ewat.svc.cluster.local:4318"
+    # Prometheus exporter on gateway (scraped by monitoring-metrics Prometheus)
+    # OTel metric prefix: otel_* (namespace="otel" in prometheus exporter config)
+    prom_scrape_endpoint: "http://otel-collector.ewat.svc.cluster.local:9464"
+  features:
+    metrics_dim: 7
+    traces_dim: 6
+    logs_dim: 4
+    total_dim: 17
+
+graph:
+  node_level: "service"
+  edge_features: 3
+  edge_presence_threshold: 0
+
+aggregation:
+  saturation: "max"
+  rates: "volume_weighted"
+  latency: "p99_union"
+  structural: "median"
+
+drift:
+  method: "mmd_rff"
+  rff_dim: 256
+  window_ref_size: 300
+  window_cur_size: 60
+  epsilon_drift: null
+  look_through:
+    enabled: true
+    post_drift_window_s: 120
+    anomaly_retest: true
+
+encoder:
+  architecture: "stgcn"
+  embedding_dim: 64
+  temporal_window: 60
+  post_incident_delta: 30
+  learning_rate: 1.0e-3
+  batch_size: 32
+  num_epochs: 100
+  dropout_rate: 0.1
+  normalize_input: true  # StandardScaler on S(t) before STGCN
+
+typing:
+  method: "siamese_contrastive"
+  margin: 1.0
+  clustering: "agglomerative"
+  shap_explanations: true
+  learning_rate: 1.0e-4
+  n_negative_per_anchor: 5
+  batch_sampler: "episode"  # same-episode pairs for contrastive learning
+
+ontology:
+  temporal_relations: true
+  causal_relations:
+    method: "transfer_entropy"
+    estimator: "ksg"
+    min_episodes: 30
+    permutation_tests: 1000
+  cooccurrence:
+    method: "chi2"
+    significance: 0.05
+
+precursor:
+  horizons_min: [2, 5, 10, 20, 30, 60]
+  model: "per_type"
+  metric: "auroc"
+  class_balance: "oversample"
+  threshold_method: "youden"  # argmax(TPR - FPR)
+
+evaluation:
+  h1:
+    seeds: 5
+    splits: 5
+    silhouette_threshold: 0.3
+    complementary: ["gap_statistic", "bic_gmm"]
+  h2:
+    test: "student_t"
+    significance: 0.05
+    metric: "delta_fpr_at_constant_recall"
+  h3:
+    baseline: "generic_detector"
+    metric: "auroc_per_type"
+  ablation:
+    by_modality: true
+    by_feature: true
+    redundancy_threshold: 0.9
+
+latency_budget:
+  step0_target_s: 1.0
+  step1_target_s: 2.0
+  step3_target_s: 1.0
+  total_target_s: 5.0
+
+chaos_mesh:
+  namespace: "chaos-mesh"
+  target_namespace: "ewat"
+  scenarios:
+    - name: "cpu_stress"
+      type: "StressChaos"
+    - name: "memory_pressure"
+      type: "StressChaos"
+    - name: "network_delay"
+      type: "NetworkChaos"
+    - name: "network_partition"
+      type: "NetworkChaos"
+    - name: "pod_kill"
+      type: "PodChaos"
+    - name: "disk_fill"
+      type: "IOChaos"
+    - name: "http_abort"
+      type: "HTTPChaos"
+  repetitions_per_scenario: 20
+  cool_down_s: 300
+
+mlflow:
+  tracking_uri: "http://localhost:5000"
+  experiment_name: "ewat"
+
+random:
+  seed: 42

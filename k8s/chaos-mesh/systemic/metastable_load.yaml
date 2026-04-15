@@ -1,0 +1,22 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: ewat-metastable-load
+  namespace: ewat
+  labels:
+    ewat.scenario: metastable_load
+    ewat.category: systemic
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: frontend
+  stressors:
+    cpu:
+      workers: 3
+      load: 90
+  duration: "5m"
+# NOTE: Combine with Locust traffic spike via scripts/chaos_injector.py
+# The injector will simultaneously scale load-generator users to 50

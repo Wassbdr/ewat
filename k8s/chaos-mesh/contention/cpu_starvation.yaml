@@ -1,0 +1,20 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: ewat-cpu-starvation
+  namespace: ewat
+  labels:
+    ewat.scenario: cpu_starvation
+    ewat.category: contention
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: frontend
+  stressors:
+    cpu:
+      workers: 4
+      load: 100
+  duration: "3m"

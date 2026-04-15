@@ -1,0 +1,20 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: ewat-oom
+  namespace: ewat
+  labels:
+    ewat.scenario: oom
+    ewat.category: hard
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - ewat
+    labelSelectors:
+      app.kubernetes.io/component: recommendation
+  stressors:
+    memory:
+      workers: 4
+      size: "512MB"
+  duration: "1m"
