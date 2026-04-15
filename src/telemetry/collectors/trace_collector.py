@@ -158,9 +158,11 @@ class JaegerBackend(SpanQueryBackend):
         self,
         endpoint: str,
         namespace: str = "ewat",
-        timeout: float = 10.0,
-        limit: int = 2000,
+        timeout: float = 5.0,
+        limit: int = 100,
         service_allowlist: set[str] | None = None,
+        fetch_total_timeout_s: float = 12.0,
+        max_parallel: int = 8,
     ) -> None:
         import requests
         from requests.adapters import HTTPAdapter
@@ -168,16 +170,22 @@ class JaegerBackend(SpanQueryBackend):
 
         self._endpoint = endpoint.rstrip("/")
         self._namespace = namespace
-        self._timeout = min(timeout, 5.0)  # hard cap: fail fast per service
-        self._limit = limit
+        # Per-socket read timeout — caps idle time between bytes on one request.
+        # Not a total-response-time cap (use fetch_total_timeout_s for that).
+        self._timeout = min(timeout, 5.0)
+        # Limit traces per service: keeps payload small over slow port-forwards.
+        self._limit = min(limit, 200)
         self._service_allowlist = service_allowlist
+        # Hard wall-clock budget for the entire fetch_spans() call.
+        self._fetch_total_timeout_s = fetch_total_timeout_s
+        self._max_parallel = max_parallel
 
-        # Retry only on transient HTTP 5xx — NOT on read/connect timeouts.
-        # With timeout=5s per request and no timeout retries, a slow Jaeger
-        # service fails fast instead of blocking for 40 s (10 s × 4 attempts).
+        # No retries on read/connect timeouts — fail fast, don't compound delays.
         _retry = Retry(
-            total=2,
-            backoff_factor=0.3,
+            total=1,
+            read=0,
+            connect=0,
+            backoff_factor=0.0,
             status_forcelist=[500, 502, 503, 504],
             raise_on_status=False,
         )
@@ -207,8 +215,6 @@ class JaegerBackend(SpanQueryBackend):
         -------
         list[Span]
         """
-        import requests
-
         services = self._get_services()
         if not services:
             return []
@@ -225,32 +231,62 @@ class JaegerBackend(SpanQueryBackend):
         start_us = int(start_unix_s * 1_000_000)
         end_us = int(end_unix_s * 1_000_000)
 
+        # Parallel queries with a hard wall-clock budget.
+        # `requests` timeout= only measures idle time between bytes, NOT total
+        # response time. Over a slow port-forward a response can stream one byte
+        # every few seconds and never trigger the socket timeout. We solve this
+        # by running each service query in a thread and calling fut.result(timeout=)
+        # which is a real wall-clock deadline enforced by the GIL-releasing I/O wait.
+        deadline = time.time() + self._fetch_total_timeout_s
+        workers = min(self._max_parallel, len(services))
         spans: list[Span] = []
-        for svc in services:
-            params = {
-                "service": svc,
-                "start": start_us,
-                "end": end_us,
-                "limit": self._limit,
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            future_to_svc = {
+                pool.submit(self._fetch_one_service, svc, start_us, end_us): svc
+                for svc in services
             }
-            try:
-                resp = self._session.get(
-                    f"{self._endpoint}/api/traces",
-                    params=params,
-                    timeout=self._timeout,
-                )
-                resp.raise_for_status()
-            except requests.RequestException as exc:
-                logger.warning("JaegerBackend: /api/traces error for service '%s': %s", svc, exc)
-                continue
-            try:
-                payload = resp.json()
-            except ValueError as exc:
-                logger.warning("JaegerBackend: JSON parse error for service '%s': %s", svc, exc)
-                continue
-            spans.extend(self._parse_response(payload))
+            for fut, svc in future_to_svc.items():
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    logger.warning("JaegerBackend: budget exhausted, skipping '%s'", svc)
+                    continue
+                try:
+                    spans.extend(fut.result(timeout=remaining))
+                except concurrent.futures.TimeoutError:
+                    logger.warning(
+                        "JaegerBackend: wall-clock timeout for '%s' (budget=%.0fs)",
+                        svc,
+                        self._fetch_total_timeout_s,
+                    )
 
         return spans
+
+    def _fetch_one_service(self, svc: str, start_us: int, end_us: int) -> list[Span]:
+        """Fetch spans for a single service — runs inside a thread pool worker."""
+        import requests
+
+        params = {"service": svc, "start": start_us, "end": end_us, "limit": self._limit}
+        t0 = time.time()
+        try:
+            resp = self._session.get(
+                f"{self._endpoint}/api/traces",
+                params=params,
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning("JaegerBackend: /api/traces error for '%s': %s", svc, exc)
+            return []
+        try:
+            result = self._parse_response(resp.json())
+            logger.debug(
+                "JaegerBackend: '%s' → %d spans in %.1fs", svc, len(result), time.time() - t0
+            )
+            return result
+        except ValueError as exc:
+            logger.warning("JaegerBackend: JSON parse error for '%s': %s", svc, exc)
+            return []
 
     def _get_services(self) -> list[str]:
         """Return the list of service names from Jaeger /api/services."""
@@ -441,8 +477,6 @@ class TraceCollector:
         services:
             List of N service names.
         """
-        import time
-
         ts = timestamp or time.time()
         self._sync_backend_allowlist(service_index)
         spans = self._backend.fetch_spans(ts - self._window_s, ts)
@@ -473,11 +507,9 @@ class TraceCollector:
         -------
         list[Span] or None if cache is empty or stale.
         """
-        import time as _time
-
         if self._cached_spans is None:
             return None
-        if _time.time() - self._cached_ts > max_age_s:
+        if time.time() - self._cached_ts > max_age_s:
             return None
         return self._cached_spans
 

@@ -341,6 +341,8 @@ class TestJaegerBackendJsonError:
         backend._timeout = 5.0
         backend._limit = 100
         backend._service_allowlist = None
+        backend._fetch_total_timeout_s = 12.0
+        backend._max_parallel = 8
         import requests
         backend._session = requests.Session()
         return backend

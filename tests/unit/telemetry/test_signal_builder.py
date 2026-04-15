@@ -45,11 +45,15 @@ class _StubTraces:
 
 class _StubLogs:
     def collect(self, timestamp=None, service_index=None):
+        L, services, _ = self.collect_with_records(timestamp=timestamp, service_index=service_index)
+        return L, services
+
+    def collect_with_records(self, timestamp=None, service_index=None):
         services = ["svc-a", "svc-b"]
         svc_idx = service_index or {s: i for i, s in enumerate(services)}
         n = len(svc_idx)
         L = np.full((n, 4), 0.2, dtype=np.float32)
-        return L, sorted(svc_idx, key=lambda s: svc_idx[s])
+        return L, sorted(svc_idx, key=lambda s: svc_idx[s]), []
 
 
 # ---------------------------------------------------------------------------
