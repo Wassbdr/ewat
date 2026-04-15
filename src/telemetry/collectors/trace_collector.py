@@ -158,10 +158,10 @@ class JaegerBackend(SpanQueryBackend):
         self,
         endpoint: str,
         namespace: str = "ewat",
-        timeout: float = 5.0,
+        timeout: float = 15.0,
         limit: int = 100,
         service_allowlist: set[str] | None = None,
-        fetch_total_timeout_s: float = 12.0,
+        fetch_total_timeout_s: float = 20.0,
         max_parallel: int = 8,
     ) -> None:
         import requests
@@ -172,9 +172,9 @@ class JaegerBackend(SpanQueryBackend):
         self._namespace = namespace
         # Per-socket read timeout — caps idle time between bytes on one request.
         # Not a total-response-time cap (use fetch_total_timeout_s for that).
-        self._timeout = min(timeout, 5.0)
+        self._timeout = min(timeout, 15.0)
         # Limit traces per service: keeps payload small over slow port-forwards.
-        self._limit = min(limit, 200)
+        self._limit = min(limit, 20)
         self._service_allowlist = service_allowlist
         # Hard wall-clock budget for the entire fetch_spans() call.
         self._fetch_total_timeout_s = fetch_total_timeout_s
@@ -215,17 +215,16 @@ class JaegerBackend(SpanQueryBackend):
         -------
         list[Span]
         """
-        services = self._get_services()
-        if not services:
-            return []
-
-        # Restrict to the canonical service list when provided, to avoid
-        # fetching traces from services in other namespaces that Jaeger also
-        # instruments (Fix 2.1: Jaeger returns ALL services cluster-wide).
+        # If the canonical service allowlist is already populated (set by
+        # _sync_backend_allowlist on every collect() call), skip the
+        # /api/services roundtrip entirely — it adds one slow HTTP request
+        # per tick for no benefit when the service list is already known.
         if self._service_allowlist:
-            services = [s for s in services if s in self._service_allowlist]
-        if not services:
-            return []
+            services = list(self._service_allowlist)
+        else:
+            services = self._get_services()
+            if not services:
+                return []
 
         # Jaeger API expects microseconds
         start_us = int(start_unix_s * 1_000_000)

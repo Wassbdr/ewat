@@ -227,6 +227,7 @@ def collect_once(
     base_config_path: Path,
     dry_run: bool = False,
     endpoint_mode: str = "cluster",
+    no_traces: bool = False,
 ) -> Path:
     repo_root = REPO_ROOT
     cfg = _load_yaml(config_path)
@@ -243,8 +244,16 @@ def collect_once(
         msg = f"Invalid collection.semantic.mode='{semantic_mode}', expected online|offline"
         raise ValueError(msg)
     semantic_enabled = semantic_mode == "online"
+    traces_enabled = not no_traces
 
-    signal_builder = SignalBuilder.from_config(base_cfg, semantic_enabled=semantic_enabled)
+    if no_traces:
+        logger.info("Trace collection disabled via --no-traces.")
+
+    signal_builder = SignalBuilder.from_config(
+        base_cfg,
+        semantic_enabled=semantic_enabled,
+        traces_enabled=traces_enabled,
+    )
     graph_builder = ServiceGraphBuilder.from_config(base_cfg)
 
     # Pre-load SentenceBERT (PyTorch ~1.5 GB) at startup so it doesn't OOM WSL
@@ -384,6 +393,7 @@ def collect_once(
         "signal_dim": int(signal_tensor.shape[2]) if signal_tensor.ndim == 3 else 0,
         "dry_run": dry_run,
         "semantic_mode": semantic_mode,
+        "traces_enabled": traces_enabled,
         "semantic_postprocessed": False,
         "runtime": {
             "python_version": sys.version.split()[0],
@@ -465,6 +475,11 @@ def _cli() -> argparse.Namespace:
         default="cluster",
         help="Endpoint selection mode for telemetry backends",
     )
+    parser.add_argument(
+        "--no-traces",
+        action="store_true",
+        help="Disable trace collection; T(t) and graph edges remain empty/NaN",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -477,6 +492,7 @@ def main() -> None:
         base_config_path=Path(args.base_config),
         dry_run=args.dry_run,
         endpoint_mode=args.endpoint_mode,
+        no_traces=args.no_traces,
     )
     print(json.dumps({"run_dir": str(run_dir)}, indent=2))
 

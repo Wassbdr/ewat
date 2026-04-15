@@ -6,6 +6,7 @@ Uses stub collectors that return controlled data so no live cluster is needed.
 from __future__ import annotations
 
 import numpy as np
+from omegaconf import OmegaConf
 
 from telemetry.feature_names import (
     FEATURE_NAMES,
@@ -152,3 +153,40 @@ class TestSignalBuilderCollectorFailure:
         # M should remain NaN, snapshot should still be returned
         assert snap.S.shape == (1, SIGNAL_DIM)
         assert np.all(np.isnan(snap.M))
+
+
+class TestSignalBuilderFromConfig:
+    def test_from_config_can_disable_traces(self):
+        cfg = OmegaConf.create(
+            {
+                "cluster": {"namespace": "ewat"},
+                "telemetry": {
+                    "prometheus": {"endpoint": "http://prometheus:9090"},
+                    "jaeger": {"endpoint": "http://jaeger:16686"},
+                    "loki": {"endpoint": ""},
+                },
+            }
+        )
+
+        builder = SignalBuilder.from_config(
+            cfg,
+            semantic_enabled=False,
+            traces_enabled=False,
+        )
+        assert builder._prometheus is not None
+        assert builder._traces is None
+
+    def test_from_config_keeps_traces_enabled_by_default(self):
+        cfg = OmegaConf.create(
+            {
+                "cluster": {"namespace": "ewat"},
+                "telemetry": {
+                    "prometheus": {"endpoint": "http://prometheus:9090"},
+                    "jaeger": {"endpoint": "http://jaeger:16686"},
+                    "loki": {"endpoint": ""},
+                },
+            }
+        )
+
+        builder = SignalBuilder.from_config(cfg, semantic_enabled=False)
+        assert builder._traces is not None

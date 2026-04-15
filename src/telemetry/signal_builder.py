@@ -114,6 +114,7 @@ class SignalBuilder:
         cfg: Any,
         *,
         semantic_enabled: bool = True,
+        traces_enabled: bool = True,
     ) -> SignalBuilder:
         """Construct a SignalBuilder from a Hydra/OmegaConf config object.
 
@@ -127,6 +128,10 @@ class SignalBuilder:
                 - loki.endpoint         (for logs via Loki HTTP API)
             Expected keys under ``cluster``:
                 - namespace
+        semantic_enabled:
+            Enable SentenceBERT-based semantic log features.
+        traces_enabled:
+            Enable Jaeger trace collection. When ``False``, T(t) remains NaN.
 
         Returns
         -------
@@ -143,20 +148,23 @@ class SignalBuilder:
             namespace=ns,
         )
 
-        # Trace collector — requires a Jaeger endpoint
         traces: TraceCollector | None = None
-        jaeger_cfg = cfg.telemetry.get("jaeger", {})
-        jaeger_url: str = jaeger_cfg.get("endpoint", "") if jaeger_cfg else ""
-        if jaeger_url:
-            from telemetry.collectors.trace_collector import JaegerBackend
+        if traces_enabled:
+            # Trace collector — requires a Jaeger endpoint
+            jaeger_cfg = cfg.telemetry.get("jaeger", {})
+            jaeger_url: str = jaeger_cfg.get("endpoint", "") if jaeger_cfg else ""
+            if jaeger_url:
+                from telemetry.collectors.trace_collector import JaegerBackend
 
-            backend = JaegerBackend(endpoint=jaeger_url, namespace=ns)
-            traces = TraceCollector(backend=backend)
+                backend = JaegerBackend(endpoint=jaeger_url, namespace=ns)
+                traces = TraceCollector(backend=backend)
+            else:
+                logger.warning(
+                    "No jaeger.endpoint configured; T(t) will be all NaN. "
+                    "Set telemetry.jaeger.endpoint in configs/default.yaml."
+                )
         else:
-            logger.warning(
-                "No jaeger.endpoint configured; T(t) will be all NaN. "
-                "Set telemetry.jaeger.endpoint in configs/default.yaml."
-            )
+            logger.info("Trace collection disabled; T(t) will be all NaN.")
 
         # Log collector — requires a Loki endpoint
         logs: LogCollector | None = None
