@@ -13,8 +13,8 @@ collection:
   recovery_s: 2m
   cool_down_s: 5m
 
-  # Experiment scheduling — 20 repetitions per scenario (required for H1/H2/H3)
-  repetitions: 20
+  # Experiment scheduling — set to 2 for validation, 20 for the full dataset (H1/H2/H3)
+  repetitions: 2
 
   # All 29 scenarios with injection files present.
   # Run order: hard → gray → systemic → contention → config.
