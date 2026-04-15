@@ -403,14 +403,21 @@ def _compute_trace_structures(
     for trace_id, smap in span_by_id.items():
         child_map = children[trace_id]
 
-        # BFS from roots to compute depth
+        # BFS from roots to compute depth.
+        # Guard against cyclic span references in real Jaeger data (span A
+        # lists B as parent, B lists A) — without a visited set the BFS
+        # loops forever.
         roots = [sid for sid, sp in smap.items() if not sp.parent_span_id]
         max_depth = 0
         fan_outs: list[int] = []
+        visited: set[str] = set()
         from collections import deque as _deque
         queue: _deque[tuple[str, int]] = _deque((r, 1) for r in roots)
         while queue:
-            sid, depth = queue.popleft()  # FIFO = BFS (was pop() = LIFO = DFS)
+            sid, depth = queue.popleft()  # FIFO = BFS
+            if sid in visited:
+                continue
+            visited.add(sid)
             max_depth = max(max_depth, depth)
             kids = child_map.get(sid, [])
             fan_outs.append(len(kids))
