@@ -115,6 +115,7 @@ class SignalBuilder:
         *,
         semantic_enabled: bool = True,
         traces_enabled: bool = True,
+        services: list[str] | None = None,
     ) -> SignalBuilder:
         """Construct a SignalBuilder from a Hydra/OmegaConf config object.
 
@@ -146,6 +147,7 @@ class SignalBuilder:
         prometheus = PrometheusCollector(
             endpoint=prom_endpoint,
             namespace=ns,
+            services=services,
         )
 
         traces: TraceCollector | None = None
@@ -156,8 +158,23 @@ class SignalBuilder:
             if jaeger_url:
                 from telemetry.collectors.trace_collector import JaegerBackend
 
-                backend = JaegerBackend(endpoint=jaeger_url, namespace=ns)
-                traces = TraceCollector(backend=backend)
+                jaeger_collection_cfg = jaeger_cfg.get("collection", {}) if jaeger_cfg else {}
+                backend = JaegerBackend(
+                    endpoint=jaeger_url,
+                    namespace=ns,
+                    timeout=float(jaeger_collection_cfg.get("request_timeout_s", 15.0)),
+                    limit=int(jaeger_collection_cfg.get("limit_per_service", 20)),
+                    fetch_total_timeout_s=float(
+                        jaeger_collection_cfg.get("fetch_total_timeout_s", 10.0)
+                    ),
+                    max_parallel=int(jaeger_collection_cfg.get("max_parallel", 8)),
+                )
+                traces = TraceCollector(
+                    backend=backend,
+                    window_s=float(jaeger_collection_cfg.get("trace_window_s", 120.0)),
+                    services=services,
+                    cache_ttl_s=float(jaeger_collection_cfg.get("span_cache_ttl_s", 30.0)),
+                )
             else:
                 logger.warning(
                     "No jaeger.endpoint configured; T(t) will be all NaN. "
@@ -174,7 +191,11 @@ class SignalBuilder:
             from telemetry.collectors.log_collector import LokiBackend
 
             log_backend = LokiBackend(endpoint=loki_url, namespace=ns)
-            logs = LogCollector(backend=log_backend, semantic_enabled=semantic_enabled)
+            logs = LogCollector(
+                backend=log_backend,
+                semantic_enabled=semantic_enabled,
+                services=services,
+            )
         else:
             logger.warning(
                 "No loki.endpoint configured; L(t) will be partial (lexical "
@@ -182,7 +203,7 @@ class SignalBuilder:
                 "Set telemetry.loki.endpoint in configs/default.yaml."
             )
 
-        return cls(prometheus=prometheus, traces=traces, logs=logs)
+        return cls(prometheus=prometheus, traces=traces, logs=logs, services=services)
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -212,7 +233,14 @@ class SignalBuilder:
 
         if self._prometheus is not None:
             try:
-                M_t_raw, raw_services = self._prometheus.collect(timestamp=ts)
+                if self._services is not None:
+                    canonical_idx = {s: i for i, s in enumerate(self._services)}
+                    M_t_raw, raw_services = self._prometheus.collect(
+                        timestamp=ts,
+                        service_index=canonical_idx,
+                    )
+                else:
+                    M_t_raw, raw_services = self._prometheus.collect(timestamp=ts)
             except Exception:
                 logger.exception("PrometheusCollector.collect() failed")
 
@@ -275,7 +303,7 @@ class SignalBuilder:
         Priority: explicit list (if set) unioned with discovered; else discovered only.
         """
         if self._services is not None:
-            services = sorted(set(self._services) | set(discovered))
+            services = list(self._services)
         else:
             services = sorted(set(discovered))
         return services, {s: i for i, s in enumerate(services)}

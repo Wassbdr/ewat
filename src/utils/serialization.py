@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
+import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -14,7 +17,9 @@ import pandas as pd
 
 from graph.diagnostics import GraphStats, stats_to_dict
 from graph.types import ServiceGraph
-from telemetry.feature_names import FEATURE_NAMES, SIGNAL_DIM
+from telemetry.feature_names import FEATURE_NAMES, LOGS_SLICE, METRICS_SLICE, SIGNAL_DIM, TRACES_SLICE
+
+logger = logging.getLogger(__name__)
 
 DATASET_SCHEMA_VERSION = "1.2.0"
 
@@ -42,7 +47,13 @@ def save_run_dataset(
     graph_stats: list[GraphStats],
     services: list[str],
 ) -> None:
-    """Persist one labeled run to disk.
+    """Persist one labeled run to disk atomically.
+
+    All files are first written to ``{run_dir}.tmp/``, then the directory is
+    renamed to ``run_dir`` in a single ``os.rename`` call (atomic on Linux
+    when both paths are on the same filesystem).  This guarantees that either
+    the full episode directory exists on disk or nothing does — a partially
+    written episode is never silently left behind.
 
     Output files:
         - signal.npz
@@ -54,38 +65,55 @@ def save_run_dataset(
         - metadata.json
     """
     run_path = Path(run_dir)
-    run_path.mkdir(parents=True, exist_ok=True)
+    tmp_path = run_path.parent / (run_path.name + ".tmp")
 
-    signal = signal_tensor.astype(np.float32)
-    missing_mask = np.isnan(signal)
+    # Clean up any leftover tmp dir from a previous interrupted run.
+    if tmp_path.exists():
+        shutil.rmtree(tmp_path)
+    tmp_path.mkdir(parents=True, exist_ok=True)
 
-    np.savez_compressed(run_path / "signal.npz", signal=signal)
-    np.savez_compressed(run_path / "signal_mask.npz", missing_mask=missing_mask)
+    try:
+        signal = signal_tensor.astype(np.float32)
+        missing_mask = np.isnan(signal)
 
-    adjacency = _stack_adjacency(graph_sequence, services)
-    np.savez_compressed(run_path / "adjacency.npz", adjacency=adjacency)
+        np.savez_compressed(tmp_path / "signal.npz", signal=signal)
+        np.savez_compressed(tmp_path / "signal_mask.npz", missing_mask=missing_mask)
 
-    with (run_path / "services.json").open("w", encoding="utf-8") as f:
-        json.dump(services, f, indent=2)
+        adjacency = _stack_adjacency(graph_sequence, services)
+        np.savez_compressed(tmp_path / "adjacency.npz", adjacency=adjacency)
 
-    labels_df = _labels_to_dataframe(labels)
-    _write_parquet(labels_df, run_path / "labels.parquet")
+        with (tmp_path / "services.json").open("w", encoding="utf-8") as f:
+            json.dump(services, f, indent=2)
 
-    stats_df = _stats_to_dataframe(graph_stats, labels)
-    stats_df.to_csv(run_path / "graph_stats.csv", index=False)
+        labels_df = _labels_to_dataframe(labels)
+        _write_parquet(labels_df, tmp_path / "labels.parquet")
 
-    metadata_out = _build_metadata_contract(
-        metadata=metadata,
-        signal=signal,
-        missing_mask=missing_mask,
-        adjacency=adjacency,
-        labels_df=labels_df,
-        stats_df=stats_df,
-        services=services,
-    )
+        stats_df = _stats_to_dataframe(graph_stats, labels)
+        stats_df.to_csv(tmp_path / "graph_stats.csv", index=False)
 
-    with (run_path / "metadata.json").open("w", encoding="utf-8") as f:
-        json.dump(metadata_out, f, indent=2)
+        metadata_out = _build_metadata_contract(
+            metadata=metadata,
+            signal=signal,
+            missing_mask=missing_mask,
+            adjacency=adjacency,
+            labels_df=labels_df,
+            stats_df=stats_df,
+            services=services,
+        )
+
+        with (tmp_path / "metadata.json").open("w", encoding="utf-8") as f:
+            json.dump(metadata_out, f, indent=2)
+
+    except Exception:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+        raise
+
+    # Atomic promotion: replace any existing run_dir with the new one.
+    if run_path.exists():
+        shutil.rmtree(run_path)
+    os.rename(tmp_path, run_path)
+
+    _log_quality(metadata_out["quality_snapshot"], run_path)
 
 
 def _build_metadata_contract(
@@ -136,9 +164,17 @@ def _build_metadata_contract(
             "n_services": len(services),
         },
     }
+
+    def _nan_ratio(sl: slice) -> float:
+        sub = missing_mask[:, :, sl] if missing_mask.ndim == 3 else missing_mask[:, sl]
+        return float(sub.mean()) if sub.size else 0.0
+
     metadata_out["quality_snapshot"] = {
         "signal_nan_ratio": float(missing_mask.mean()) if missing_mask.size else 0.0,
         "signal_nan_count": int(missing_mask.sum()),
+        "metrics_nan_ratio": _nan_ratio(METRICS_SLICE),
+        "traces_nan_ratio": _nan_ratio(TRACES_SLICE),
+        "logs_nan_ratio": _nan_ratio(LOGS_SLICE),
     }
 
     config_payload = metadata.get("config")
@@ -244,6 +280,26 @@ def _stats_to_dataframe(
         df["episode_id"] = pd.Series(dtype="object")
 
     return df
+
+
+def _log_quality(quality: dict, run_path: Path) -> None:
+    """Emit INFO-level quality summary after a successful atomic write."""
+    pct = quality["signal_nan_ratio"] * 100
+    m_pct = quality["metrics_nan_ratio"] * 100
+    t_pct = quality["traces_nan_ratio"] * 100
+    l_pct = quality["logs_nan_ratio"] * 100
+    logger.info(
+        "Saved %s  NaN: total=%.1f%%  M=%.1f%%  T=%.1f%%  L=%.1f%%",
+        run_path.name,
+        pct,
+        m_pct,
+        t_pct,
+        l_pct,
+    )
+    if t_pct == 100.0:
+        logger.warning("%s: T(t) is entirely NaN — Jaeger data not collected for this run", run_path.name)
+    if l_pct == 100.0:
+        logger.warning("%s: L(t) is entirely NaN — Loki data not collected for this run", run_path.name)
 
 
 def _write_parquet(df: pd.DataFrame, output_path: Path) -> None:

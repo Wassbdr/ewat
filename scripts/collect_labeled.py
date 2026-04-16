@@ -30,6 +30,7 @@ from graph.builder import ServiceGraphBuilder  # noqa: E402
 from graph.diagnostics import stats_to_dict  # noqa: E402
 from scripts.chaos_injector import ChaosInjector  # noqa: E402
 from scripts.snapshot_collector import SnapshotBatch, SnapshotCollector  # noqa: E402
+from telemetry.feature_names import TRACES_SLICE  # noqa: E402
 from telemetry.signal_builder import SignalBuilder  # noqa: E402
 from utils.seeding import seed_everything  # noqa: E402
 
@@ -239,6 +240,7 @@ def collect_once(
 
     collection_cfg = cfg["collection"]
     semantic_cfg = collection_cfg.get("semantic", {})
+    canonical_services = list(collection_cfg.get("canonical_services", [])) or None
     semantic_mode = str(semantic_cfg.get("mode", "online")).lower()
     if semantic_mode not in {"online", "offline"}:
         msg = f"Invalid collection.semantic.mode='{semantic_mode}', expected online|offline"
@@ -253,6 +255,7 @@ def collect_once(
         base_cfg,
         semantic_enabled=semantic_enabled,
         traces_enabled=traces_enabled,
+        services=canonical_services,
     )
     graph_builder = ServiceGraphBuilder.from_config(base_cfg)
 
@@ -305,7 +308,7 @@ def collect_once(
         raw_logs_hook=_append_raw_log if semantic_mode == "offline" else None,
     )
 
-    canonical_services: list[str] | None = None
+    run_services: list[str] | None = canonical_services
     chunk_idx = 0
 
     for scenario_name in scenarios:
@@ -327,9 +330,9 @@ def collect_once(
                 target_services=[],
                 chaos_resource="",
                 episode_id=episode_id,
-                services=canonical_services,
+                services=run_services,
             )
-            canonical_services = baseline_batch.services
+            run_services = baseline_batch.services
             _persist_batch_chunk(chunk_dir, chunk_idx, baseline_batch)
             chunk_idx += 1
 
@@ -341,7 +344,7 @@ def collect_once(
                 target_services=scenario_spec.targets,
                 chaos_resource=scenario_spec.file,
                 episode_id=episode_id,
-                services=canonical_services,
+                services=run_services,
             )
             _persist_batch_chunk(chunk_dir, chunk_idx, pre_batch)
             chunk_idx += 1
@@ -356,7 +359,7 @@ def collect_once(
                     target_services=scenario_spec.targets,
                     chaos_resource=scenario_spec.file,
                     episode_id=episode_id,
-                    services=canonical_services,
+                    services=run_services,
                 )
                 _persist_batch_chunk(chunk_dir, chunk_idx, inj_batch)
                 chunk_idx += 1
@@ -371,7 +374,7 @@ def collect_once(
                 target_services=scenario_spec.targets,
                 chaos_resource=scenario_spec.file,
                 episode_id=episode_id,
-                services=canonical_services,
+                services=run_services,
             )
             _persist_batch_chunk(chunk_dir, chunk_idx, recovery_batch)
             chunk_idx += 1
@@ -380,8 +383,21 @@ def collect_once(
                 logger.info("Cooling down %.1fs", cool_down_s)
                 time.sleep(cool_down_s)
 
-    services = canonical_services or []
+    services = run_services or []
     signal_tensor, adjacency_tensor, labels_rows, stats_rows = _materialize_from_chunks(run_dir, services)
+
+    trace_collector = getattr(signal_builder, "_traces", None)
+    trace_backend = getattr(trace_collector, "_backend", None) if trace_collector is not None else None
+    trace_fetch_stats = (
+        trace_backend.get_last_fetch_stats()
+        if trace_backend is not None and hasattr(trace_backend, "get_last_fetch_stats")
+        else {}
+    )
+    traces_empty_window_ratio = (
+        float(np.isnan(signal_tensor[:, :, TRACES_SLICE]).all(axis=(1, 2)).mean())
+        if signal_tensor.size
+        else 1.0
+    )
 
     metadata = {
         "run_id": run_id,
@@ -395,6 +411,11 @@ def collect_once(
         "semantic_mode": semantic_mode,
         "traces_enabled": traces_enabled,
         "semantic_postprocessed": False,
+        "canonical_services": services,
+        "trace_collection_stats": {
+            **trace_fetch_stats,
+            "traces_empty_window_ratio": traces_empty_window_ratio,
+        },
         "runtime": {
             "python_version": sys.version.split()[0],
             "platform": platform.platform(),

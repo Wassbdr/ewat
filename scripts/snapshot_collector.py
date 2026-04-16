@@ -123,13 +123,28 @@ class SnapshotCollector:
                 elapsed,
                 remaining,
             )
+            sample_start = time.time()
             snapshot = self._signal_builder.build(timestamp=now)
+            signal_build_s = time.time() - sample_start
             n_samples += 1
             if canonical_services is None:
                 canonical_services = list(snapshot.services)
 
             aligned_signal = _align_signal(snapshot.S, snapshot.services, canonical_services)
+            graph_start = time.time()
             graph = self._build_graph(now, canonical_services)
+            graph_build_s = time.time() - graph_start
+            sample_elapsed_s = time.time() - sample_start
+            tick_drift_s = now - next_tick
+            logger.info(
+                "  [%s] timing drift=%.2fs signal=%.2fs graph=%.2fs sample=%.2fs interval=%.2fs",
+                regime,
+                tick_drift_s,
+                signal_build_s,
+                graph_build_s,
+                sample_elapsed_s,
+                self._sample_interval_s,
+            )
 
             signal_rows.append(aligned_signal)
             graphs.append(graph)
