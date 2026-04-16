@@ -281,3 +281,57 @@ scenarios:
     targets: [frontend]
     description: "HPA min=max=1 preventing autoscaling under load"
     min_episodes: 20
+
+  # ── BENIGN DRIFTS (θ_drift) ──────────────────────────────────────────────
+  # Required by EWAT formalisation §2.3 to calibrate ε_drift and validate H2.
+  # These scenarios produce a genuine distributional shift in S(t) but no
+  # application-level failure — MMD² should fire, but the post-drift anomaly
+  # test must stay negative, triggering RECALIBRATE.
+  - name: drift_scale_up
+    category: drift
+    kind: kubectl
+    file: drift/drift_scale_up.sh
+    duration: 2m
+    targets: [frontend]
+    description: "Scale frontend to R+1 replicas (autoscale-like drift)"
+    min_episodes: 20
+
+  - name: drift_rolling_deploy
+    category: drift
+    kind: kubectl
+    file: drift/drift_rolling_deploy.sh
+    duration: 2m
+    targets: [recommendation]
+    description: "Rollout restart of recommendation (benign deploy)"
+    min_episodes: 20
+
+  - name: drift_config_change
+    category: drift
+    kind: kubectl
+    file: drift/drift_config_change.sh
+    duration: 2m
+    targets: [cart]
+    description: "Benign env var change forcing a pod restart"
+    min_episodes: 20
+
+  - name: drift_traffic_ramp
+    category: drift
+    kind: kubectl
+    file: drift/drift_traffic_ramp.sh
+    duration: 3m
+    targets: [load-generator]
+    description: "Double load-generator replicas (organic traffic ramp)"
+    min_episodes: 20
+
+  # ── DRIFT ∩ ANOMALY OVERLAP (θ_{drift ∩ anomaly}) ────────────────────────
+  # A faulty deploy: real drift (rolling rollout) that also causes a real
+  # failure (OOM). Required by the formalisation's four-regime model and
+  # the look-through mechanism.
+  - name: faulty_deploy_overlap
+    category: overlap
+    kind: kubectl
+    file: drift/faulty_deploy_overlap.sh
+    duration: 2m
+    targets: [recommendation]
+    description: "Rolling deploy with faulty memory limit causing OOM (drift ∩ anomaly)"
+    min_episodes: 20

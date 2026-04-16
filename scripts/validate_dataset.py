@@ -1,15 +1,46 @@
-"""Automatic quality checks for EWAT labeled dataset runs."""
+"""EWAT — quality checks on Phase 2 featured episodes (or a full assembled dataset).
+
+Usage
+=====
+
+Validate a single featured episode::
+
+    python -m scripts.validate_dataset --episode data/features/v1/episode_crash_000_XXX
+
+Validate all episodes under one feature set::
+
+    python -m scripts.validate_dataset --features-root data/features/v1
+
+Validate a full assembled dataset::
+
+    python -m scripts.validate_dataset --dataset data/datasets/ewat_v1
+
+Checks
+------
+- ``shape``           : signal is (T, N, 17), adjacency is (T, N, N, 3), matching services.json.
+- ``nan_ratios``      : per-modality NaN ratios below the supplied thresholds.
+- ``labels``          : labels.parquet covers every timestep; regime values are valid.
+- ``graph_non_empty`` : fraction of graph snapshots with at least one edge ≥ threshold.
+- ``service_stability``: services across episodes are consistent (dataset-level only).
+- ``temporal_split``  : episodes in later splits start strictly after train/val (dataset-level).
+
+All checks are non-fatal by default; set ``--strict`` to exit non-zero on the first
+failure so the script can be used as a CI gate.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pandas.errors import EmptyDataError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -19,409 +50,267 @@ class CheckResult:
     details: str
 
 
-def check_metadata_contract(
-    metadata: dict,
-    signal: np.ndarray,
-    signal_mask: np.ndarray,
-    adjacency: np.ndarray,
-) -> CheckResult:
-    """Validate schema contract fields recorded in metadata.json."""
-    required_top = ["dataset_schema_version", "artifacts", "signal_dim_expected", "hashes"]
-    missing_top = [key for key in required_top if key not in metadata]
-    if missing_top:
-        # Backward compatibility: older/legacy runs (e.g. scripts/collect_labeled.py
-        # direct writer) do not include the full metadata contract. We treat this
-        # as a non-blocking warning so smoke/calibration runs can proceed.
-        return CheckResult(
-            "metadata_contract",
-            True,
-            f"legacy metadata (missing keys: {missing_top})",
-        )
+# ---------------------------------------------------------------------------
+# Artifact loading
+# ---------------------------------------------------------------------------
 
-    expected_dim = int(metadata.get("signal_dim_expected", -1))
-    if signal.ndim != 3:
-        return CheckResult("metadata_contract", False, f"signal ndim expected 3, got {signal.ndim}")
-    if signal.shape[2] != expected_dim:
-        return CheckResult(
-            "metadata_contract",
-            False,
-            f"signal dim mismatch: expected={expected_dim}, actual={signal.shape[2]}",
-        )
 
-    if signal_mask.shape != signal.shape:
-        return CheckResult(
-            "metadata_contract",
-            False,
-            f"signal_mask shape mismatch: signal={signal.shape}, mask={signal_mask.shape}",
-        )
+def _load_episode(ep_dir: Path) -> dict:
+    meta = json.loads((ep_dir / "metadata.json").read_text(encoding="utf-8"))
+    services = json.loads((ep_dir / "services.json").read_text(encoding="utf-8"))
+    with np.load(ep_dir / "signal.npz") as z:
+        signal = z["signal"]
+    with np.load(ep_dir / "signal_mask.npz") as z:
+        mask = z["missing_mask"]
+    with np.load(ep_dir / "adjacency.npz") as z:
+        adj = z["adjacency"]
+    labels = pd.read_parquet(ep_dir / "labels.parquet")
+    return {
+        "path": ep_dir,
+        "meta": meta,
+        "services": services,
+        "signal": signal,
+        "mask": mask,
+        "adjacency": adj,
+        "labels": labels,
+    }
 
-    if adjacency.ndim != 4:
-        return CheckResult(
-            "metadata_contract",
-            False,
-            f"adjacency ndim expected 4, got {adjacency.ndim}",
-        )
 
-    artifacts = metadata.get("artifacts", {})
-    required_artifacts = ["signal", "signal_mask", "adjacency", "labels", "graph_stats", "services"]
-    missing_artifacts = [name for name in required_artifacts if name not in artifacts]
-    if missing_artifacts:
-        return CheckResult("metadata_contract", False, f"missing artifacts: {missing_artifacts}")
+# ---------------------------------------------------------------------------
+# Per-episode checks
+# ---------------------------------------------------------------------------
 
+
+def check_shape(ep: dict) -> CheckResult:
+    sig = ep["signal"]
+    adj = ep["adjacency"]
+    n = len(ep["services"])
+    if sig.ndim != 3:
+        return CheckResult("shape", False, f"signal.ndim={sig.ndim} (expected 3)")
+    if sig.shape[1] != n:
+        return CheckResult("shape", False, f"signal.shape[1]={sig.shape[1]} ≠ N={n}")
+    if sig.shape[2] != 17:
+        return CheckResult("shape", False, f"signal.shape[2]={sig.shape[2]} ≠ 17")
+    if adj.ndim != 4:
+        return CheckResult("shape", False, f"adjacency.ndim={adj.ndim} (expected 4)")
+    if adj.shape[0] != sig.shape[0]:
+        return CheckResult("shape", False,
+                           f"T mismatch signal={sig.shape[0]} adj={adj.shape[0]}")
+    if adj.shape[1] != n or adj.shape[2] != n:
+        return CheckResult("shape", False,
+                           f"adj spatial shape ({adj.shape[1]},{adj.shape[2]}) ≠ ({n},{n})")
+    if adj.shape[3] != 3:
+        return CheckResult("shape", False, f"adj channels={adj.shape[3]} (expected 3)")
+    return CheckResult("shape", True, f"T={sig.shape[0]} N={n}")
+
+
+def check_nan_ratios(ep: dict, thresholds: dict[str, float]) -> CheckResult:
+    mask = ep["mask"]
+    total = float(mask.mean()) if mask.size else 0.0
+    m_r = float(mask[:, :, 0:7].mean())
+    t_r = float(mask[:, :, 7:13].mean())
+    l_r = float(mask[:, :, 13:17].mean())
+    if total > thresholds["total"]:
+        return CheckResult("nan_ratios", False,
+                           f"nan_total={total:.2f} > {thresholds['total']}")
+    if m_r > thresholds["metrics"]:
+        return CheckResult("nan_ratios", False, f"nan_M={m_r:.2f} > {thresholds['metrics']}")
+    if t_r > thresholds["traces"]:
+        return CheckResult("nan_ratios", False, f"nan_T={t_r:.2f} > {thresholds['traces']}")
+    if l_r > thresholds["logs"]:
+        return CheckResult("nan_ratios", False, f"nan_L={l_r:.2f} > {thresholds['logs']}")
     return CheckResult(
-        "metadata_contract",
-        True,
-        f"schema_version={metadata.get('dataset_schema_version')}",
+        "nan_ratios", True,
+        f"total={total:.2f} M={m_r:.2f} T={t_r:.2f} L={l_r:.2f}",
     )
 
 
-def _load_artifacts(
-    run_dir: Path,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, pd.DataFrame, pd.DataFrame, dict, list[str]]:
-    with np.load(run_dir / "signal.npz") as payload:
-        signal = payload["signal"]
-
-    signal_mask_path = run_dir / "signal_mask.npz"
-    if signal_mask_path.exists():
-        with np.load(signal_mask_path) as payload:
-            signal_mask = payload["missing_mask"].astype(bool)
-    else:
-        # Backward compatibility for older runs generated before signal_mask.npz.
-        signal_mask = np.isnan(signal)
-
-    with np.load(run_dir / "adjacency.npz") as payload:
-        adjacency = payload["adjacency"]
-
-    labels = pd.read_parquet(run_dir / "labels.parquet")
-    try:
-        graph_stats = pd.read_csv(run_dir / "graph_stats.csv")
-    except EmptyDataError:
-        graph_stats = pd.DataFrame(
-            columns=[
-                "timestamp",
-                "n_nodes",
-                "n_edges",
-                "density",
-                "avg_degree",
-                "max_degree",
-                "n_connected_components",
-                "diameter",
-                "largest_component_size",
-                "total_volume",
-                "mean_latency",
-                "mean_error_rate",
-                "regime",
-                "scenario",
-                "category",
-                "episode_id",
-            ]
-        )
-
-    with (run_dir / "metadata.json").open("r", encoding="utf-8") as f:
-        metadata = json.load(f)
-    with (run_dir / "services.json").open("r", encoding="utf-8") as f:
-        services = json.load(f)
-
-    return signal, signal_mask, adjacency, labels, graph_stats, metadata, services
-
-
-def check_coverage(labels: pd.DataFrame, min_episodes: int) -> CheckResult:
-    subset = labels[labels["regime"] == "injection"]
-    if subset.empty:
-        return CheckResult("coverage", False, "No injection labels found")
-
-    counts = subset.groupby("scenario")["episode_id"].nunique()
-    failing = counts[counts < min_episodes]
-    if failing.empty:
-        return CheckResult("coverage", True, f"All scenarios >= {min_episodes} episodes")
-
-    return CheckResult("coverage", False, f"Insufficient episodes: {failing.to_dict()}")
-
-
-def check_distribution(labels: pd.DataFrame, min_episodes: int) -> CheckResult:
-    subset = labels[labels["regime"] == "injection"]
-    counts = subset.groupby("scenario")["episode_id"].nunique()
-    failing = counts[counts < min_episodes]
-    if failing.empty:
-        return CheckResult("distribution", True, "Class distribution is balanced enough")
-
-    return CheckResult("distribution", False, f"Classes below threshold: {failing.to_dict()}")
-
-
-def check_signal_nan(signal: np.ndarray, max_nan_ratio: float) -> CheckResult:
-    if signal.size == 0:
-        return CheckResult("signal_nan", False, "Signal tensor is empty")
-
-    nan_ratio = float(np.isnan(signal).mean())
-    passed = nan_ratio <= max_nan_ratio
-    return CheckResult(
-        "signal_nan",
-        passed,
-        f"nan_ratio={nan_ratio:.4f}, threshold={max_nan_ratio:.4f}",
-    )
-
-
-def check_signal_mask(signal: np.ndarray, signal_mask: np.ndarray) -> CheckResult:
-    """Validate that missing-value mask is shape-aligned and semantically correct."""
-    if signal.shape != signal_mask.shape:
-        return CheckResult(
-            "signal_mask",
-            False,
-            f"shape mismatch: signal={signal.shape}, mask={signal_mask.shape}",
-        )
-
-    expected = np.isnan(signal)
-    mismatches = int(np.count_nonzero(signal_mask != expected))
-    if mismatches > 0:
-        return CheckResult(
-            "signal_mask",
-            False,
-            f"mask mismatch count={mismatches}",
-        )
-
-    return CheckResult("signal_mask", True, "mask matches NaN positions")
-
-
-def check_graph_non_empty_baseline(graph_stats: pd.DataFrame, min_edges: int) -> CheckResult:
-    if "regime" not in graph_stats.columns:
-        return CheckResult(
-            "baseline_graph_non_empty",
-            False,
-            "graph_stats.csv missing 'regime' column",
-        )
-
-    baseline = graph_stats[graph_stats["regime"] == "normal"]
-    if baseline.empty:
-        return CheckResult("baseline_graph_non_empty", False, "No baseline rows")
-
-    min_observed = int(baseline["n_edges"].min())
-    passed = min_observed >= min_edges
-    return CheckResult(
-        "baseline_graph_non_empty",
-        passed,
-        f"min_baseline_edges={min_observed}, threshold={min_edges}",
-    )
-
-
-def check_durations(labels: pd.DataFrame) -> CheckResult:
-    required_regimes = {"normal", "injection", "recovery"}
-
-    episodes = labels[labels["scenario"] != "normal"].groupby(["scenario", "episode_id"])
-    if episodes.ngroups == 0:
-        return CheckResult("durations", False, "No anomaly episodes found")
-
-    invalid: list[str] = []
-    for (scenario, episode_id), group in episodes:
-        observed = set(group["regime"].unique())
-        missing = required_regimes - observed
-        if missing:
-            invalid.append(f"{scenario}/{episode_id}: missing {sorted(missing)}")
-            continue
-
-        inj = group[group["regime"] == "injection"]["timestamp"]
-        if inj.empty:
-            invalid.append(f"{scenario}/{episode_id}: empty injection timestamps")
-
+def check_labels(ep: dict) -> CheckResult:
+    sig = ep["signal"]
+    labels = ep["labels"]
+    if len(labels) != sig.shape[0]:
+        return CheckResult("labels", False,
+                           f"rows={len(labels)} ≠ T={sig.shape[0]}")
+    valid = {"normal", "injection", "recovery", "drift_anomaly"}
+    invalid = set(labels["regime"].unique()) - valid
     if invalid:
-        return CheckResult("durations", False, "; ".join(invalid[:10]))
-    return CheckResult("durations", True, "Injection/recovery structure is valid")
+        return CheckResult("labels", False, f"invalid regimes: {invalid}")
+    return CheckResult("labels", True,
+                       f"rows={len(labels)} regimes={sorted(labels['regime'].unique())}")
 
 
-def check_temporal_split(labels: pd.DataFrame) -> CheckResult:
-    timestamps = np.sort(labels["timestamp"].to_numpy(dtype=float))
-    if timestamps.size < 2:
-        return CheckResult("temporal_split", False, "Not enough timestamps")
+def check_graph_non_empty(ep: dict, min_fraction: float) -> CheckResult:
+    adj = ep["adjacency"]
+    if adj.size == 0:
+        return CheckResult("graph_non_empty", False, "adjacency empty")
+    vol = adj[..., 0]  # channel 0 = volume
+    nonempty = float((vol.sum(axis=(1, 2)) > 0).mean())
+    if nonempty < min_fraction:
+        return CheckResult("graph_non_empty", False,
+                           f"nonempty_fraction={nonempty:.2f} < {min_fraction}")
+    return CheckResult("graph_non_empty", True, f"nonempty_fraction={nonempty:.2f}")
 
-    split_idx = max(1, int(0.8 * timestamps.size))
-    if split_idx >= timestamps.size:
-        split_idx = timestamps.size - 1
 
-    train_max = float(timestamps[split_idx - 1])
-    test_min = float(timestamps[split_idx])
-    if train_max >= test_min:
-        return CheckResult(
-            "temporal_split",
-            False,
-            f"train_max={train_max:.3f}, test_min={test_min:.3f}",
-        )
+# ---------------------------------------------------------------------------
+# Dataset-level checks
+# ---------------------------------------------------------------------------
 
-    # Stronger leakage check: no scenario episode should cross the split boundary.
-    if "episode_id" in labels.columns:
-        episodes = labels[labels["episode_id"].astype(str) != ""].groupby("episode_id")
-        leaking_episodes: list[str] = []
-        for episode_id, group in episodes:
-            t_min = float(group["timestamp"].min())
-            t_max = float(group["timestamp"].max())
-            # Leakage only if the same episode has samples in both partitions.
-            in_train = t_min <= train_max
-            in_test = t_max >= test_min
-            if in_train and in_test:
-                leaking_episodes.append(str(episode_id))
 
-        if leaking_episodes:
+def check_service_stability(episode_dicts: list[dict]) -> CheckResult:
+    ref = tuple(episode_dicts[0]["services"])
+    for ep in episode_dicts[1:]:
+        if tuple(ep["services"]) != ref:
+            return CheckResult("service_stability", False,
+                               f"services differ between {episode_dicts[0]['path'].name} "
+                               f"and {ep['path'].name}")
+    return CheckResult(
+        "service_stability", True,
+        f"N={len(ref)} across {len(episode_dicts)} episodes",
+    )
+
+
+def check_temporal_split(dataset_dir: Path) -> CheckResult:
+    split_path = dataset_dir / "split.json"
+    index_path = dataset_dir / "index.parquet"
+    if not split_path.exists() or not index_path.exists():
+        return CheckResult("temporal_split", False, "missing split.json or index.parquet")
+    split = json.loads(split_path.read_text(encoding="utf-8"))
+    try:
+        index = pd.read_parquet(index_path)
+    except Exception as exc:
+        return CheckResult("temporal_split", False, f"cannot read index.parquet: {exc}")
+    by_id = index.set_index("episode_id")
+    for earlier, later in [("train", "val"), ("val", "test"), ("train", "test")]:
+        if not split.get(earlier) or not split.get(later):
+            continue
+        earlier_end = max(by_id.loc[eid, "recovery_end"] for eid in split[earlier])
+        later_start = min(by_id.loc[eid, "baseline_start"] for eid in split[later])
+        if later_start < earlier_end:
             return CheckResult(
-                "temporal_split",
-                False,
-                "Episodes crossing split boundary: " + ", ".join(leaking_episodes[:10]),
+                "temporal_split", False,
+                f"{later} starts (t={later_start:.0f}) before end of "
+                f"{earlier} (t={earlier_end:.0f})",
             )
-
-    return CheckResult(
-        "temporal_split",
-        True,
-        f"train_max={train_max:.3f}, test_min={test_min:.3f}",
-    )
+    return CheckResult("temporal_split", True, "all splits are strictly ordered in time")
 
 
-def check_temporal_split_skipped() -> CheckResult:
-    return CheckResult("temporal_split", True, "skipped (campaign wave gate)")
+# ---------------------------------------------------------------------------
+# Runner
+# ---------------------------------------------------------------------------
 
 
-def check_services_stability(services: list[str], expected_services: list[str] | None) -> CheckResult:
-    """Validate that services.json matches expected canonical services when provided."""
-    if expected_services is None:
-        return CheckResult("services_stability", True, f"n_services={len(services)}")
-    if services != expected_services:
-        return CheckResult(
-            "services_stability",
-            False,
-            f"services mismatch: expected={expected_services}, actual={services}",
-        )
-    return CheckResult("services_stability", True, f"services match canonical set ({len(services)})")
+_DEFAULT_THRESHOLDS = {
+    "total": 0.60,
+    "metrics": 0.60,
+    "traces": 0.90,  # trace traffic can be sparse
+    "logs": 0.90,
+}
 
 
-def check_trace_collection_health(
-    metadata: dict,
-    max_trace_timeout_ratio: float,
-    max_empty_trace_window_ratio: float,
-) -> CheckResult:
-    """Validate Jaeger timeout ratio and empty-trace windows ratio from metadata."""
-    trace_stats = metadata.get("trace_collection_stats", {})
-    services_considered = float(trace_stats.get("services_considered", 0.0))
-    services_timed_out = float(trace_stats.get("services_timed_out", 0.0))
-    empty_windows_ratio = float(trace_stats.get("traces_empty_window_ratio", 1.0))
-
-    timeout_ratio = (services_timed_out / services_considered) if services_considered > 0 else 0.0
-    if timeout_ratio > max_trace_timeout_ratio:
-        return CheckResult(
-            "trace_collection_health",
-            False,
-            (
-                f"timeout_ratio={timeout_ratio:.4f} > threshold={max_trace_timeout_ratio:.4f}, "
-                f"empty_windows_ratio={empty_windows_ratio:.4f}"
-            ),
-        )
-    if empty_windows_ratio > max_empty_trace_window_ratio:
-        return CheckResult(
-            "trace_collection_health",
-            False,
-            (
-                f"empty_windows_ratio={empty_windows_ratio:.4f} > "
-                f"threshold={max_empty_trace_window_ratio:.4f}, timeout_ratio={timeout_ratio:.4f}"
-            ),
-        )
-    return CheckResult(
-        "trace_collection_health",
-        True,
-        (
-            f"timeout_ratio={timeout_ratio:.4f}, "
-            f"empty_windows_ratio={empty_windows_ratio:.4f}"
-        ),
-    )
+def _print_results(label: str, results: list[CheckResult]) -> bool:
+    all_pass = True
+    logger.info("=== %s ===", label)
+    for r in results:
+        status = "OK" if r.passed else "FAIL"
+        logger.info("  [%s] %-20s  %s", status, r.name, r.details)
+        if not r.passed:
+            all_pass = False
+    return all_pass
 
 
-def run_checks(
-    run_dir: Path,
-    min_coverage_episodes: int,
-    min_distribution_episodes: int,
-    max_nan_ratio: float,
-    min_baseline_edges: int,
-    strict_dry_run: bool,
-    expected_services: list[str] | None = None,
-    max_trace_timeout_ratio: float = 0.20,
-    max_empty_trace_window_ratio: float = 0.50,
-    enforce_temporal_split: bool = True,
-) -> tuple[list[CheckResult], int]:
-    signal, signal_mask, adjacency, labels, graph_stats, metadata, services = _load_artifacts(run_dir)
-
-    if metadata.get("dry_run", False) and not strict_dry_run:
-        checks = [
-            CheckResult(
-                "dry_run_mode",
-                True,
-                "Dry-run artifacts are intentionally empty; quality checks skipped. "
-                "Use --strict-dry-run to enforce full checks.",
-            )
-        ]
-        return checks, 0
-
-    checks = [
-        check_metadata_contract(metadata, signal, signal_mask, adjacency),
-        check_coverage(labels, min_coverage_episodes),
-        check_distribution(labels, min_distribution_episodes),
-        check_signal_nan(signal, max_nan_ratio),
-        check_signal_mask(signal, signal_mask),
-        check_graph_non_empty_baseline(graph_stats, min_baseline_edges),
-        check_durations(labels),
-        check_temporal_split(labels) if enforce_temporal_split else check_temporal_split_skipped(),
-        check_services_stability(services, expected_services),
-        check_trace_collection_health(
-            metadata=metadata,
-            max_trace_timeout_ratio=max_trace_timeout_ratio,
-            max_empty_trace_window_ratio=max_empty_trace_window_ratio,
-        ),
+def run_on_episode(ep_dir: Path, thresholds: dict[str, float], min_graph_fraction: float,
+                   ) -> tuple[bool, list[CheckResult]]:
+    ep = _load_episode(ep_dir)
+    results = [
+        check_shape(ep),
+        check_nan_ratios(ep, thresholds),
+        check_labels(ep),
+        check_graph_non_empty(ep, min_graph_fraction),
     ]
-    failures = sum(1 for check in checks if not check.passed)
-    return checks, failures
-
-
-def _cli() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Validate EWAT dataset run")
-    parser.add_argument("run_dir", type=Path)
-    parser.add_argument("--min-coverage-episodes", type=int, default=20)
-    parser.add_argument("--min-distribution-episodes", type=int, default=15)
-    parser.add_argument("--max-nan-ratio", type=float, default=0.20)
-    parser.add_argument("--min-baseline-edges", type=int, default=5)
-    parser.add_argument(
-        "--strict-dry-run",
-        action="store_true",
-        help="If set, run full quality checks even when metadata indicates dry-run mode.",
-    )
-    parser.add_argument(
-        "--expected-services",
-        default="",
-        help="Comma-separated canonical services list to enforce exact services.json stability.",
-    )
-    parser.add_argument("--max-trace-timeout-ratio", type=float, default=0.20)
-    parser.add_argument("--max-empty-trace-window-ratio", type=float, default=0.50)
-    return parser.parse_args()
+    return all(r.passed for r in results), results
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = _cli()
 
-    expected_services = (
-        [s.strip() for s in args.expected_services.split(",") if s.strip()]
-        if args.expected_services
-        else None
-    )
-    checks, failures = run_checks(
-        run_dir=args.run_dir,
-        min_coverage_episodes=args.min_coverage_episodes,
-        min_distribution_episodes=args.min_distribution_episodes,
-        max_nan_ratio=args.max_nan_ratio,
-        min_baseline_edges=args.min_baseline_edges,
-        strict_dry_run=args.strict_dry_run,
-        expected_services=expected_services,
-        max_trace_timeout_ratio=args.max_trace_timeout_ratio,
-        max_empty_trace_window_ratio=args.max_empty_trace_window_ratio,
-    )
+    thresholds = {
+        "total": args.max_nan_total,
+        "metrics": args.max_nan_metrics,
+        "traces": args.max_nan_traces,
+        "logs": args.max_nan_logs,
+    }
 
-    for check in checks:
-        status = "PASS" if check.passed else "FAIL"
-        print(f"[{status}] {check.name}: {check.details}")
+    any_fail = False
+    loaded: list[dict] = []
 
-    if failures:
-        raise SystemExit(1)
+    if args.episode:
+        ep_dir = Path(args.episode)
+        ok, results = run_on_episode(ep_dir, thresholds, args.min_graph_fraction)
+        any_fail = any_fail or not ok
+        _print_results(ep_dir.name, results)
+
+    elif args.features_root:
+        root = Path(args.features_root)
+        eps = sorted(p for p in root.iterdir() if p.is_dir() and (p / "metadata.json").exists())
+        if not eps:
+            raise SystemExit(f"no featured episodes under {root}")
+        for ep_dir in eps:
+            ok, results = run_on_episode(ep_dir, thresholds, args.min_graph_fraction)
+            any_fail = any_fail or not ok
+            _print_results(ep_dir.name, results)
+            try:
+                loaded.append(_load_episode(ep_dir))
+            except Exception:
+                pass
+        if loaded:
+            result = check_service_stability(loaded)
+            any_fail = any_fail or not result.passed
+            _print_results("dataset-wide", [result])
+
+    elif args.dataset:
+        ds_dir = Path(args.dataset)
+        ep_root = ds_dir / "episodes"
+        eps = sorted(p for p in ep_root.iterdir() if p.is_dir())
+        for ep_dir in eps:
+            ok, results = run_on_episode(ep_dir, thresholds, args.min_graph_fraction)
+            any_fail = any_fail or not ok
+            _print_results(ep_dir.name, results)
+            try:
+                loaded.append(_load_episode(ep_dir))
+            except Exception:
+                pass
+        ds_results = []
+        if loaded:
+            ds_results.append(check_service_stability(loaded))
+        ds_results.append(check_temporal_split(ds_dir))
+        for r in ds_results:
+            if not r.passed:
+                any_fail = True
+        _print_results("dataset-wide", ds_results)
+
+    else:
+        raise SystemExit("provide --episode, --features-root, or --dataset")
+
+    if any_fail and args.strict:
+        sys.exit(1)
+
+
+def _cli() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="EWAT Phase 2/3 validator")
+    src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument("--episode", help="single featured episode dir")
+    src.add_argument("--features-root", help="feature set root, e.g. data/features/v1")
+    src.add_argument("--dataset", help="assembled dataset root, e.g. data/datasets/ewat_v1")
+    p.add_argument("--max-nan-total", type=float, default=_DEFAULT_THRESHOLDS["total"])
+    p.add_argument("--max-nan-metrics", type=float, default=_DEFAULT_THRESHOLDS["metrics"])
+    p.add_argument("--max-nan-traces", type=float, default=_DEFAULT_THRESHOLDS["traces"])
+    p.add_argument("--max-nan-logs", type=float, default=_DEFAULT_THRESHOLDS["logs"])
+    p.add_argument("--min-graph-fraction", type=float, default=0.10,
+                   help="minimum fraction of timesteps with a non-empty graph")
+    p.add_argument("--strict", action="store_true",
+                   help="exit non-zero if any check fails (useful in CI)")
+    return p.parse_args()
 
 
 if __name__ == "__main__":

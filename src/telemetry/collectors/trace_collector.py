@@ -161,7 +161,8 @@ class JaegerBackend(SpanQueryBackend):
         timeout: float = 15.0,
         limit: int = 100,
         service_allowlist: set[str] | None = None,
-        fetch_total_timeout_s: float = 10.0,  # MUST be < sample_interval_s (15s) to prevent segment drift
+        # MUST be < sample_interval_s (15s) to prevent segment drift
+        fetch_total_timeout_s: float = 10.0,
         max_parallel: int = 8,
     ) -> None:
         import requests

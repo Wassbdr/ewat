@@ -17,7 +17,13 @@ import pandas as pd
 
 from graph.diagnostics import GraphStats, stats_to_dict
 from graph.types import ServiceGraph
-from telemetry.feature_names import FEATURE_NAMES, LOGS_SLICE, METRICS_SLICE, SIGNAL_DIM, TRACES_SLICE
+from telemetry.feature_names import (
+    FEATURE_NAMES,
+    LOGS_SLICE,
+    METRICS_SLICE,
+    SIGNAL_DIM,
+    TRACES_SLICE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -297,9 +303,15 @@ def _log_quality(quality: dict, run_path: Path) -> None:
         l_pct,
     )
     if t_pct == 100.0:
-        logger.warning("%s: T(t) is entirely NaN — Jaeger data not collected for this run", run_path.name)
+        logger.warning(
+            "%s: T(t) is entirely NaN — Jaeger data not collected for this run",
+            run_path.name,
+        )
     if l_pct == 100.0:
-        logger.warning("%s: L(t) is entirely NaN — Loki data not collected for this run", run_path.name)
+        logger.warning(
+            "%s: L(t) is entirely NaN — Loki data not collected for this run",
+            run_path.name,
+        )
 
 
 def _write_parquet(df: pd.DataFrame, output_path: Path) -> None:

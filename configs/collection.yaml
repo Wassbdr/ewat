@@ -1,9 +1,26 @@
+# =============================================================================
+# EWAT — Collection config (Phase 1: record_episode.py)
+# =============================================================================
+# This file drives:
+#   - scripts/record_episode.py   (Phase 1 — raw telemetry dumps)
+#   - scripts/build_features.py   (Phase 2 — offline feature engineering)
+#   - scripts/assemble_dataset.py (Phase 3 — temporal split & final dataset)
+#
+# All feature-level knobs (aggregation rules, signal dims, MMD params, etc.)
+# live in configs/default.yaml. This file only describes the campaign.
+# =============================================================================
+
 collection:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Cluster scope
+  # ─────────────────────────────────────────────────────────────────────────
   namespace: ewat
   output_root: data/raw
 
-  # Sampling
-  sample_interval_s: 30
+  # Canonical service set V. |V| = N is fixed across the entire dataset.
+  # Chosen from the services actually active in telemetry (otel-demo,
+  # probed via Jaeger /api/services + Loki label service_name):
+  #   frontend, recommendation, cart, ad, product-catalog, load-generator
   canonical_services:
     - frontend
     - recommendation
@@ -11,37 +28,62 @@ collection:
     - ad
     - product-catalog
     - load-generator
-  semantic:
-    mode: offline
 
-  # Segment durations
-  baseline_s: 5m
-  pre_injection_s: 1m
-  recovery_s: 2m
-  cool_down_s: 5m
+  # ─────────────────────────────────────────────────────────────────────────
+  # Phase 1 — recorder parameters
+  # ─────────────────────────────────────────────────────────────────────────
+  # Prometheus range-query cadence used during bulk dumps.
+  # 15 s matches typical scrape intervals; smaller wastes bandwidth, larger
+  # loses temporal resolution for MMD. Phase 2 resamples freely on top.
+  prom_rate_window: "2m"      # PromQL rate() window applied inside templates
+  prom_timeout_s: 30.0
+  jaeger_timeout_s: 60.0      # bulk fetch can be heavier than per-tick
+  loki_timeout_s: 30.0
+  jaeger_limit: 1500          # traces per /api/traces call
+  loki_limit: 5000            # log lines per Loki page (we paginate)
 
-  # Experiment scheduling — set to 2 for validation, 20 for the full dataset (H1/H2/H3)
+  # ─────────────────────────────────────────────────────────────────────────
+  # Episode timeline
+  # ─────────────────────────────────────────────────────────────────────────
+  #   baseline → pre-injection → INJECTION (scenario.duration) → recovery
+  # Total wall-clock per episode ≈ 5m + 1m + scenario.duration + 2m + cool_down
+  baseline_s: "5m"
+  pre_injection_s: "1m"
+  recovery_s: "2m"
+  cool_down_s: "1m"           # between episodes (not included in dump window)
+
+  # Repetitions per scenario. Use 2 for validation, ≥ 20 for the final
+  # dataset (H1 structurability requires enough episodes per type).
   repetitions: 2
 
-  # All 29 scenarios with injection files present.
-  # Run order: hard → gray → systemic → contention → config.
-  # NOTE: node_drain drains a real cluster worker node — run separately and
-  #       only after coordinating with the cluster admin. Commented out below.
+  # ─────────────────────────────────────────────────────────────────────────
+  # Scenarios — 3 regimes × scoped to 6 observable services
+  # ─────────────────────────────────────────────────────────────────────────
+  # θ_drift       : 4 benign drifts — required by H2 (drift separability)
+  # θ_anomaly     : 10 failures spanning hard / gray / contention
+  # θ_{drift∩ano} : 1 faulty-deploy overlap — required by look-through
   scenarios:
-    # ── HARD ──────────────────────────────────────────────────────────────────
+    # θ_drift (benign distribution shifts)
+    - drift_scale_up
+    - drift_rolling_deploy
+    - drift_config_change
+    - drift_traffic_ramp
+
+    # θ_anomaly — hard
     - crash
     - oom
     - network_loss
-    # - image_pull_error   # out-of-scope for reduced service set
-    # - node_drain         # requires draining a worker node; coordinate with admin
 
-    # ── GRAY ──────────────────────────────────────────────────────────────────
+    # θ_anomaly — gray
     - intermittent_error
     - fail_slow_latency
     - fail_slow_cpu
 
-    # ── CONTENTION ────────────────────────────────────────────────────────────
+    # θ_anomaly — contention
     - cpu_starvation
     - memory_pressure
     - noisy_neighbor
     - resource_leak
+
+    # θ_{drift ∩ anomaly}
+    - faulty_deploy_overlap
