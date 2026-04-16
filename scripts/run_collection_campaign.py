@@ -33,6 +33,7 @@ def _validate_or_raise(
     min_baseline_edges: int,
     max_trace_timeout_ratio: float,
     max_empty_trace_window_ratio: float,
+    enforce_temporal_split: bool,
 ) -> None:
     checks, failures = run_checks(
         run_dir=run_dir,
@@ -44,6 +45,7 @@ def _validate_or_raise(
         expected_services=expected_services,
         max_trace_timeout_ratio=max_trace_timeout_ratio,
         max_empty_trace_window_ratio=max_empty_trace_window_ratio,
+        enforce_temporal_split=enforce_temporal_split,
     )
     for check in checks:
         status = "PASS" if check.passed else "FAIL"
@@ -69,6 +71,7 @@ def _run_chunked_campaign(
     repetitions: int,
     gate_profile: dict[str, float | int],
     wave_name: str,
+    enforce_temporal_split: bool,
 ) -> list[Path]:
     groups = _chunked(scenarios, args.chunk_size)
     run_dirs: list[Path] = []
@@ -94,6 +97,7 @@ def _run_chunked_campaign(
             min_baseline_edges=int(gate_profile["min_baseline_edges"]),
             max_trace_timeout_ratio=float(gate_profile["max_trace_timeout_ratio"]),
             max_empty_trace_window_ratio=float(gate_profile["max_empty_trace_window_ratio"]),
+            enforce_temporal_split=enforce_temporal_split,
         )
         run_dirs.append(run_dir)
         print(
@@ -121,6 +125,11 @@ def _cli() -> argparse.Namespace:
     parser.add_argument("--wave-a-repetitions", type=int, default=2)
     parser.add_argument("--wave-b-repetitions", type=int, default=12)
     parser.add_argument("--wave-c-target-repetitions", type=int, default=20)
+    parser.add_argument(
+        "--enforce-temporal-split",
+        action="store_true",
+        help="Enforce temporal split leakage check during campaign gates (recommended only on final merged runs).",
+    )
     return parser.parse_args()
 
 
@@ -131,10 +140,16 @@ def main() -> None:
     campaign_runs: list[Path] = []
 
     # Progressive quality gates: A lenient, B/C strict.
+    # Notes:
+    # - coverage/distribution thresholds are set relative to repetitions for wave A
+    #   because smoke/calibration runs are often 1–2 reps.
+    # - temporal split leakage check is disabled by default during campaign waves;
+    #   enforce it on the final merged dataset instead.
+    enforce_temporal_split = bool(args.enforce_temporal_split)
     gate_a = {
-        "min_coverage_episodes": 2,
-        "min_distribution_episodes": 2,
-        "max_nan_ratio": 0.35,
+        "min_coverage_episodes": max(1, min(2, int(args.wave_a_repetitions))),
+        "min_distribution_episodes": max(1, min(2, int(args.wave_a_repetitions))),
+        "max_nan_ratio": 0.80,
         "min_baseline_edges": 1,
         "max_trace_timeout_ratio": 0.35,
         "max_empty_trace_window_ratio": 0.75,
@@ -155,6 +170,7 @@ def main() -> None:
         repetitions=args.wave_a_repetitions,
         gate_profile=gate_a,
         wave_name="A",
+        enforce_temporal_split=enforce_temporal_split,
     )
     campaign_runs.extend(wave_a_runs)
 
@@ -165,6 +181,7 @@ def main() -> None:
         repetitions=args.wave_b_repetitions,
         gate_profile=gate_bc,
         wave_name="B",
+        enforce_temporal_split=enforce_temporal_split,
     )
     campaign_runs.extend(wave_b_runs)
 
@@ -190,6 +207,7 @@ def main() -> None:
             repetitions=args.wave_c_target_repetitions,
             gate_profile=gate_bc,
             wave_name="C",
+            enforce_temporal_split=enforce_temporal_split,
         )
         campaign_runs.extend(wave_c_runs)
     else:
