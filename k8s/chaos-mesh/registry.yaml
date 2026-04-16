@@ -22,7 +22,7 @@ scenarios:
     kind: PodChaos
     file: hard/crash.yaml
     duration: 30s
-    targets: [frontend, checkout, payment]
+    targets: [frontend]
     description: "Kill target pod immediately"
     min_episodes: 20
 
@@ -40,7 +40,7 @@ scenarios:
     kind: StressChaos
     file: hard/oom.yaml
     duration: 1m
-    targets: [recommendation, productcatalog]
+    targets: [recommendation]
     description: "Memory stress exceeding container limits, triggering OOMKill"
     min_episodes: 20
 
@@ -58,7 +58,7 @@ scenarios:
     kind: NetworkChaos
     file: hard/network_loss.yaml
     duration: 1m
-    targets: [frontend, checkout]
+    targets: [frontend, recommendation]
     description: "100% packet loss between frontend and checkout"
     min_episodes: 20
 
@@ -86,7 +86,7 @@ scenarios:
     kind: StressChaos
     file: gray/fail_slow_cpu.yaml
     duration: 3m
-    targets: [checkout]
+    targets: [frontend]
     description: "CPU stress causing slow response times"
     min_episodes: 20
 
@@ -95,7 +95,7 @@ scenarios:
     kind: NetworkChaos
     file: gray/fail_slow_latency.yaml
     duration: 3m
-    targets: [payment, shipping]
+    targets: [frontend, recommendation]
     description: "Network delay 500ms on target services"
     min_episodes: 20
 
@@ -122,7 +122,7 @@ scenarios:
     kind: HTTPChaos
     file: gray/intermittent_error.yaml
     duration: 3m
-    targets: [productcatalog]
+    targets: [product-catalog]
     description: "20% HTTP request abort rate"
     min_episodes: 20
 

@@ -6,16 +6,11 @@ collection:
   sample_interval_s: 30
   canonical_services:
     - frontend
-    - checkout
-    - payment
-    - productcatalog
     - recommendation
-    - shipping
     - cart
-    - accounting
     - ad
-    - kafka
-    - currency
+    - product-catalog
+    - load-generator
   semantic:
     mode: offline
 
@@ -35,39 +30,18 @@ collection:
   scenarios:
     # ── HARD ──────────────────────────────────────────────────────────────────
     - crash
-    - crash_loop
     - oom
-    - network_partition
     - network_loss
-    - image_pull_error
-    # - node_drain  # requires draining a worker node; coordinate with admin
+    # - image_pull_error   # out-of-scope for reduced service set
+    # - node_drain         # requires draining a worker node; coordinate with admin
 
     # ── GRAY ──────────────────────────────────────────────────────────────────
-    - fail_slow_cpu
-    - fail_slow_latency
-    - partial_degradation
-    - jitter
     - intermittent_error
-    - probe_misconfig
-
-    # ── SYSTEMIC ──────────────────────────────────────────────────────────────
-    - cascade_latency
-    - cascade_error
-    - metastable_load
-    - backpressure_kafka
-    - thundering_herd
+    - fail_slow_latency
+    - fail_slow_cpu
 
     # ── CONTENTION ────────────────────────────────────────────────────────────
     - cpu_starvation
     - memory_pressure
-    - io_throttle
-    - io_error
-    - net_saturation
     - noisy_neighbor
     - resource_leak
-
-    # ── CONFIG ────────────────────────────────────────────────────────────────
-    - routing_error
-    - bad_limits
-    - bad_env_config
-    - misconfigured_hpa

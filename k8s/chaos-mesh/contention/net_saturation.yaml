@@ -18,5 +18,5 @@ spec:
     rate: "100kbps"
     limit: 100
     buffer: 10000
-  direction: both
+  direction: to
   duration: "3m"

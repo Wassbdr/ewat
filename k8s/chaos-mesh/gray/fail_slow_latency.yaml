@@ -13,10 +13,17 @@ spec:
     namespaces:
       - ewat
     labelSelectors:
-      app.kubernetes.io/component: payment
+      app.kubernetes.io/component: frontend
   delay:
     latency: "500ms"
     jitter: "50ms"
     correlation: "25"
-  direction: both
+  direction: to
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - ewat
+      labelSelectors:
+        app.kubernetes.io/component: recommendation
   duration: "3m"

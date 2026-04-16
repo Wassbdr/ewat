@@ -261,12 +261,14 @@ class LogCollector:
         semantic_scorers: dict[str, SemanticAnomalyScorer] | None = None,
         services: list[str] | None = None,
         semantic_enabled: bool = True,
+        aliases: dict[str, str] | None = None,
     ) -> None:
         self._backend = backend
         self._window_s = window_s
         self._semantic_scorers: dict[str, SemanticAnomalyScorer] = semantic_scorers or {}
         self._services = services
         self._semantic_enabled = semantic_enabled
+        self._aliases: dict[str, str] = aliases or {}
 
     # ------------------------------------------------------------------
     # Centroid fitting
@@ -347,6 +349,11 @@ class LogCollector:
 
         ts = timestamp or time.time()
         records = self._backend.fetch_logs(ts - self._window_s, ts)
+        # Apply service name aliases (e.g. productcatalogservice → productcatalog)
+        if self._aliases:
+            for rec in records:
+                if rec.service_name in self._aliases:
+                    rec.service_name = self._aliases[rec.service_name]
 
         services, svc_idx = self._resolve_services(records, service_index)
         n = len(services)

@@ -21,7 +21,7 @@ spec:
       namespaces:
         - ewat
       labelSelectors:
-        app.kubernetes.io/component: checkout
+        app.kubernetes.io/component: recommendation
   loss:
     loss: "100"
   duration: "1m"

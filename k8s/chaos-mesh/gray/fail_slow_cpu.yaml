@@ -12,7 +12,7 @@ spec:
     namespaces:
       - ewat
     labelSelectors:
-      app.kubernetes.io/component: checkout
+      app.kubernetes.io/component: frontend
   stressors:
     cpu:
       workers: 2

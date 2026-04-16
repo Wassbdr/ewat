@@ -486,11 +486,13 @@ class TraceCollector:
         window_s: float = 120.0,
         services: list[str] | None = None,
         cache_ttl_s: float = 30.0,
+        aliases: dict[str, str] | None = None,
     ) -> None:
         self._backend = backend
         self._window_s = window_s
         self._services = services
         self._cache_ttl_s = cache_ttl_s
+        self._aliases: dict[str, str] = aliases or {}
         # Cache last-fetched spans so the graph builder can reuse them without
         # a second Jaeger round-trip per sample tick.
         self._cached_spans: list[Span] | None = None
@@ -521,6 +523,11 @@ class TraceCollector:
         ts = timestamp or time.time()
         self._sync_backend_allowlist(service_index)
         spans = self._backend.fetch_spans(ts - self._window_s, ts)
+        # Apply service name aliases (e.g. productcatalogservice → productcatalog)
+        if self._aliases:
+            for span in spans:
+                if span.service_name in self._aliases:
+                    span.service_name = self._aliases[span.service_name]
         self._cached_spans = spans
         self._cached_ts = ts
 

@@ -131,6 +131,13 @@ def postprocess_run(
     signal[:, :, L_SEMANTIC_ANOMALY] = semantic_values
     np.savez_compressed(signal_path, signal=signal)
 
+    # Update signal_mask.npz to reflect that f15 is no longer all-NaN.
+    mask_path = run_dir / "signal_mask.npz"
+    if mask_path.exists():
+        missing_mask = np.load(mask_path)["missing_mask"].astype(bool)
+        missing_mask[:, :, L_SEMANTIC_ANOMALY] = np.isnan(semantic_values)
+        np.savez_compressed(mask_path, missing_mask=missing_mask)
+
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     metadata["semantic_postprocessed"] = True
     metadata["semantic_mode"] = "offline"

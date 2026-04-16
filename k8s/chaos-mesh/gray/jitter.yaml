@@ -18,5 +18,5 @@ spec:
     latency: "50ms"
     jitter: "200ms"
     correlation: "75"
-  direction: both
+  direction: to
   duration: "2m"

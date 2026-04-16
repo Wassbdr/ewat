@@ -142,12 +142,19 @@ class SignalBuilder:
 
         prom_endpoint: str = cfg.telemetry.prometheus.endpoint
 
+        # Service name aliases: normalise OTel SDK service names to canonical names
+        # (e.g. "productcatalogservice" → "productcatalog").
+        telemetry_cfg = cfg.telemetry if hasattr(cfg, "telemetry") else {}
+        _raw_aliases = telemetry_cfg.get("service_name_aliases", {}) if telemetry_cfg else {}
+        aliases: dict[str, str] = {str(k): str(v) for k, v in (_raw_aliases or {}).items()}
+
         # Prometheus collector (always created; some queries may return no data
         # if Istio/Envoy metrics are not present)
         prometheus = PrometheusCollector(
             endpoint=prom_endpoint,
             namespace=ns,
             services=services,
+            aliases=aliases,
         )
 
         traces: TraceCollector | None = None
@@ -174,6 +181,7 @@ class SignalBuilder:
                     window_s=float(jaeger_collection_cfg.get("trace_window_s", 120.0)),
                     services=services,
                     cache_ttl_s=float(jaeger_collection_cfg.get("span_cache_ttl_s", 30.0)),
+                    aliases=aliases,
                 )
             else:
                 logger.warning(
@@ -195,6 +203,7 @@ class SignalBuilder:
                 backend=log_backend,
                 semantic_enabled=semantic_enabled,
                 services=services,
+                aliases=aliases,
             )
         else:
             logger.warning(

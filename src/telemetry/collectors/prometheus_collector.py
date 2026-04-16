@@ -4,13 +4,15 @@ Queries Prometheus (HTTP API) for the 7 metrics features over a sliding
 window [t-W, t] and returns one row per Kubernetes service in namespace ewat.
 
 Features (columns 0–6):
-    0  cpu_util         CPU utilisation (fraction of limit, max over pods)
+    0  cpu_util         CPU utilisation (fraction of limit when limits are set,
+                        raw rate in cores/s otherwise; max over pods)
     1  ram_util         RAM utilisation (fraction of limit, max over pods)
     2  latency_p99      HTTP request latency P99 on union of histogram buckets
     3  error_rate_http  (4xx + 5xx) / total_requests, volume-weighted
     4  net_sat          Network saturation bytes/s (max over pods)
     5  disk_io          Disk IOPS (max over pods)
-    6  queue_depth      Pending requests / queue depth (max over pods)
+    6  queue_depth      Pod restart rate (restarts/s, proxy for queue saturation
+                        when Envoy/Istio is absent; max over pods)
 
 Aggregation (pod → service):
     Saturation:  max
@@ -182,10 +184,11 @@ _FALLBACK_QUERIES: dict[str, str] = {
         "[{window}])"
         ")"
     ),
-    # Envoy gauge not available → fall back to rate of the counter as proxy
+    # Envoy gauge not available and no Istio → fall back to pod restart rate
+    # as a proxy for queue saturation / service instability.
     "queue_depth": (
-        "sum by (pod, service, namespace) ("
-        "  rate(envoy_cluster_upstream_rq_pending_total"
+        "sum by (pod, namespace) ("
+        "  rate(kube_pod_container_status_restarts_total"
         "{{namespace='{namespace}'}}"
         "[{window}])"
         ")"
@@ -228,12 +231,14 @@ class PrometheusCollector:
         rate_window: str = _RATE_WINDOW,
         timeout: float = 10.0,
         services: list[str] | None = None,
+        aliases: dict[str, str] | None = None,
     ) -> None:
         self._endpoint = endpoint.rstrip("/")
         self._namespace = namespace
         self._rate_window = rate_window
         self._timeout = timeout
         self._services: list[str] | None = services
+        self._aliases: dict[str, str] = aliases or {}
 
         _retry = Retry(total=3, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
         _adapter = HTTPAdapter(max_retries=_retry)
@@ -382,13 +387,16 @@ class PrometheusCollector:
         svc_idx = {s: i for i, s in enumerate(services)}
         return services, svc_idx
 
-    @staticmethod
-    def _service_label(metric: dict[str, str]) -> str | None:
+    def _service_label(self, metric: dict[str, str]) -> str | None:
         """Extract service name from Prometheus metric labels.
 
         Handles both Istio/kubelet labels (``service``, ``pod``) and
         OTel SDK labels (``service_name``, ``k8s_pod_name``) that appear
         when the OTel gateway prometheus exporter is scraped.
+
+        Applies ``self._aliases`` so that OTel SDK service names (e.g.
+        ``productcatalogservice``) are normalised to canonical names
+        (``productcatalog``) configured in ``telemetry.service_name_aliases``.
         """
         direct = (
             metric.get("service")
@@ -397,7 +405,7 @@ class PrometheusCollector:
             or metric.get("app_kubernetes_io_name")
         )
         if direct:
-            return direct
+            return self._aliases.get(direct, direct)
 
         pod = metric.get("pod", "") or metric.get("k8s_pod_name", "")
         if not pod:
@@ -411,17 +419,20 @@ class PrometheusCollector:
             and _DEPLOYMENT_HASH_RE.match(parts[-2])
             and _POD_SUFFIX_RE.match(parts[-1])
         ):
-            return "-".join(parts[:-2]) or None
+            name = "-".join(parts[:-2]) or None
+            return self._aliases.get(name, name) if name else None
 
         # StatefulSet pod: <name>-<ordinal>
         if len(parts) >= 2 and _STATEFULSET_ORDINAL_RE.match(parts[-1]):
-            return "-".join(parts[:-1]) or None
+            name = "-".join(parts[:-1]) or None
+            return self._aliases.get(name, name) if name else None
 
         # DaemonSet-like pod: <name>-<pod-suffix>
         if len(parts) >= 2 and _POD_SUFFIX_RE.match(parts[-1]):
-            return "-".join(parts[:-1]) or None
+            name = "-".join(parts[:-1]) or None
+            return self._aliases.get(name, name) if name else None
 
-        return pod
+        return self._aliases.get(pod, pod)
 
     @staticmethod
     def _pod_value(item: dict[str, Any]) -> tuple[str, float]:
@@ -470,7 +481,7 @@ class PrometheusCollector:
             limit_map = pod_limit.get(svc, {})
             if not usage_map:
                 continue
-            # Only compute utilization for pods with a known CPU limit.
+            # Prefer utilization fraction (usage / limit) for pods with a known limit.
             utils: list[float] = [
                 usage_map[p] / limit_map[p]
                 for p in usage_map
@@ -478,6 +489,12 @@ class PrometheusCollector:
             ]
             if utils:
                 M_t[row, M_CPU_UTIL] = aggregate_max(np.array(utils, dtype=np.float32))
+            else:
+                # Fallback: raw usage rate in cores/s when no CPU limits are set.
+                # Absolute usage is equally informative for anomaly detection.
+                M_t[row, M_CPU_UTIL] = aggregate_max(
+                    np.array(list(usage_map.values()), dtype=np.float32)
+                )
 
     def _fill_ram(
         self,

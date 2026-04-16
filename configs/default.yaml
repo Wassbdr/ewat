@@ -11,6 +11,13 @@ cluster:
   access_level: "namespace-admin"
 
 telemetry:
+  # Service name aliases: map discovered names → canonical names.
+  # Needed when OTel SDK service.name differs from the k8s deployment name
+  # (e.g. online-boutique uses "productcatalogservice" in OTel but
+  # "productcatalog" in the canonical service list).
+  service_name_aliases:
+    productcatalogservice: productcatalog  # Prometheus / Jaeger (OTel SDK service.name)
+    product-catalog: productcatalog        # Loki (k8sattributes processor naming)
   prometheus:
     endpoint: "http://prometheus-server.monitoring-metrics.svc.cluster.local:80"
     scrape_interval_s: 15
@@ -20,8 +27,8 @@ telemetry:
       request_timeout_s: 12
       fetch_total_timeout_s: 45
       max_parallel: 3
-      limit_per_service: 10
-      trace_window_s: 60
+      limit_per_service: 200
+      trace_window_s: 120
       span_cache_ttl_s: 120
   loki:
     endpoint: "http://loki-gateway.monitoring-logs.svc.cluster.local:80"
