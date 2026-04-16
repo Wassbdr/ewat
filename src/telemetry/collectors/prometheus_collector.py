@@ -4,8 +4,8 @@ Queries Prometheus (HTTP API) for the 7 metrics features over a sliding
 window [t-W, t] and returns one row per Kubernetes service in namespace ewat.
 
 Features (columns 0–6):
-    0  cpu_util         CPU utilisation (fraction of limit when limits are set,
-                        raw rate in cores/s otherwise; max over pods)
+    0  cpu_util         CPU utilisation (fraction of limit; NaN when limits are
+                        missing; max over pods)
     1  ram_util         RAM utilisation (fraction of limit, max over pods)
     2  latency_p99      HTTP request latency P99 on union of histogram buckets
     3  error_rate_http  (4xx + 5xx) / total_requests, volume-weighted
@@ -375,7 +375,7 @@ class PrometheusCollector:
         discovered: set[str] = set()
         for results in raw.values():
             for item in results:
-                svc = self._service_label(item["metric"])
+                svc = self._service_label(item["metric"], self._aliases)
                 if svc:
                     discovered.add(svc)
 
@@ -387,7 +387,11 @@ class PrometheusCollector:
         svc_idx = {s: i for i, s in enumerate(services)}
         return services, svc_idx
 
-    def _service_label(self, metric: dict[str, str]) -> str | None:
+    @staticmethod
+    def _service_label(
+        metric: dict[str, str],
+        aliases: dict[str, str] | None = None,
+    ) -> str | None:
         """Extract service name from Prometheus metric labels.
 
         Handles both Istio/kubelet labels (``service``, ``pod``) and
@@ -398,6 +402,7 @@ class PrometheusCollector:
         ``productcatalogservice``) are normalised to canonical names
         (``productcatalog``) configured in ``telemetry.service_name_aliases``.
         """
+        alias_map = aliases or {}
         direct = (
             metric.get("service")
             or metric.get("service_name")  # OTel SDK resource attribute
@@ -405,7 +410,7 @@ class PrometheusCollector:
             or metric.get("app_kubernetes_io_name")
         )
         if direct:
-            return self._aliases.get(direct, direct)
+            return alias_map.get(direct, direct)
 
         pod = metric.get("pod", "") or metric.get("k8s_pod_name", "")
         if not pod:
@@ -420,19 +425,19 @@ class PrometheusCollector:
             and _POD_SUFFIX_RE.match(parts[-1])
         ):
             name = "-".join(parts[:-2]) or None
-            return self._aliases.get(name, name) if name else None
+            return alias_map.get(name, name) if name else None
 
         # StatefulSet pod: <name>-<ordinal>
         if len(parts) >= 2 and _STATEFULSET_ORDINAL_RE.match(parts[-1]):
             name = "-".join(parts[:-1]) or None
-            return self._aliases.get(name, name) if name else None
+            return alias_map.get(name, name) if name else None
 
         # DaemonSet-like pod: <name>-<pod-suffix>
         if len(parts) >= 2 and _POD_SUFFIX_RE.match(parts[-1]):
             name = "-".join(parts[:-1]) or None
-            return self._aliases.get(name, name) if name else None
+            return alias_map.get(name, name) if name else None
 
-        return self._aliases.get(pod, pod)
+        return alias_map.get(pod, pod)
 
     @staticmethod
     def _pod_value(item: dict[str, Any]) -> tuple[str, float]:
@@ -460,14 +465,14 @@ class PrometheusCollector:
         pod_limit: dict[str, dict[str, float]] = {}
 
         for item in raw.get("cpu_usage", []):
-            svc = self._service_label(item["metric"])
+            svc = self._service_label(item["metric"], self._aliases)
             if svc not in svc_idx:
                 continue
             pod, val = self._pod_value(item)
             pod_usage.setdefault(svc, {})[pod] = val
 
         for item in raw.get("cpu_limit", []):
-            svc = self._service_label(item["metric"])
+            svc = self._service_label(item["metric"], self._aliases)
             if svc not in svc_idx:
                 continue
             pod, val = self._pod_value(item)
@@ -481,7 +486,8 @@ class PrometheusCollector:
             limit_map = pod_limit.get(svc, {})
             if not usage_map:
                 continue
-            # Prefer utilization fraction (usage / limit) for pods with a known limit.
+            # CPU util contract: only normalized usage/limit values are valid.
+            # If no positive limit is available, keep NaN to avoid unit mixing.
             utils: list[float] = [
                 usage_map[p] / limit_map[p]
                 for p in usage_map
@@ -489,12 +495,6 @@ class PrometheusCollector:
             ]
             if utils:
                 M_t[row, M_CPU_UTIL] = aggregate_max(np.array(utils, dtype=np.float32))
-            else:
-                # Fallback: raw usage rate in cores/s when no CPU limits are set.
-                # Absolute usage is equally informative for anomaly detection.
-                M_t[row, M_CPU_UTIL] = aggregate_max(
-                    np.array(list(usage_map.values()), dtype=np.float32)
-                )
 
     def _fill_ram(
         self,
@@ -507,14 +507,14 @@ class PrometheusCollector:
         pod_limit: dict[str, dict[str, float]] = {}
 
         for item in raw.get("ram_usage", []):
-            svc = self._service_label(item["metric"])
+            svc = self._service_label(item["metric"], self._aliases)
             if svc not in svc_idx:
                 continue
             pod, val = self._pod_value(item)
             pod_usage.setdefault(svc, {})[pod] = val
 
         for item in raw.get("ram_limit", []):
-            svc = self._service_label(item["metric"])
+            svc = self._service_label(item["metric"], self._aliases)
             if svc not in svc_idx:
                 continue
             pod, val = self._pod_value(item)
@@ -556,7 +556,7 @@ class PrometheusCollector:
 
         for key in ("http_request_duration_bucket", "grpc_request_duration_bucket"):
             for item in raw.get(key, []):
-                svc = self._service_label(item["metric"])
+                svc = self._service_label(item["metric"], self._aliases)
                 if svc not in svc_idx:
                     continue
                 pod = item["metric"].get("pod") or item["metric"].get("k8s_pod_name", "")
@@ -597,14 +597,14 @@ class PrometheusCollector:
         pod_errors: dict[str, dict[str, float]] = {}
 
         for item in raw.get("http_requests_total", []):
-            svc = self._service_label(item["metric"])
+            svc = self._service_label(item["metric"], self._aliases)
             if svc not in svc_idx:
                 continue
             pod, val = self._pod_value(item)
             pod_total.setdefault(svc, {})[pod] = val
 
         for item in raw.get("http_requests_errors", []):
-            svc = self._service_label(item["metric"])
+            svc = self._service_label(item["metric"], self._aliases)
             if svc not in svc_idx:
                 continue
             pod, val = self._pod_value(item)
@@ -632,7 +632,7 @@ class PrometheusCollector:
         """Network transmit bytes/s — max over pods."""
         svc_vals: dict[str, list[float]] = {}
         for item in raw.get("net_transmit_bytes", []):
-            svc = self._service_label(item["metric"])
+            svc = self._service_label(item["metric"], self._aliases)
             if svc not in svc_idx:
                 continue
             _, val = self._pod_value(item)
@@ -652,7 +652,7 @@ class PrometheusCollector:
         """Disk IOPS — max over pods."""
         svc_vals: dict[str, list[float]] = {}
         for item in raw.get("disk_iops", []):
-            svc = self._service_label(item["metric"])
+            svc = self._service_label(item["metric"], self._aliases)
             if svc not in svc_idx:
                 continue
             _, val = self._pod_value(item)
@@ -672,7 +672,7 @@ class PrometheusCollector:
         """Queue depth (pending requests) — max over pods."""
         svc_vals: dict[str, list[float]] = {}
         for item in raw.get("queue_depth", []):
-            svc = self._service_label(item["metric"])
+            svc = self._service_label(item["metric"], self._aliases)
             if svc not in svc_idx:
                 continue
             _, val = self._pod_value(item)

@@ -166,14 +166,26 @@ class SignalBuilder:
                 from telemetry.collectors.trace_collector import JaegerBackend
 
                 jaeger_collection_cfg = jaeger_cfg.get("collection", {}) if jaeger_cfg else {}
+                scrape_interval_s = float(cfg.telemetry.prometheus.get("scrape_interval_s", 15))
+                fetch_total_timeout_s = float(
+                    jaeger_collection_cfg.get("fetch_total_timeout_s", 10.0)
+                )
+                if fetch_total_timeout_s >= scrape_interval_s:
+                    capped = max(1.0, scrape_interval_s - 1.0)
+                    logger.warning(
+                        "jaeger.collection.fetch_total_timeout_s=%.1fs is >= "
+                        "telemetry.prometheus.scrape_interval_s=%.1fs; capping to %.1fs",
+                        fetch_total_timeout_s,
+                        scrape_interval_s,
+                        capped,
+                    )
+                    fetch_total_timeout_s = capped
                 backend = JaegerBackend(
                     endpoint=jaeger_url,
                     namespace=ns,
                     timeout=float(jaeger_collection_cfg.get("request_timeout_s", 15.0)),
                     limit=int(jaeger_collection_cfg.get("limit_per_service", 20)),
-                    fetch_total_timeout_s=float(
-                        jaeger_collection_cfg.get("fetch_total_timeout_s", 10.0)
-                    ),
+                    fetch_total_timeout_s=fetch_total_timeout_s,
                     max_parallel=int(jaeger_collection_cfg.get("max_parallel", 8)),
                 )
                 traces = TraceCollector(
