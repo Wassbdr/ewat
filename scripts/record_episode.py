@@ -51,6 +51,8 @@ import json
 import logging
 import os
 import platform
+import signal as signal_mod
+import socket
 import subprocess
 import sys
 import time
@@ -84,6 +86,286 @@ _LOCAL_PORT_FORWARD_ENDPOINTS: dict[str, str] = {
     "jaeger": "http://127.0.0.1:16686",
     "loki": "http://127.0.0.1:13100",
 }
+
+
+# ---------------------------------------------------------------------------
+# Graceful shutdown
+# ---------------------------------------------------------------------------
+#
+# Set by SIGINT/SIGTERM handlers. Checked at safe points in the main loop so
+# the current episode finishes cleanly (chaos delete + dump) before exit.
+_shutdown_requested: bool = False
+
+
+def _install_signal_handlers() -> None:
+    def _handler(signum: int, _frame: Any) -> None:  # noqa: ANN001
+        global _shutdown_requested
+        _shutdown_requested = True
+        sig_name = signal_mod.Signals(signum).name
+        logger.warning(
+            "Received %s — will finish current episode then exit cleanly",
+            sig_name,
+        )
+
+    signal_mod.signal(signal_mod.SIGINT, _handler)
+    signal_mod.signal(signal_mod.SIGTERM, _handler)
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint (idempotent resume)
+# ---------------------------------------------------------------------------
+
+
+class _Checkpoint:
+    """Append-only JSONL record of successfully-completed (scenario, rep) pairs.
+
+    Matched on ``(scenario, rep)`` rather than ``episode_id`` because the
+    latter contains a timestamp that changes on every run. A restart after
+    crash therefore skips episodes already written+quality-gated to disk.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._done: set[tuple[str, int]] = set()
+        self._load()
+
+    def _load(self) -> None:
+        if not self._path.exists():
+            return
+        with self._path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                scenario = entry.get("scenario")
+                rep = entry.get("rep")
+                if isinstance(scenario, str) and isinstance(rep, int):
+                    self._done.add((scenario, rep))
+        if self._done:
+            logger.info(
+                "checkpoint: loaded %d completed (scenario, rep) pairs from %s",
+                len(self._done), self._path,
+            )
+
+    def is_done(self, scenario: str, rep: int) -> bool:
+        return (scenario, rep) in self._done
+
+    def mark_done(self, scenario: str, rep: int, episode_id: str) -> None:
+        self._done.add((scenario, rep))
+        entry = {
+            "scenario": scenario,
+            "rep": rep,
+            "episode_id": episode_id,
+            "completed_at": datetime.now(UTC).isoformat(),
+        }
+        with self._path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry) + "\n")
+            fh.flush()
+            try:
+                os.fsync(fh.fileno())
+            except OSError:
+                pass
+
+    def reset(self) -> None:
+        if self._path.exists():
+            self._path.unlink()
+        self._done.clear()
+
+
+# ---------------------------------------------------------------------------
+# Quality gate
+# ---------------------------------------------------------------------------
+
+
+def _check_episode_quality(
+    manifest: dict[str, Any],
+    *,
+    enable_prometheus: bool,
+    enable_jaeger: bool,
+    enable_loki: bool,
+) -> tuple[bool, list[str]]:
+    """Post-dump sanity check on the episode manifest.
+
+    Returns ``(ok, reasons)``. ``reasons`` is the list of modalities that
+    failed their minimal expectation. An episode passes only if every
+    enabled modality returned at least one non-empty result.
+    """
+    reasons: list[str] = []
+    sources = manifest.get("sources", {}) or {}
+
+    if enable_prometheus:
+        prom = sources.get("prometheus", {}) or {}
+        if prom.get("skipped"):
+            reasons.append("prometheus-skipped")
+        elif not prom.get("queries_ok"):
+            reasons.append("prometheus-no-queries")
+
+    if enable_jaeger:
+        jae = sources.get("jaeger", {}) or {}
+        if jae.get("skipped"):
+            reasons.append("jaeger-skipped")
+        elif int(jae.get("n_traces_total", 0)) <= 0:
+            reasons.append("jaeger-empty")
+
+    if enable_loki:
+        loki = sources.get("loki", {}) or {}
+        if loki.get("skipped"):
+            reasons.append("loki-skipped")
+        elif int(loki.get("n_lines", 0)) <= 0:
+            reasons.append("loki-empty")
+
+    return len(reasons) == 0, reasons
+
+
+# ---------------------------------------------------------------------------
+# On-demand port-forward management
+# ---------------------------------------------------------------------------
+
+
+class _PortForward:
+    """Manage a single kubectl port-forward subprocess.
+
+    Each instance owns at most one ``kubectl port-forward`` process.
+    Calling :meth:`start` kills any existing process first, then opens a
+    fresh SPDY tunnel and waits for the local port to become reachable.
+
+    Designed for on-demand use: start before a bulk dump, stop after.
+    This avoids the SPDY tunnel degradation that kills long-lived
+    port-forwards (~1-2 h under heavy Jaeger payloads).
+    """
+
+    def __init__(
+        self,
+        target: str,
+        namespace: str,
+        local_port: int,
+        remote_port: int,
+        name: str = "",
+    ) -> None:
+        self._target = target
+        self._ns = namespace
+        self._local = local_port
+        self._remote = remote_port
+        self._name = name or target
+        self._proc: subprocess.Popen[bytes] | None = None
+
+    # -- lifecycle ---------------------------------------------------------
+
+    def start(self, ready_timeout: float = 15.0) -> None:
+        """Start a fresh port-forward. Kills any existing one first."""
+        self.stop()
+        self._kill_orphans()
+
+        cmd = [
+            "kubectl", "port-forward",
+            "-n", self._ns,
+            self._target,
+            f"{self._local}:{self._remote}",
+        ]
+        self._proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            preexec_fn=os.setsid,
+        )
+        logger.info("port-forward started: %s → 127.0.0.1:%d  (pid=%d)",
+                     self._name, self._local, self._proc.pid)
+
+        deadline = time.time() + ready_timeout
+        while time.time() < deadline:
+            if self._proc.poll() is not None:
+                raise RuntimeError(
+                    f"port-forward for {self._name} exited immediately "
+                    f"(rc={self._proc.returncode})"
+                )
+            try:
+                with socket.create_connection(("127.0.0.1", self._local), timeout=1.0):
+                    logger.info("port-forward ready: %s", self._name)
+                    return
+            except OSError:
+                time.sleep(0.5)
+        self.stop()
+        raise RuntimeError(
+            f"port-forward for {self._name} not reachable after {ready_timeout}s"
+        )
+
+    def stop(self) -> None:
+        """Terminate the owned port-forward process, if any."""
+        if self._proc is None:
+            return
+        try:
+            os.killpg(os.getpgid(self._proc.pid), signal_mod.SIGTERM)
+        except OSError:
+            pass
+        try:
+            self._proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(self._proc.pid), signal_mod.SIGKILL)
+            except OSError:
+                pass
+        self._proc = None
+
+    def _kill_orphans(self) -> None:
+        """Kill any kubectl port-forward processes using our local port."""
+        try:
+            out = subprocess.check_output(
+                ["lsof", "-ti", f"tcp:{self._local}"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return
+        for pid_s in out.splitlines():
+            try:
+                os.kill(int(pid_s), signal_mod.SIGKILL)
+            except (OSError, ValueError):
+                pass
+
+    @property
+    def alive(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    def __del__(self) -> None:
+        self.stop()
+
+
+class PortForwardGroup:
+    """Manages port-forwards for prometheus, jaeger, and loki as a unit."""
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        self._pfs: dict[str, _PortForward] = {}
+        for name, spec in config.items():
+            self._pfs[name] = _PortForward(
+                target=str(spec["target"]),
+                namespace=str(spec["namespace"]),
+                local_port=int(spec["local_port"]),
+                remote_port=int(spec["remote_port"]),
+                name=name,
+            )
+
+    def start_all(self) -> None:
+        """Start all port-forwards with fresh SPDY tunnels."""
+        for name, pf in self._pfs.items():
+            try:
+                pf.start()
+            except RuntimeError:
+                logger.exception("failed to start port-forward for %s", name)
+                raise
+
+    def stop_all(self) -> None:
+        for pf in self._pfs.values():
+            pf.stop()
+
+    def restart_all(self) -> None:
+        """Kill all existing port-forwards and start fresh ones."""
+        self.stop_all()
+        time.sleep(1.0)
+        self.start_all()
 
 
 # ---------------------------------------------------------------------------
@@ -133,12 +415,30 @@ def _parse_duration(duration: str | int | float) -> float:
     return float(text)
 
 
-def _apply_endpoint_mode(base_cfg: Any, endpoint_mode: str) -> None:
-    if endpoint_mode != "local-portforward":
+def _apply_endpoint_mode(base_cfg: Any, endpoint_mode: str, collection_cfg: Any) -> None:
+    if endpoint_mode == "local-portforward":
+        base_cfg.telemetry.prometheus.endpoint = _LOCAL_PORT_FORWARD_ENDPOINTS["prometheus"]
+        base_cfg.telemetry.jaeger.endpoint = _LOCAL_PORT_FORWARD_ENDPOINTS["jaeger"]
+        base_cfg.telemetry.loki.endpoint = _LOCAL_PORT_FORWARD_ENDPOINTS["loki"]
         return
-    base_cfg.telemetry.prometheus.endpoint = _LOCAL_PORT_FORWARD_ENDPOINTS["prometheus"]
-    base_cfg.telemetry.jaeger.endpoint = _LOCAL_PORT_FORWARD_ENDPOINTS["jaeger"]
-    base_cfg.telemetry.loki.endpoint = _LOCAL_PORT_FORWARD_ENDPOINTS["loki"]
+
+    if endpoint_mode == "nodeport":
+        np_cfg = OmegaConf.to_container(collection_cfg.get("nodeport", {}), resolve=True) or {}
+        node_ip = str(np_cfg.get("node_ip", "")).strip()
+        if not node_ip:
+            raise SystemExit(
+                "collection.nodeport.node_ip must be set when --endpoint-mode=nodeport. "
+                "Fill it in configs/collection.yaml with a Ready worker node IP.",
+            )
+        prom_port = int(np_cfg.get("prometheus_port", 31090))
+        jaeger_port = int(np_cfg.get("jaeger_port", 31686))
+        loki_port = int(np_cfg.get("loki_port", 31100))
+        base_cfg.telemetry.prometheus.endpoint = f"http://{node_ip}:{prom_port}"
+        base_cfg.telemetry.jaeger.endpoint = f"http://{node_ip}:{jaeger_port}"
+        base_cfg.telemetry.loki.endpoint = f"http://{node_ip}:{loki_port}"
+        return
+
+    # "cluster" mode: leave base_cfg untouched (uses in-cluster service DNS).
 
 
 def _safe_git_commit() -> str | None:
@@ -452,7 +752,9 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
 
     cfg = _load_yaml(Path(args.config))
     base_cfg = _load_yaml(Path(args.base_config))
-    _apply_endpoint_mode(base_cfg, args.endpoint_mode)
+    _apply_endpoint_mode(base_cfg, args.endpoint_mode, cfg.collection)
+
+    _install_signal_handlers()
 
     collection_cfg = cfg.collection
     namespace = str(collection_cfg.get("namespace", "ewat"))
@@ -463,6 +765,14 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
     output_root = Path(collection_cfg.get("output_root", "data/raw"))
     output_root = output_root if output_root.is_absolute() else REPO_ROOT / output_root
     output_root.mkdir(parents=True, exist_ok=True)
+
+    checkpoint = _Checkpoint(output_root / ".checkpoint.jsonl")
+    if args.reset_checkpoint:
+        logger.warning("--reset-checkpoint: wiping %s", checkpoint._path)
+        checkpoint.reset()
+
+    consecutive_failures = 0
+    max_consecutive_failures = int(args.max_consecutive_failures)
 
     baseline_s = _parse_duration(collection_cfg.get("baseline_s", "5m"))
     pre_s = _parse_duration(collection_cfg.get("pre_injection_s", "1m"))
@@ -507,6 +817,18 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
     cluster_cfg = OmegaConf.to_container(base_cfg.get("cluster", {}), resolve=True) or {}
     collection_cfg_out = OmegaConf.to_container(collection_cfg, resolve=True) or {}
 
+    # Port-forward management (opt-in)
+    pf_group: PortForwardGroup | None = None
+    if args.manage_port_forwards and args.endpoint_mode == "local-portforward":
+        pf_cfg = OmegaConf.to_container(
+            collection_cfg.get("port_forwards", {}), resolve=True,
+        ) or {}
+        if pf_cfg:
+            pf_group = PortForwardGroup(pf_cfg)
+            logger.info("port-forward management enabled for: %s", list(pf_cfg.keys()))
+        else:
+            logger.warning("--manage-port-forwards set but no port_forwards config found")
+
     logger.info(
         "record_episode: namespace=%s  services=%d  scenarios=%d  reps=%d  output=%s",
         namespace,
@@ -516,67 +838,130 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
         output_root,
     )
 
-    for scenario_name in scenarios:
-        for rep in range(repetitions):
-            try:
-                episode_id, boundaries, scenario_info = _run_episode(
-                    scenario_name=scenario_name,
-                    rep=rep,
-                    injector=injector,
-                    baseline_s=baseline_s,
-                    pre_s=pre_s,
-                    recovery_s=recovery_s,
-                    dry_run=args.dry_run,
+    enable_prometheus = not args.no_prometheus
+    enable_jaeger = not args.no_jaeger
+    enable_loki = not args.no_loki
+
+    try:
+        for scenario_name in scenarios:
+            if _shutdown_requested:
+                logger.warning("shutdown requested — breaking before scenario=%s", scenario_name)
+                break
+            for rep in range(repetitions):
+                if _shutdown_requested:
+                    logger.warning("shutdown requested — breaking at (%s, rep=%d)", scenario_name, rep)
+                    break
+
+                if checkpoint.is_done(scenario_name, rep):
+                    logger.info(
+                        "skip (scenario=%s rep=%d) — already in checkpoint",
+                        scenario_name, rep,
+                    )
+                    continue
+
+                try:
+                    episode_id, boundaries, scenario_info = _run_episode(
+                        scenario_name=scenario_name,
+                        rep=rep,
+                        injector=injector,
+                        baseline_s=baseline_s,
+                        pre_s=pre_s,
+                        recovery_s=recovery_s,
+                        dry_run=args.dry_run,
+                    )
+                except Exception:
+                    logger.exception(
+                        "episode execution failed (scenario=%s rep=%d)",
+                        scenario_name, rep,
+                    )
+                    continue
+
+                # Fresh port-forwards before each dump: kills stale SPDY
+                # tunnels and starts new ones.  The recorder also gets a
+                # fresh requests.Session so there are no pooled connections
+                # pointing at a dead tunnel.
+                if pf_group is not None:
+                    pf_group.restart_all()
+                    recorder.refresh_session()
+
+                tmp_dir = output_root / (episode_id + ".tmp")
+                if tmp_dir.exists():
+                    import shutil
+                    shutil.rmtree(tmp_dir)
+                tmp_dir.mkdir(parents=True)
+
+                manifest = _record_and_persist(
+                    recorder=recorder,
+                    episode_dir=tmp_dir,
+                    services=canonical_services,
+                    t_start=boundaries.baseline_start,
+                    t_end=boundaries.recovery_end,
+                    enable_prometheus=enable_prometheus,
+                    enable_jaeger=enable_jaeger,
+                    enable_loki=enable_loki,
                 )
-            except Exception:
-                logger.exception(
-                    "episode execution failed (scenario=%s rep=%d)",
-                    scenario_name, rep,
+
+                # Kill port-forwards immediately after dump — no point
+                # keeping them alive during cool-down sleep.
+                if pf_group is not None:
+                    pf_group.stop_all()
+
+                _write_episode_json(
+                    tmp_dir,
+                    episode_id=episode_id,
+                    scenario_info=scenario_info,
+                    boundaries=boundaries,
+                    services=canonical_services,
+                    cluster_cfg=cluster_cfg,
+                    collection_cfg=collection_cfg_out,
+                    endpoint_mode=args.endpoint_mode,
+                    recorder_params=recorder_params,
                 )
-                continue
 
-            tmp_dir = output_root / (episode_id + ".tmp")
-            if tmp_dir.exists():
-                import shutil
-                shutil.rmtree(tmp_dir)
-            tmp_dir.mkdir(parents=True)
+                with (tmp_dir / "manifest.json").open("w", encoding="utf-8") as f:
+                    json.dump(manifest, f, indent=2)
 
-            manifest = _record_and_persist(
-                recorder=recorder,
-                episode_dir=tmp_dir,
-                services=canonical_services,
-                t_start=boundaries.baseline_start,
-                t_end=boundaries.recovery_end,
-                enable_prometheus=not args.no_prometheus,
-                enable_jaeger=not args.no_jaeger,
-                enable_loki=not args.no_loki,
-            )
+                final_dir = output_root / episode_id
+                if final_dir.exists():
+                    import shutil
+                    shutil.rmtree(final_dir)
+                os.rename(tmp_dir, final_dir)
+                logger.info("[%s] saved -> %s", episode_id, final_dir)
 
-            _write_episode_json(
-                tmp_dir,
-                episode_id=episode_id,
-                scenario_info=scenario_info,
-                boundaries=boundaries,
-                services=canonical_services,
-                cluster_cfg=cluster_cfg,
-                collection_cfg=collection_cfg_out,
-                endpoint_mode=args.endpoint_mode,
-                recorder_params=recorder_params,
-            )
+                # Post-dump quality gate. Dry-runs get the usual empty-payload
+                # pass since we deliberately skip the injection window.
+                ok, reasons = (True, []) if args.dry_run else _check_episode_quality(
+                    manifest,
+                    enable_prometheus=enable_prometheus,
+                    enable_jaeger=enable_jaeger,
+                    enable_loki=enable_loki,
+                )
+                if ok:
+                    consecutive_failures = 0
+                    checkpoint.mark_done(scenario_name, rep, episode_id)
+                else:
+                    consecutive_failures += 1
+                    (final_dir / ".quality_failed").write_text(
+                        json.dumps({"reasons": reasons, "at": datetime.now(UTC).isoformat()}) + "\n",
+                        encoding="utf-8",
+                    )
+                    logger.error(
+                        "[%s] QUALITY GATE FAILED: %s (consecutive=%d / max=%d)",
+                        episode_id, reasons, consecutive_failures, max_consecutive_failures,
+                    )
+                    if consecutive_failures >= max_consecutive_failures:
+                        raise SystemExit(
+                            f"aborting: {consecutive_failures} consecutive quality failures "
+                            f">= --max-consecutive-failures={max_consecutive_failures}. "
+                            "Inspect recent episodes and cluster state before relaunching.",
+                        )
 
-            with (tmp_dir / "manifest.json").open("w", encoding="utf-8") as f:
-                json.dump(manifest, f, indent=2)
-
-            final_dir = output_root / episode_id
-            if final_dir.exists():
-                import shutil
-                shutil.rmtree(final_dir)
-            os.rename(tmp_dir, final_dir)
-            logger.info("[%s] saved -> %s", episode_id, final_dir)
-
-            if cool_down_s > 0 and not args.dry_run:
-                logger.info("  cool-down %.0fs", cool_down_s)
-                _sleep_with_status(cool_down_s, "cool_down", episode_id)
+                if cool_down_s > 0 and not args.dry_run:
+                    logger.info("  cool-down %.0fs", cool_down_s)
+                    _sleep_with_status(cool_down_s, "cool_down", episode_id)
+    finally:
+        if pf_group is not None:
+            pf_group.stop_all()
 
 
 def _cli() -> argparse.Namespace:
@@ -585,13 +970,31 @@ def _cli() -> argparse.Namespace:
     p.add_argument("--base-config", default="configs/default.yaml")
     p.add_argument(
         "--endpoint-mode",
-        choices=["cluster", "local-portforward"],
+        choices=["cluster", "local-portforward", "nodeport"],
         default="local-portforward",
     )
     p.add_argument("--scenarios", default="", help="comma-separated subset of scenarios")
     p.add_argument("--no-prometheus", action="store_true")
     p.add_argument("--no-jaeger", action="store_true")
     p.add_argument("--no-loki", action="store_true")
+    p.add_argument(
+        "--manage-port-forwards",
+        action="store_true",
+        help="Automatically start/stop kubectl port-forwards before each dump. "
+        "Prevents SPDY tunnel degradation on long-running collections.",
+    )
+    p.add_argument(
+        "--reset-checkpoint",
+        action="store_true",
+        help="Wipe .checkpoint.jsonl before starting. Forces a full re-run.",
+    )
+    p.add_argument(
+        "--max-consecutive-failures",
+        type=int,
+        default=3,
+        help="Abort after this many consecutive quality-gate failures. "
+        "Protects long campaigns from silently collecting garbage.",
+    )
     p.add_argument("--dry-run", action="store_true")
     return p.parse_args()
 

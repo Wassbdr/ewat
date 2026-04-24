@@ -43,6 +43,50 @@ collection:
   loki_limit: 5000            # log lines per Loki page (we paginate)
 
   # ─────────────────────────────────────────────────────────────────────────
+  # NodePort endpoints (--endpoint-mode nodeport)
+  # ─────────────────────────────────────────────────────────────────────────
+  # Direct access to Prometheus / Jaeger / Loki via NodePort services on a
+  # worker node. Avoids SPDY port-forward degradation entirely — preferred
+  # mode for long-running (>1 h) collections.
+  #
+  # NodePorts provisioned by the cluster admin. Pod selectors:
+  #   Prometheus: monitoring-metrics  (app.kubernetes.io/instance=prometheus,
+  #                                    app.kubernetes.io/name=prometheus,
+  #                                    app.kubernetes.io/component=server)
+  #   Jaeger    : already live        (admin-provisioned)
+  #   Loki      : monitoring-logs     (app.kubernetes.io/component=gateway,
+  #                                    app.kubernetes.io/instance=loki,
+  #                                    app.kubernetes.io/name=loki)
+  nodeport:
+    node_ip: ""                 # fill with a Ready worker node IP
+    prometheus_port: 31090
+    jaeger_port: 31686
+    loki_port: 31100
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Port-forward management (--manage-port-forwards)
+  # ─────────────────────────────────────────────────────────────────────────
+  # Legacy fallback — kept for one-off debugging sessions. Fresh SPDY tunnel
+  # before each episode dump to avoid long-lived port-forward degradation.
+  # The NodePort mode above is preferred for any multi-hour campaign.
+  port_forwards:
+    prometheus:
+      target: "svc/rancher-monitoring-prometheus"
+      namespace: "cattle-monitoring-system"
+      local_port: 19090
+      remote_port: 9090
+    jaeger:
+      target: "svc/rca-jaeger-query"   # adjust if the svc name differs (try: kubectl get svc -n rca-sandbox | grep jaeger)
+      namespace: "rca-sandbox"
+      local_port: 16686
+      remote_port: 16686
+    loki:
+      target: "svc/loki-gateway"
+      namespace: "monitoring-logs"
+      local_port: 13100
+      remote_port: 80
+
+  # ─────────────────────────────────────────────────────────────────────────
   # Episode timeline
   # ─────────────────────────────────────────────────────────────────────────
   #   baseline → pre-injection → INJECTION (scenario.duration) → recovery

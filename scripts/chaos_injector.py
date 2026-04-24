@@ -91,12 +91,39 @@ class ChaosInjector:
 
         return spec
 
+    _APPLY_TIMEOUT_S = 60.0
+    _DELETE_TIMEOUT_S = 30.0
+
     def _run(self, command: list[str]) -> None:
         if self._dry_run:
             logger.info("DRY-RUN: %s", " ".join(command))
             return
 
-        proc = subprocess.run(command, capture_output=True, text=True, check=False)
+        is_delete = "delete" in command or (len(command) >= 1 and command[0] == "bash" and command[-1] == "cleanup")
+        timeout_s = self._DELETE_TIMEOUT_S if is_delete else self._APPLY_TIMEOUT_S
+
+        try:
+            proc = subprocess.run(
+                command, capture_output=True, text=True, check=False, timeout=timeout_s,
+            )
+        except subprocess.TimeoutExpired as exc:
+            logger.error(
+                "Command timed out after %.0fs: %s", timeout_s, " ".join(command),
+            )
+            if is_delete and "kubectl" in command and "-f" in command:
+                fallback = list(command)
+                if "--ignore-not-found=true" not in fallback:
+                    fallback.append("--ignore-not-found=true")
+                logger.warning("Retrying delete with shorter timeout (15s): %s", " ".join(fallback))
+                try:
+                    subprocess.run(
+                        fallback, capture_output=True, text=True, check=False, timeout=15.0,
+                    )
+                except subprocess.TimeoutExpired:
+                    logger.error("Fallback delete also timed out — leaving chaos resource for manual cleanup")
+                return
+            raise RuntimeError(f"Command timed out after {timeout_s}s") from exc
+
         if proc.returncode != 0:
             logger.error("Command failed: %s", " ".join(command))
             logger.error("stdout: %s", proc.stdout.strip())

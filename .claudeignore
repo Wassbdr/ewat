@@ -1,0 +1,38 @@
+# Environments & caches
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Data (52M) — never scan, read specific files explicitly
+data/
+!data/README.md
+
+# Experiment tracking & model artifacts
+mlruns/
+wandb/
+*.pt
+*.ckpt
+results/
+
+# Other assistants / tooling outputs
+.agent/
+.agents/
+.cursor/
+graphify-out/
+
+# Secrets & local config
+.env
+kubeconfig*
+
+# Git internals
+.git/

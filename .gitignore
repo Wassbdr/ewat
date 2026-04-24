@@ -21,5 +21,6 @@ kubeconfig*
 .agents/
 .agent/
 .cursor/
+data/raw_new/
 graphify-out/
 CLAUDE.md

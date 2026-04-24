@@ -7,6 +7,7 @@ script to guarantee reproducibility across Python, NumPy, and PyTorch.
 from __future__ import annotations
 
 import logging
+import os
 import random
 
 import numpy as np
@@ -18,6 +19,8 @@ def seed_everything(seed: int) -> None:
     """Set the random seed for all relevant libraries.
 
     Sets:
+    - ``PYTHONHASHSEED`` (best-effort; export it in the shell before Python
+      starts for full effect on dict/set iteration order)
     - ``random`` (Python stdlib)
     - ``numpy``
     - ``torch`` (CPU + CUDA, when available)
@@ -28,6 +31,7 @@ def seed_everything(seed: int) -> None:
         Integer seed value. Configured via ``random.seed`` in
         ``configs/default.yaml``.
     """
+    os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
 

@@ -155,6 +155,18 @@ class TelemetryRecorder:
         self._loki_limit = int(loki_limit)
         self._sess = _session(total_retries=1, backoff=0.3)
 
+    def refresh_session(self) -> None:
+        """Close the current HTTP session and open a fresh one.
+
+        Useful after port-forward restart: the old connection pool may hold
+        stale TCP sockets pointing at a dead SPDY tunnel.
+        """
+        try:
+            self._sess.close()
+        except Exception:
+            pass
+        self._sess = _session(total_retries=1, backoff=0.3)
+
     # ------------------------------------------------------------------
     # Prometheus
     # ------------------------------------------------------------------
