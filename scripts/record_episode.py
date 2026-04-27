@@ -941,7 +941,8 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
                 )
                 if ok:
                     consecutive_failures = 0
-                    checkpoint.mark_done(scenario_name, rep, episode_id)
+                    if not args.dry_run:
+                        checkpoint.mark_done(scenario_name, rep, episode_id)
                 else:
                     consecutive_failures += 1
                     (final_dir / ".quality_failed").write_text(

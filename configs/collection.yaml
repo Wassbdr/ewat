@@ -58,7 +58,7 @@ collection:
   #                                    app.kubernetes.io/instance=loki,
   #                                    app.kubernetes.io/name=loki)
   nodeport:
-    node_ip: ""                 # fill with a Ready worker node IP
+    node_ip: "172.16.203.12"    # Ready worker node (provisioned 2026-04-27)
     prometheus_port: 31090
     jaeger_port: 31686
     loki_port: 31100
@@ -98,7 +98,7 @@ collection:
 
   # Repetitions per scenario. Use 2 for validation, ≥ 20 for the final
   # dataset (H1 structurability requires enough episodes per type).
-  repetitions: 2
+  repetitions: 20
 
   # ─────────────────────────────────────────────────────────────────────────
   # Scenarios — 4 regimes × scoped to 6 observable services
