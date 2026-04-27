@@ -69,6 +69,7 @@ warn_return_any = true
 warn_unused_configs = true
 
 [tool.pytest.ini_options]
+pythonpath = ["src"]
 markers = [
     "integration: marks tests that require real external systems",
     "timeout: marks tests with explicit runtime budget",

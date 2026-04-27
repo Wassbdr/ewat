@@ -54,6 +54,7 @@ import platform
 import signal as signal_mod
 import socket
 import subprocess
+import shutil
 import sys
 import time
 from dataclasses import asdict, dataclass, field
@@ -886,7 +887,6 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
 
                 tmp_dir = output_root / (episode_id + ".tmp")
                 if tmp_dir.exists():
-                    import shutil
                     shutil.rmtree(tmp_dir)
                 tmp_dir.mkdir(parents=True)
 
@@ -923,7 +923,6 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
 
                 final_dir = output_root / episode_id
                 if final_dir.exists():
-                    import shutil
                     shutil.rmtree(final_dir)
                 os.rename(tmp_dir, final_dir)
                 logger.info("[%s] saved -> %s", episode_id, final_dir)

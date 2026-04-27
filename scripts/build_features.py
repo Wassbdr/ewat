@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import json
 import logging
 import sys
@@ -247,6 +248,11 @@ def build_features(
         graphs.append(graph)
 
         regime = _regime_for(float(ts), bundle.boundaries)
+        # Four-regime encoding (EWAT §2, formalisation.md):
+        #   (regime_label="normal",       drift_flag=False) → θ_normal
+        #   (regime_label="normal",       drift_flag=True)  → θ_drift   (benign drift, not an anomaly)
+        #   (regime_label="injection",    drift_flag=False) → θ_anomaly
+        #   (regime_label="drift_anomaly",drift_flag=True)  → θ_{drift∩anomaly}
         if regime == "injection" and category in ("drift", "overlap"):
             regime_label = "drift_anomaly" if category == "overlap" else "normal"
         else:
@@ -322,7 +328,6 @@ def _write_feature_provenance(
 
 
 def _file_sha(path: Path) -> str:
-    import hashlib
     if not path.exists():
         return ""
     return hashlib.sha256(path.read_bytes()).hexdigest()

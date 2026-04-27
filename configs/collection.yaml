@@ -101,8 +101,9 @@ collection:
   repetitions: 2
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Scenarios — 3 regimes × scoped to 6 observable services
+  # Scenarios — 4 regimes × scoped to 6 observable services
   # ─────────────────────────────────────────────────────────────────────────
+  # θ_normal      : baseline / pre-injection windows (implicit in every episode)
   # θ_drift       : 4 benign drifts — required by H2 (drift separability)
   # θ_anomaly     : 10 failures spanning hard / gray / contention
   # θ_{drift∩ano} : 1 faulty-deploy overlap — required by look-through
