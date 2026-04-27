@@ -99,7 +99,9 @@ class ChaosInjector:
             logger.info("DRY-RUN: %s", " ".join(command))
             return
 
-        is_delete = "delete" in command or (len(command) >= 1 and command[0] == "bash" and command[-1] == "cleanup")
+        is_delete = "delete" in command or (
+            len(command) >= 1 and command[0] == "bash" and command[-1] == "cleanup"
+        )
         timeout_s = self._DELETE_TIMEOUT_S if is_delete else self._APPLY_TIMEOUT_S
 
         try:
@@ -120,7 +122,10 @@ class ChaosInjector:
                         fallback, capture_output=True, text=True, check=False, timeout=15.0,
                     )
                 except subprocess.TimeoutExpired:
-                    logger.error("Fallback delete also timed out — leaving chaos resource for manual cleanup")
+                    logger.error(
+                        "Fallback delete also timed out; leaving chaos resource for "
+                        "manual cleanup"
+                    )
                 return
             raise RuntimeError(f"Command timed out after {timeout_s}s") from exc
 

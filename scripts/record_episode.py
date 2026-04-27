@@ -51,10 +51,10 @@ import json
 import logging
 import os
 import platform
+import shutil
 import signal as signal_mod
 import socket
 import subprocess
-import shutil
 import sys
 import time
 from dataclasses import asdict, dataclass, field
@@ -850,7 +850,11 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
                 break
             for rep in range(repetitions):
                 if _shutdown_requested:
-                    logger.warning("shutdown requested — breaking at (%s, rep=%d)", scenario_name, rep)
+                    logger.warning(
+                        "shutdown requested — breaking at (%s, rep=%d)",
+                        scenario_name,
+                        rep,
+                    )
                     break
 
                 if checkpoint.is_done(scenario_name, rep):
@@ -941,7 +945,10 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
                 else:
                     consecutive_failures += 1
                     (final_dir / ".quality_failed").write_text(
-                        json.dumps({"reasons": reasons, "at": datetime.now(UTC).isoformat()}) + "\n",
+                        json.dumps(
+                            {"reasons": reasons, "at": datetime.now(UTC).isoformat()}
+                        )
+                        + "\n",
                         encoding="utf-8",
                     )
                     logger.error(

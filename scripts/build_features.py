@@ -250,7 +250,8 @@ def build_features(
         regime = _regime_for(float(ts), bundle.boundaries)
         # Four-regime encoding (EWAT §2, formalisation.md):
         #   (regime_label="normal",       drift_flag=False) → θ_normal
-        #   (regime_label="normal",       drift_flag=True)  → θ_drift   (benign drift, not an anomaly)
+        #   (regime_label="normal",       drift_flag=True)  → θ_drift
+        #       (benign drift, not an anomaly)
         #   (regime_label="injection",    drift_flag=False) → θ_anomaly
         #   (regime_label="drift_anomaly",drift_flag=True)  → θ_{drift∩anomaly}
         if regime == "injection" and category in ("drift", "overlap"):
