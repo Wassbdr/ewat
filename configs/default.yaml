@@ -12,12 +12,11 @@ cluster:
 
 telemetry:
   # Service name aliases: map discovered names → canonical names.
-  # Needed when OTel SDK service.name differs from the k8s deployment name
-  # (e.g. online-boutique uses "productcatalogservice" in OTel but
-  # "productcatalog" in the canonical service list).
+  # Prometheus/Jaeger/Loki all use canonical names directly (ad, cart, etc.)
+  # except for the envoy sidecar which logs as "frontend-proxy" in both
+  # Loki (k8sattributes label) and Prometheus pod names.
   service_name_aliases:
-    productcatalogservice: productcatalog  # Prometheus / Jaeger (OTel SDK service.name)
-    product-catalog: productcatalog        # Loki (k8sattributes processor naming)
+    frontend-proxy: frontend  # Loki + Prometheus pods (envoy → canonical frontend)
   prometheus:
     endpoint: "http://prometheus-server.monitoring-metrics.svc.cluster.local:80"
     scrape_interval_s: 15
@@ -61,7 +60,7 @@ drift:
   rff_dim: 256
   window_ref_size: 300
   window_cur_size: 60
-  epsilon_drift: null
+  epsilon_drift: 0.5226  # Youden-optimal from experiments/drift_separation (AUC=0.60, TPR=0.55, FPR=0.33)
   look_through:
     enabled: true
     post_drift_window_s: 120

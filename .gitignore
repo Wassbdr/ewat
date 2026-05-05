@@ -5,22 +5,47 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Data artifacts — never commit large binary data
 data/raw/
+data/raw_new/
+data/features/
+data/datasets/
 data/processed/
 data/embeddings/
-results/
+
+# Experiment outputs (results, figures, calibration artifacts)
+experiments/
+
+# ML artefacts
 mlruns/
-.env
+wandb/
 *.pt
 *.ckpt
-wandb/
+*.npy
+*.npz
+*.parquet
+
+# Log and archive files at repo root
+*.tar
+*.tar.gz
+*.log
+collection.log
+
+# Secrets / environment
+.env
 kubeconfig*
-.claude
+
+# IDE / tooling
 .venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.claude
 .agents/
 .agent/
 .cursor/
-data/raw_new/
 graphify-out/
+
+# Project-specific (CLAUDE.md is tracked via git add -f if needed)
 CLAUDE.md

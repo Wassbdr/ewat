@@ -486,15 +486,21 @@ class PrometheusCollector:
             limit_map = pod_limit.get(svc, {})
             if not usage_map:
                 continue
-            # CPU util contract: only normalized usage/limit values are valid.
-            # If no positive limit is available, keep NaN to avoid unit mixing.
             utils: list[float] = [
                 usage_map[p] / limit_map[p]
                 for p in usage_map
                 if p in limit_map
             ]
             if utils:
+                # Preferred: normalised utilisation (usage / limit) in [0, 1]
                 M_t[row, M_CPU_UTIL] = aggregate_max(np.array(utils, dtype=np.float32))
+            else:
+                # Fallback when no CPU limits are set (e.g. otel-demo pods):
+                # use raw CPU cores consumed. Not in [0,1] but still a valid
+                # ordinal signal for drift/anomaly detection.
+                M_t[row, M_CPU_UTIL] = aggregate_max(
+                    np.array(list(usage_map.values()), dtype=np.float32)
+                )
 
     def _fill_ram(
         self,

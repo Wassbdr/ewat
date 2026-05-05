@@ -39,7 +39,7 @@ import logging
 import os
 import shutil
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -146,6 +146,44 @@ def _temporal_split(
         "val": [e.episode_id for e in by_time[n_train:n_train + n_val]],
         "test": [e.episode_id for e in by_time[n_train + n_val:]],
     }
+
+
+def _stratified_temporal_split(
+    episodes: list[FeaturedEpisode],
+    train_ratio: float,
+    val_ratio: float,
+) -> dict[str, list[str]]:
+    """Stratified temporal split: split 70/15/15 *within each scenario*.
+
+    Within each scenario, episodes are sorted by ``baseline_start`` and cut
+    at the ratio boundaries, preserving temporal order per scenario. This
+    ensures every scenario (including the 4 drift scenarios) appears in all
+    three splits — a requirement for H2 validation on held-out data.
+
+    For a scenario with n episodes: n_train = max(1, round(n * train_ratio)),
+    n_val = max(1, round(n * val_ratio)), the remainder goes to test.
+    """
+    if train_ratio + val_ratio >= 1.0:
+        raise SystemExit("train_ratio + val_ratio must be < 1.0")
+
+    split: dict[str, list[str]] = {"train": [], "val": [], "test": []}
+    grouped: dict[str, list[FeaturedEpisode]] = defaultdict(list)
+    for ep in episodes:
+        grouped[ep.scenario].append(ep)
+
+    for scenario, group_eps in sorted(grouped.items()):
+        by_time = sorted(group_eps, key=lambda e: e.baseline_start)
+        n = len(by_time)
+        n_train = max(1, round(n * train_ratio))
+        n_val = max(1, round(n * val_ratio))
+        # Ensure at least one episode in test when n >= 3
+        if n >= 3 and n - n_train - n_val < 1:
+            n_val = max(0, n - n_train - 1)
+        split["train"].extend(e.episode_id for e in by_time[:n_train])
+        split["val"].extend(e.episode_id for e in by_time[n_train:n_train + n_val])
+        split["test"].extend(e.episode_id for e in by_time[n_train + n_val:])
+
+    return split
 
 
 # ---------------------------------------------------------------------------
@@ -317,11 +355,18 @@ def main() -> None:
 
     services = _verify_services(kept)
 
-    split = _temporal_split(kept, args.train_ratio, args.val_ratio)
-    logger.info(
-        "temporal split: train=%d  val=%d  test=%d",
-        len(split["train"]), len(split["val"]), len(split["test"]),
-    )
+    if args.stratified:
+        split = _stratified_temporal_split(kept, args.train_ratio, args.val_ratio)
+        logger.info(
+            "stratified temporal split: train=%d  val=%d  test=%d",
+            len(split["train"]), len(split["val"]), len(split["test"]),
+        )
+    else:
+        split = _temporal_split(kept, args.train_ratio, args.val_ratio)
+        logger.info(
+            "temporal split: train=%d  val=%d  test=%d",
+            len(split["train"]), len(split["val"]), len(split["test"]),
+        )
 
     if output_root.exists():
         if not args.force:
@@ -386,6 +431,9 @@ def _cli() -> argparse.Namespace:
     p.add_argument("--copy-episodes", action="store_true",
                    help="copy episode dirs instead of symlinking (needed when the dataset "
                         "will be moved to another filesystem)")
+    p.add_argument("--stratified", action="store_true",
+                   help="use stratified temporal split (per-scenario 70/15/15) instead of "
+                        "global temporal split — required for H2 validation")
     p.add_argument("--force", action="store_true")
     return p.parse_args()
 

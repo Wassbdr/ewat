@@ -39,8 +39,10 @@ import gzip
 import hashlib
 import json
 import logging
+import multiprocessing as mp
 import sys
 import time
+import traceback
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -68,6 +70,8 @@ from telemetry.extractors.logs_file import (  # noqa: E402
 from telemetry.extractors.prom_file import FilePrometheusCollector  # noqa: E402
 from telemetry.extractors.traces_file import (  # noqa: E402
     InMemorySpanBackend,
+    SpanErrorRateIndex,
+    SpanLatencyIndex,
     apply_aliases as apply_span_aliases,
     parse_jaeger_dump,
 )
@@ -174,6 +178,16 @@ def build_features(
     """Build signal + graphs + labels for one episode on a uniform grid."""
     t_start = float(bundle.boundaries["baseline_start"])
     t_end = float(bundle.boundaries["recovery_end"])
+    # Guard against recorder restarts that left baseline_start far in the past.
+    # Cap the usable baseline to 10 minutes before baseline_end.
+    _baseline_end = float(bundle.boundaries.get("baseline_end") or bundle.boundaries.get("pre_start") or t_start)
+    _max_baseline_s = 600.0
+    if _baseline_end - t_start > _max_baseline_s:
+        logger.warning(
+            "  [%s] baseline_start is %.0f s before baseline_end — capping to %.0f s",
+            bundle.episode_id, _baseline_end - t_start, _max_baseline_s,
+        )
+        t_start = _baseline_end - _max_baseline_s
     grid = np.arange(t_start, t_end + 1e-9, grid_step_s, dtype=np.float64)
     svc = services or bundle.canonical_services
     if not svc:
@@ -203,20 +217,58 @@ def build_features(
         cache_ttl_s=grid_step_s,
         aliases={},
     )
+    # Pre-index spans for error_rate_http fallback (HTTP + gRPC status codes).
+    # Maps normalised gRPC service names → canonical: e.g. "productcatalog" → "product-catalog".
+    _GRPC_CALLEE_MAP: dict[str, str] = {
+        s.replace("-", "").replace("_", ""): s for s in svc
+    }
+    # Also map known OTel Demo gRPC service name suffixes explicitly
+    _GRPC_CALLEE_MAP.update({
+        "productcatalog": next((s for s in svc if "catalog" in s), ""),
+        "productreview": next((s for s in svc if "review" in s or "product-r" in s), ""),
+    })
+    _GRPC_CALLEE_MAP = {k: v for k, v in _GRPC_CALLEE_MAP.items() if v}
+    span_err_idx = SpanErrorRateIndex(
+        jaeger_cfg,
+        canonical_services=svc,
+        aliases=aliases,
+        grpc_callee_map=_GRPC_CALLEE_MAP,
+    ) if jaeger_cfg else None
+    span_lat_idx = SpanLatencyIndex(
+        jaeger_cfg,
+        canonical_services=svc,
+        aliases=aliases,
+    ) if jaeger_cfg else None
 
     # ------ Loki → records --------------------------------------------
     loki_cfg = bundle.loki_dump or {}
     timed_records = parse_loki_dump(loki_cfg) if loki_cfg else []
     apply_log_aliases(timed_records, aliases)
     log_backend = InMemoryLogBackend(timed_records)
+
+    # Fit SentenceBERT centroid from the baseline phase (regime="normal").
+    # Only enabled when sentence-transformers is installed.
+    _semantic_available = False
+    try:
+        import sentence_transformers  # noqa: F401
+        _semantic_available = True
+    except ImportError:
+        pass
+
     log_collector = LogCollector(
         backend=log_backend,
         window_s=log_window_s,
-        semantic_scorers=None,
+        semantic_scorers={} if _semantic_available else None,
         services=svc,
-        semantic_enabled=False,  # filled in by optional Phase 2b post-processor
+        semantic_enabled=_semantic_available,
         aliases={},
     )
+
+    if _semantic_available:
+        baseline_end = float(bundle.boundaries.get("pre_start") or bundle.boundaries["baseline_end"])
+        baseline_records = log_backend.fetch_logs(t_start, baseline_end)
+        if baseline_records:
+            log_collector.fit_semantic_centroid(baseline_records)
 
     # ------ Loop over grid --------------------------------------------
     signal = np.full((grid.size, n, SIGNAL_DIM), float("nan"), dtype=np.float32)
@@ -242,6 +294,28 @@ def build_features(
         signal[i, :, METRICS_SLICE] = M_t
         signal[i, :, TRACES_SLICE] = T_t
         signal[i, :, LOGS_SLICE] = L_t
+
+        _t_win_start = float(ts) - trace_window_s
+
+        # Fill error_rate_http (M dim 3) from span status codes when Prometheus NaN.
+        if span_err_idx is not None:
+            _ERR_ABS = METRICS_SLICE.start + 3
+            nan_mask = np.isnan(signal[i, :, _ERR_ABS])
+            if nan_mask.any():
+                err_rates = span_err_idx.error_rate_for_window(_t_win_start, float(ts))
+                for s_idx, svc_name in enumerate(svc):
+                    if nan_mask[s_idx]:
+                        signal[i, s_idx, _ERR_ABS] = err_rates.get(svc_name, float("nan"))
+
+        # Fill latency_p99 (M dim 2) from span duration P99 when Prometheus NaN.
+        if span_lat_idx is not None:
+            _LAT_ABS = METRICS_SLICE.start + 2
+            nan_mask = np.isnan(signal[i, :, _LAT_ABS])
+            if nan_mask.any():
+                p99s = span_lat_idx.p99_for_window(_t_win_start, float(ts))
+                for s_idx, svc_name in enumerate(svc):
+                    if nan_mask[s_idx]:
+                        signal[i, s_idx, _LAT_ABS] = p99s.get(svc_name, float("nan"))
 
         window_spans = span_backend.fetch_spans(float(ts) - trace_window_s, float(ts))
         graph = gbuilder.build(window_spans, services=svc, timestamp=float(ts))
@@ -334,6 +408,81 @@ def _file_sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _process_episode_worker(task: dict) -> dict:
+    """Per-episode worker — runs in a subprocess when --workers > 1."""
+    try:
+        import torch
+        if task.get("num_threads", 0) > 0:
+            torch.set_num_threads(task["num_threads"])
+    except ImportError:
+        pass
+
+    ep_dir = Path(task["ep_dir"])
+    out_dir = Path(task["out_dir"])
+
+    if out_dir.exists() and not task["force"]:
+        return {"episode_id": ep_dir.name, "status": "skip"}
+
+    try:
+        bundle = load_episode(ep_dir)
+        signal, graphs, labels = build_features(
+            bundle,
+            grid_step_s=task["grid_step_s"],
+            metric_window_s=task["metric_window_s"],
+            trace_window_s=task["trace_window_s"],
+            log_window_s=task["log_window_s"],
+            aliases=task["aliases"],
+            graph_threshold=task["graph_threshold"],
+            services=task["canonical_services"],
+        )
+    except Exception:
+        return {"episode_id": ep_dir.name, "status": "error", "error": traceback.format_exc()}
+
+    graph_stats = [compute_graph_stats(g) for g in graphs]
+    metadata = {
+        "episode_id": bundle.episode_id,
+        "scenario": bundle.scenario,
+        "boundaries": bundle.boundaries,
+        "canonical_services": task["canonical_services"],
+        "feature_set": task["feature_set"],
+        "grid_step_s": task["grid_step_s"],
+        "trace_window_s": task["trace_window_s"],
+        "log_window_s": task["log_window_s"],
+        "config": task["collection_cfg_dict"],
+        "base_config": task["base_cfg_dict"],
+    }
+    save_run_dataset(
+        run_dir=out_dir,
+        metadata=metadata,
+        signal_tensor=signal,
+        graph_sequence=graphs,
+        labels=labels,
+        graph_stats=graph_stats,
+        services=task["canonical_services"],
+    )
+    _write_feature_provenance(
+        out_dir,
+        bundle=bundle,
+        grid_step_s=task["grid_step_s"],
+        trace_window_s=task["trace_window_s"],
+        log_window_s=task["log_window_s"],
+        feature_set=task["feature_set"],
+        base_cfg_path=Path(task["base_config"]),
+        collection_cfg_path=Path(task["collection_config"]),
+    )
+
+    nan_total = float(np.isnan(signal).mean())
+    nan_M = float(np.isnan(signal[:, :, :7]).mean())
+    nan_T = float(np.isnan(signal[:, :, 7:13]).mean())
+    nan_L = float(np.isnan(signal[:, :, 13:]).mean())
+    return {
+        "episode_id": bundle.episode_id,
+        "status": "ok",
+        "T": int(signal.shape[0]),
+        "nan_total": nan_total, "nan_M": nan_M, "nan_T": nan_T, "nan_L": nan_L,
+    }
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = _cli()
@@ -352,7 +501,7 @@ def main() -> None:
     aliases = dict(base_cfg.telemetry.get("service_name_aliases", {}) or {})
     graph_threshold = int(base_cfg.graph.get("edge_presence_threshold", 0))
 
-    canonical_services = [str(s) for s in collection_cfg.collection.canonical_services]
+    canonical_services = sorted(str(s) for s in collection_cfg.collection.canonical_services)
 
     out_root = Path(args.output_root)
     if not out_root.is_absolute():
@@ -365,71 +514,65 @@ def main() -> None:
         raise SystemExit(f"no episode directories found under {raw_root}")
 
     logger.info(
-        "build_features: found %d episodes under %s  feature_set=%s  grid_step_s=%.0f",
-        len(episodes), raw_root, args.feature_set, args.grid_step_s,
+        "build_features: found %d episodes under %s  feature_set=%s  grid_step_s=%.0f  workers=%d",
+        len(episodes), raw_root, args.feature_set, args.grid_step_s, args.workers,
     )
 
-    for ep_dir in episodes:
-        out_dir = feature_out_root / ep_dir.name
-        if out_dir.exists() and not args.force:
-            logger.info("  skip %s (already built; use --force to overwrite)", ep_dir.name)
-            continue
-        try:
-            bundle = load_episode(ep_dir)
-        except Exception:
-            logger.exception("failed to load episode %s", ep_dir)
-            continue
+    collection_cfg_dict = OmegaConf.to_container(collection_cfg, resolve=True)
+    base_cfg_dict = OmegaConf.to_container(base_cfg, resolve=True)
 
-        try:
-            signal, graphs, labels = build_features(
-                bundle,
-                grid_step_s=args.grid_step_s,
-                metric_window_s=args.metric_window_s,
-                trace_window_s=args.trace_window_s,
-                log_window_s=args.log_window_s,
-                aliases=aliases,
-                graph_threshold=graph_threshold,
-                services=canonical_services,
-            )
-        except Exception:
-            logger.exception("failed to build features for %s", bundle.episode_id)
-            continue
-
-        graph_stats = [compute_graph_stats(g) for g in graphs]
-
-        metadata = {
-            "episode_id": bundle.episode_id,
-            "scenario": bundle.scenario,
-            "boundaries": bundle.boundaries,
-            "canonical_services": canonical_services,
-            "feature_set": args.feature_set,
+    tasks = [
+        {
+            "ep_dir": str(ep_dir),
+            "out_dir": str(feature_out_root / ep_dir.name),
+            "force": args.force,
             "grid_step_s": args.grid_step_s,
+            "metric_window_s": args.metric_window_s,
             "trace_window_s": args.trace_window_s,
             "log_window_s": args.log_window_s,
-            "config": OmegaConf.to_container(collection_cfg, resolve=True),
-            "base_config": OmegaConf.to_container(base_cfg, resolve=True),
+            "aliases": aliases,
+            "graph_threshold": graph_threshold,
+            "canonical_services": canonical_services,
+            "feature_set": args.feature_set,
+            "base_config": args.base_config,
+            "collection_config": str(collection_cfg_path),
+            "collection_cfg_dict": collection_cfg_dict,
+            "base_cfg_dict": base_cfg_dict,
+            "num_threads": max(1, mp.cpu_count() // args.workers) if args.workers > 1 else 0,
         }
+        for ep_dir in episodes
+    ]
 
-        save_run_dataset(
-            run_dir=out_dir,
-            metadata=metadata,
-            signal_tensor=signal,
-            graph_sequence=graphs,
-            labels=labels,
-            graph_stats=graph_stats,
-            services=canonical_services,
-        )
+    n_ok = n_skip = n_err = 0
 
-        _write_feature_provenance(
-            out_dir,
-            bundle=bundle,
-            grid_step_s=args.grid_step_s,
-            trace_window_s=args.trace_window_s,
-            log_window_s=args.log_window_s,
-            feature_set=args.feature_set,
-            base_cfg_path=Path(args.base_config),
-            collection_cfg_path=collection_cfg_path,
-        )
+    def _handle_result(result: dict) -> None:
+        nonlocal n_ok, n_skip, n_err
+        status = result["status"]
+        ep = result["episode_id"]
+        if status == "skip":
+            logger.info("  skip %s (already built; use --force to overwrite)", ep)
+            n_skip += 1
+        elif status == "ok":
+            r = result
+            logger.info(
+                "Saved %s  NaN: total=%.1f%%  M=%.1f%%  T=%.1f%%  L=%.1f%%",
+                ep, r["nan_total"] * 100, r["nan_M"] * 100, r["nan_T"] * 100, r["nan_L"] * 100,
+            )
+            n_ok += 1
+        else:
+            logger.error("FAILED %s:\n%s", ep, result.get("error", ""))
+            n_err += 1
+
+    if args.workers > 1:
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(args.workers) as pool:
+            for result in pool.imap_unordered(_process_episode_worker, tasks):
+                _handle_result(result)
+    else:
+        for task in tasks:
+            _handle_result(_process_episode_worker(task))
+
+    logger.info("Done: %d built, %d skipped, %d failed", n_ok, n_skip, n_err)
 
 
 def _cli() -> argparse.Namespace:
@@ -448,6 +591,8 @@ def _cli() -> argparse.Namespace:
     p.add_argument("--only", default="",
                    help="only process episode dirs whose name contains this substring")
     p.add_argument("--force", action="store_true", help="re-build even if output exists")
+    p.add_argument("--workers", type=int, default=1,
+                   help="parallel worker processes (each loads its own SentenceBERT model)")
     return p.parse_args()
 
 
