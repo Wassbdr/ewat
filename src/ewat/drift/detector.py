@@ -88,6 +88,14 @@ class DriftDetector:
     def epsilon_drift(self, value: float) -> None:
         self._epsilon_drift = value
 
+    @property
+    def is_ready(self) -> bool:
+        """True once reference and current buffers are fully warm."""
+        return (
+            len(self._ref_buf) >= self._window_ref_size
+            and len(self._cur_buf) >= self._window_cur_size
+        )
+
     def update(self, S_t: npt.NDArray[np.float64]) -> DriftResult:
         """Consume one timestep of the flattened feature vector.
 

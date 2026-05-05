@@ -79,6 +79,27 @@ class PrecursorClassifier:
                 out[:, c] = clf.predict_proba(z)[:, 1]
         return out
 
+    def scores_per_type(
+        self, z: np.ndarray, labels: np.ndarray
+    ) -> dict[int, tuple[np.ndarray, np.ndarray]]:
+        """Return raw (y_true, y_score) pairs per cluster type.
+
+        Useful for bootstrap CI computation. Types with fewer than 2 positives
+        or 2 negatives are omitted from the result.
+
+        Returns
+        -------
+        {cluster_id → (y_true, y_score)} — binary labels and predicted proba.
+        """
+        proba = self.predict_proba(z)
+        result: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        for c in range(self.n_clusters):
+            y = (labels == c).astype(int)
+            if y.sum() < 2 or (len(y) - y.sum()) < 2:
+                continue
+            result[c] = (y, proba[:, c])
+        return result
+
     def auroc_per_type(
         self, z: np.ndarray, labels: np.ndarray
     ) -> dict[int, float]:

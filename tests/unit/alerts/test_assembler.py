@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 import torch
 
 from ewat.alerts.alert import Alert
 from ewat.alerts.assembler import AlertAssembler
+from ewat.drift.detector import DriftDetector, DriftResult
 from ewat.encoder.stgcn import STGCNEncoder
 from ewat.precursor.model import PrecursorClassifier
 from ewat.typing.siamese import SiameseTyper
@@ -184,3 +187,58 @@ def test_predict_cluster_ids_match_classifiers():
     alerts = assembler.predict(signal, adjacency)
     returned_ids = {a.cluster_id for a in alerts}
     assert returned_ids == set(assembler.classifiers.keys())
+
+
+# ---------------------------------------------------------------------------
+# Drift detector integration
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_detector(flag: bool) -> DriftDetector:
+    """Return a DriftDetector whose update() always returns the given flag."""
+    detector = MagicMock(spec=DriftDetector)
+    regime = "drift" if flag else "normal"
+    detector.update.return_value = DriftResult(flag=flag, mmd2=0.0, regime=regime)
+    return detector
+
+
+def test_drift_flag_suppresses_alerts():
+    """When drift_detector.flag is True, predict() must return []."""
+    assembler = _make_assembler(threshold=0.0)
+    assembler.drift_detector = _make_mock_detector(flag=True)
+    signal, adjacency = _make_signal()
+    alerts = assembler.predict(signal, adjacency)
+    assert alerts == []
+
+
+def test_no_drift_flag_does_not_suppress():
+    """When drift_detector.flag is False, alerts are produced normally."""
+    assembler = _make_assembler(threshold=0.0)
+    assembler.drift_detector = _make_mock_detector(flag=False)
+    signal, adjacency = _make_signal()
+    alerts = assembler.predict(signal, adjacency)
+    assert len(alerts) == N_CLUSTERS
+
+
+def test_detector_reset_on_episode_change():
+    """Detector must be reset when episode_id changes, not on same episode."""
+    assembler = _make_assembler(threshold=0.0)
+    detector = _make_mock_detector(flag=False)
+    assembler.drift_detector = detector
+    assembler._last_episode_id = "ep1"  # prime state so first call is same-episode
+    signal, adjacency = _make_signal()
+
+    assembler.predict(signal, adjacency, episode_id="ep1")
+    detector.reset.assert_not_called()
+
+    assembler.predict(signal, adjacency, episode_id="ep2")
+    detector.reset.assert_called_once()
+
+
+def test_no_drift_detector_produces_alerts():
+    """Without a drift_detector, predict() works normally."""
+    assembler = _make_assembler(threshold=0.0)
+    assert assembler.drift_detector is None
+    signal, adjacency = _make_signal()
+    alerts = assembler.predict(signal, adjacency)
+    assert len(alerts) == N_CLUSTERS

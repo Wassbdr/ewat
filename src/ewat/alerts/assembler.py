@@ -21,6 +21,8 @@ import torch
 from sklearn.preprocessing import StandardScaler
 
 from ewat.alerts.alert import Alert
+from ewat.drift.detector import DriftDetector
+from ewat.drift.mmd import RFFKernel
 from ewat.precursor.model import PrecursorClassifier
 from ewat.typing.siamese import SiameseTyper
 
@@ -46,6 +48,9 @@ class AlertAssembler:
     scaler:
         StandardScaler fitté sur les données train. Si fourni, appliqué au
         signal avant l'encodage (même normalisation que lors de l'entraînement).
+    drift_detector:
+        DriftDetector optionnel. Si fourni, les alertes précurseurs sont
+        supprimées lorsque le détecteur indique un état DRIFT (flag=True).
     device:
         Device PyTorch pour l'inférence de l'encodeur.
     """
@@ -58,6 +63,7 @@ class AlertAssembler:
         fiches: dict[int, dict[str, Any]],
         threshold: float = 0.5,
         scaler: StandardScaler | None = None,
+        drift_detector: DriftDetector | None = None,
         device: torch.device | None = None,
     ) -> None:
         self.typer = typer
@@ -66,8 +72,10 @@ class AlertAssembler:
         self.fiches = fiches
         self.threshold = threshold
         self.scaler = scaler
+        self.drift_detector = drift_detector
         self.device = device or torch.device("cpu")
         self.typer = self.typer.to(self.device).eval()
+        self._last_episode_id: str = ""
 
     # ------------------------------------------------------------------
     # Factory helpers
@@ -130,6 +138,16 @@ class AlertAssembler:
             with open(scaler_path, "rb") as fh:
                 scaler = pickle.load(fh)
 
+        # Build DriftDetector with calibrated epsilon
+        kernel = RFFKernel(rff_dim=256, seed=42)
+        drift_detector = DriftDetector(
+            kernel=kernel,
+            epsilon_drift=0.5226,
+            window_ref_size=5,
+            window_cur_size=5,
+            post_drift_window_s=3,
+        )
+
         return cls(
             typer=typer,
             classifiers=classifiers,
@@ -137,6 +155,7 @@ class AlertAssembler:
             fiches=fiches,
             threshold=threshold,
             scaler=scaler,
+            drift_detector=drift_detector,
             device=device or torch.device("cpu"),
         )
 
@@ -171,6 +190,11 @@ class AlertAssembler:
             Alertes émises, triées par probabilité décroissante, filtrées par
             le seuil.
         """
+        # Auto-reset drift detector on episode boundary
+        if self.drift_detector is not None and episode_id != self._last_episode_id:
+            self.drift_detector.reset()
+            self._last_episode_id = episode_id
+
         # Apply same normalisation as EpisodeDataset
         signal = signal.astype(np.float32)
         if self.scaler is not None:
@@ -182,6 +206,12 @@ class AlertAssembler:
         else:
             signal = np.nan_to_num(signal, nan=0.0)
         adjacency = np.nan_to_num(adjacency.astype(np.float32), nan=0.0)
+
+        # Update drift detector; suppress alerts during confirmed DRIFT
+        if self.drift_detector is not None:
+            drift_result = self.drift_detector.update(signal[-1].astype(np.float64))
+            if drift_result.flag:
+                return []
 
         t_total = signal.shape[0]
         alerts: list[Alert] = []
