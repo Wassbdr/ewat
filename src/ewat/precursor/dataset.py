@@ -19,7 +19,6 @@ Usage
 
 from __future__ import annotations
 
-import json
 import pickle
 from pathlib import Path
 
@@ -72,7 +71,7 @@ class PrecursorDataset(Dataset):
         ep_dir = self.features_root / ep_id
 
         signal = np.load(ep_dir / "signal.npz")["signal"].astype(np.float32)   # (T, N, 17)
-        adjacency = np.load(ep_dir / "adjacency.npz")["adjacency"].astype(np.float32)  # (T, N, N, 3)
+        adjacency = np.load(ep_dir / "adjacency.npz")["adjacency"].astype(np.float32)
 
         # Find pre-injection (normal) timestep indices
         labels_df = pd.read_parquet(ep_dir / "labels.parquet", columns=["regime", "timestamp"])
@@ -93,11 +92,11 @@ class PrecursorDataset(Dataset):
 
         # Normalise
         if self.scaler is not None:
-            T, N, d = sig_window.shape
+            t_len, n_nodes, d = sig_window.shape
             flat = sig_window.reshape(-1, d)
             flat = np.where(np.isnan(flat), 0.0, flat)
             flat = self.scaler.transform(flat).astype(np.float32)
-            sig_window = flat.reshape(T, N, d)
+            sig_window = flat.reshape(t_len, n_nodes, d)
         else:
             sig_window = np.nan_to_num(sig_window, nan=0.0)
 

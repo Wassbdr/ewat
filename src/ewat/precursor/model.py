@@ -41,9 +41,9 @@ class PrecursorClassifier:
     max_iter:    Max iterations for LogisticRegression solver.
     """
 
-    def __init__(self, n_clusters: int, C: float = 1.0, max_iter: int = 500) -> None:
+    def __init__(self, n_clusters: int, reg_c: float = 1.0, max_iter: int = 500) -> None:
         self.n_clusters = n_clusters
-        self.C = C
+        self.reg_c = reg_c
         self.max_iter = max_iter
         self._classifiers: dict[int, LogisticRegression] = {}
 
@@ -61,7 +61,7 @@ class PrecursorClassifier:
                 # Degenerate — skip; predict_proba will return 0 or 1 for all
                 self._classifiers[c] = None  # type: ignore[assignment]
                 continue
-            clf = LogisticRegression(C=self.C, max_iter=self.max_iter, solver="lbfgs")
+            clf = LogisticRegression(C=self.reg_c, max_iter=self.max_iter, solver="lbfgs")
             clf.fit(z, y)
             self._classifiers[c] = clf
 
@@ -102,7 +102,7 @@ class PrecursorClassifier:
             pickle.dump(self, f)
 
     @classmethod
-    def load(cls, path: Path) -> "PrecursorClassifier":
+    def load(cls, path: Path) -> PrecursorClassifier:
         with open(path, "rb") as f:
             return pickle.load(f)
 

@@ -57,7 +57,7 @@ python -m scripts.assemble_dataset \
 | `src/ewat/encoder/dataset.py` | ✅ Implémenté — EpisodeDataset + collate_fn + StandardScaler |
 | `src/ewat/typing/` | ✅ Implémenté (Étape 2 : siamois + clustering + gradient attribution) |
 | `src/ewat/ontology/` | ✅ Implémenté (Étape 2b : temporal + TE-KSG + χ²) |
-| `src/ewat/precursor/` | ❌ À implémenter (Étape 3) |
+| `src/ewat/precursor/` | ✅ Implémenté (Étape 3 : one-vs-rest LR + AUROC par k, 21 tests) |
 | `src/ewat/alerts/` | ❌ À implémenter (sortie) |
 
 ### src/ewat/drift/ (Étape 0)
@@ -187,7 +187,35 @@ python -m experiments.ontology.build \
 - Silhouette train=0.577, val=0.601, **test=0.615** → H1 ✓ PASS (seuil 0.3)
 - K optimal = 10
 
+### src/ewat/precursor/ (Étape 3)
+
+- `dataset.py` — `PrecursorDataset` : fenêtres pré-injection de longueur k (gauche-paddées si warmup < k)
+- `model.py` — `PrecursorClassifier` : one-vs-rest LogisticRegression par type + AUROC, `find_optimal_k()`
+- Tests : `tests/unit/precursor/` — 21 tests, 21 passent
+
+### Résultats précurseurs (k ∈ {2,4,6,8,10,12} steps = {1—6 min}, test set)
+
+| Type | AUROC(k*) | k* | Note |
+|---|---|---|---|
+| C6 | **1.000** | 2 | Signal pré-injection parfaitement distinctif |
+| C3 | **0.706** | 12 | Meilleur avec plus de contexte |
+| C2 | **0.611** | 2 | Signal précoce suffisant |
+| C8 | **0.530** | 2 | Légèrement au-dessus du hasard |
+| C0,1,4,5 | < 0.5 | — | Non prédictibles depuis la fenêtre pré-injection |
+| C7,C9 | NaN | — | Pas assez d'exemples test |
+
+**H3 ✓ PASS** : 4/10 types AUROC > 0.5 (baseline = 0.5)
+
+### Commandes complètes
+
+```bash
+# 3. Précurseurs typés
+python -m experiments.precursor.train \
+    --typing-dir experiments/typing --features-root data/features/v3 \
+    --output experiments/precursor --k-values 2 4 6 8 10 12
+```
+
 ## Prochaine priorité
 
-**Implémenter Étape 3 (précurseurs typés)** dans `src/ewat/precursor/` :
-p̂_i(t) = f_i(S̃_{[t-k,t]}, G(t)) ∈ [0,1] pour k ∈ {2, 5, 10, 20, 30, 60} min, AUROC par type.
+**Implémenter `src/ewat/alerts/`** (sortie du pipeline EWAT) :
+`Alert(t) = (C_i, p̂_i(t), k*_i, fiche_{C_i})` — assemblage de la sortie finale.

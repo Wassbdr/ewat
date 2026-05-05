@@ -28,11 +28,10 @@ from itertools import combinations
 from pathlib import Path
 
 import numpy as np
-from scipy.special import digamma
+from scipy.special import digamma  # type: ignore[import-untyped]
 from sklearn.neighbors import KDTree
 
 from ewat.ontology.graph import OntologyRelation
-
 
 # ---------------------------------------------------------------------------
 # KSG-1 mutual information estimator
@@ -190,12 +189,12 @@ def compute_causal_relations(
         if not sigs_src or not sigs_tgt:
             continue
 
-        min_T = min(min(s.shape[0] for s in sigs_src), min(s.shape[0] for s in sigs_tgt))
-        if min_T - lag < min_series_length:
+        min_t = min(min(s.shape[0] for s in sigs_src), min(s.shape[0] for s in sigs_tgt))
+        if min_t - lag < min_series_length:
             continue
 
-        x_mat = np.stack([s[:min_T] for s in sigs_src]).mean(axis=0)  # (min_T, 17)
-        y_mat = np.stack([s[:min_T] for s in sigs_tgt]).mean(axis=0)  # (min_T, 17)
+        x_mat = np.stack([s[:min_t] for s in sigs_src]).mean(axis=0)  # (min_t, 17)
+        y_mat = np.stack([s[:min_t] for s in sigs_tgt]).mean(axis=0)  # (min_t, 17)
 
         observed_te = _total_te(x_mat, y_mat, lag=lag, k=k_knn)
 
