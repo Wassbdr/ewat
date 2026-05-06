@@ -66,13 +66,15 @@ Convolution avec matrice d'adjacence pondérée par w_E(t).
 **Étape 2 — Typage contrastif**
 Réseau siamois : d_φ(z_i, z_j) → 0 si même type Chaos Mesh, → 1 sinon.
 Clustering hiérarchique agglomératif → C = {C_1, ..., C_K}.
-Interprétabilité : SHAP → fiche par type.
+Interprétabilité : saliency (gradient × input) → fiche par type.
+*Limitation* : ρ_Spearman(gradient, permutation importance) = −0.34 sur ewat_v3 → méthode gradient non validée. Les fiches restent indicatives ; une validation croisée par KernelSHAP est prévue.
 
 **Étape 2b — Ontologie**
 O = (C, R), trois types de relations :
 - Temporelles : C_i →^{Δt,σ} C_j
-- Causales : Transfer Entropy (estimateur KSG, Kraskov et al. 2004), n_min = 30, seuil par permutation. Pas de Granger.
-- Co-occurrence : χ²
+- Causales : Transfer Entropy (estimateur KSG, Kraskov et al. 2004), n_min = 30, seuil par permutation bootstrap (FDR Benjamini–Hochberg). Pas de Granger.
+  *Limitation* : implémentation actuelle = somme des TE univariés par feature (TE(X_j → Y)) moyennée sur les épisodes. Sous-estime la synergie entre features (biais écologique). La TE multivariée dans ℝ¹⁷ est une extension future.
+- Co-occurrence : χ² Yates 2×2 (4 cellules) avec fallback Fisher exact si expected < 5, correction Holm–Bonferroni.
 
 **Étape 3 — Précurseurs typés**
 p̂_i(t) = f_i(S̃_{[t-k,t]}, G(t)) ∈ [0,1], k ∈ {2, 5, 10, 20, 30, 60} min

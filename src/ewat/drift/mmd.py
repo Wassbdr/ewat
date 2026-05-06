@@ -56,7 +56,7 @@ class RFFKernel:
     def sigma(self) -> float | None:
         return self._sigma
 
-    def fit_sigma(self, X_ref: npt.NDArray[np.float64]) -> "RFFKernel":
+    def fit_sigma(self, X_ref: npt.NDArray[np.float64]) -> RFFKernel:
         """Set σ to the median pairwise distance of X_ref (heuristic of Gretton et al.).
 
         Only a random subsample (≤ 500 rows) is used for efficiency.

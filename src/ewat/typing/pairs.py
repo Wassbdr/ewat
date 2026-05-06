@@ -30,7 +30,8 @@ from __future__ import annotations
 
 import random
 from collections import defaultdict
-from typing import Iterator, Literal
+from collections.abc import Iterator
+from typing import Literal
 
 import numpy as np
 
@@ -239,7 +240,9 @@ class EpisodePairSampler:
             if len(picked) < n_neg:
                 remaining_pool = [c for c in candidates if c not in set(picked)]
                 if remaining_pool:
-                    extra = rng.sample(remaining_pool, min(n_neg - len(picked), len(remaining_pool)))
+                    extra = rng.sample(
+                        remaining_pool, min(n_neg - len(picked), len(remaining_pool))
+                    )
                     picked.extend(extra)
             return picked
 
