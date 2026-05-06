@@ -90,14 +90,33 @@ Silhouette < 0.3 en held-out sur 5 graines × 5 splits → falsifié.
 Compléments : gap statistic, BIC/GMM.
 Seuil justifié par Kaufman & Rousseeuw (1990).
 
-**H2 — Séparabilité du drift**
+**H2a — Séparabilité du drift (look-through)**
 Pas de réduction significative du FPR à rappel constant (p > 0.05, Student) → falsifié.
+*Résultat* : ❌ FAIL (p=0.27 sur signal brut, p=0.978 sur embeddings STGCN). Résultat négatif
+honnête : épisodes ~21 steps trop courts pour la confirmation temporelle post-drift.
+
+**H2b — Identification du régime θ_{drift∩anomaly}**
+Reformulation positive de H2 : le pipeline EWAT identifie-t-il correctement le régime
+θ_{drift∩anomaly} (drift bénin + anomalie simultanés), distinct du drift pur et de l'anomalie pure ?
+
+Critère de falsification : aucun cluster ne présente simultanément flag_drift=True ET
+alerte_précurseur=True à une fréquence supérieure à celle attendue par hasard.
+
+Opérationnalisation :
+- Cluster C8 (faulty_deploy_overlap, régime θ_{drift∩anomaly}) : % épisodes avec flag_drift AND
+  alerte_préc doit être significativement supérieur à C5 (drift pur) et C0-C7 (anomalie pure).
+- Test : Fisher exact ou proportion bootstrap sur les taux de chevauchement.
+- Script : `experiments/h2_overlap/eval.py`
 
 **H3 — Prédictibilité**
-AUROC par type < baseline générique ∀k → falsifié.
+AUROC par type < baseline générique (0.5) ∀k → falsifié.
+k* sélectionné sur val (pas test) — évaluation sur test uniquement.
+Compléments : bootstrap 95% CI sur AUROC, comparaison avec baselines B1 (features brutes)
+et B2 (k-means brut) — script `experiments/baselines/precursor_baselines.py`.
 
 **Ablation**
 Par modalité (M, T, L, paires, triplet). Par feature (leave-one-out, Wilcoxon signé). Redondance : |ρ| > 0.9.
+Ablation rigoureuse : réentraînement complet par condition — `experiments/ablation/run_retrain.py`.
 
 ## Références
 - Fu et al. (2025) — Survey RCA microservices, gap benchmark/production
