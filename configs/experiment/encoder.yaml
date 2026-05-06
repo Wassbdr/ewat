@@ -1,0 +1,33 @@
+# =============================================================================
+# Hydra config — encoder pre-training (experiments.encoder.train_hydra)
+# =============================================================================
+# Compose with `defaults` to inherit project-wide settings:
+#   python -m experiments.encoder.train_hydra --config-dir configs \
+#       --config-name=experiment/encoder \
+#       dataset=data/datasets/ewat_v3 features_root=data/features/v3
+#
+# Every key here is a override of the legacy argparse interface. Override on
+# the command line with Hydra dotted syntax, e.g. `epochs=10 lr=5e-4`.
+# =============================================================================
+
+defaults:
+  - _self_
+
+dataset: ???                         # Path to dataset dir (contains split.json)
+features_root: ???                   # Path to feature store root
+output: experiments/encoder          # Output dir (checkpoints, scaler, summary)
+
+epochs: 100
+lr: 1.0e-3
+batch_size: 32
+patience: 15
+d_hidden: 64
+d_embed: 64
+seed: 42
+
+mlflow:
+  enabled: true
+  experiment_name: ewat
+  run_name: encoder_pretrain
+  tracking_uri: null                 # null → fallback to MLFLOW_TRACKING_URI env var
+                                     # or "<output>/mlruns"

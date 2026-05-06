@@ -88,18 +88,38 @@ class TestReconstructFromHistogram:
     def test_output_shape_positive_counts(self):
         bounds = np.array([0.1, 0.5, 1.0, 5.0])
         counts = np.array([10.0, 40.0, 30.0, 20.0])
-        samples = reconstruct_from_histogram(bounds, counts, n_samples=100)
+        samples = reconstruct_from_histogram(bounds, counts, n_samples=100, rng=0)
         assert samples.size > 0
 
     def test_values_within_bounds(self):
         bounds = np.array([1.0, 2.0, 5.0])
         counts = np.array([10.0, 10.0, 10.0])
-        samples = reconstruct_from_histogram(bounds, counts, n_samples=300)
+        samples = reconstruct_from_histogram(bounds, counts, n_samples=300, rng=0)
         assert float(samples.max()) <= 5.0
         assert float(samples.min()) >= 0.0
 
     def test_zero_counts_returns_empty(self):
         bounds = np.array([1.0, 2.0])
         counts = np.array([0.0, 0.0])
-        samples = reconstruct_from_histogram(bounds, counts)
+        samples = reconstruct_from_histogram(bounds, counts, rng=0)
         assert samples.size == 0
+
+    def test_seeded_reproducibility(self):
+        bounds = np.array([0.1, 0.5, 1.0, 5.0])
+        counts = np.array([10.0, 40.0, 30.0, 20.0])
+        a = reconstruct_from_histogram(bounds, counts, n_samples=200, rng=42)
+        b = reconstruct_from_histogram(bounds, counts, n_samples=200, rng=42)
+        assert np.array_equal(a, b)
+
+    def test_warns_when_no_rng(self):
+        import warnings
+        bounds = np.array([0.1, 0.5, 1.0, 5.0])
+        counts = np.array([10.0, 40.0, 30.0, 20.0])
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            reconstruct_from_histogram(bounds, counts, n_samples=10)
+            assert any(
+                issubclass(warning.category, RuntimeWarning)
+                and "without an explicit rng" in str(warning.message)
+                for warning in w
+            )

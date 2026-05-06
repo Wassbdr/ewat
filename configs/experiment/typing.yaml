@@ -1,0 +1,43 @@
+# =============================================================================
+# Hydra config — siamese typing fine-tuning (experiments.typing.train_hydra)
+# =============================================================================
+# Compose / override:
+#   python -m experiments.typing.train_hydra \
+#       dataset=data/datasets/ewat_v3 \
+#       features_root=data/features/v3 \
+#       encoder_checkpoint=experiments/encoder/checkpoints/best_encoder.pt
+# =============================================================================
+
+defaults:
+  - _self_
+
+dataset: ???
+features_root: ???
+encoder_checkpoint: ???
+
+output: experiments/typing
+epochs: 50
+lr: 1.0e-4
+batch_size: 32
+patience: 15
+d_proj: 32
+margin: 1.0
+n_neg_per_anchor: 5
+freeze_encoder: false
+k_range_max: 16
+n_gap_refs: 10
+n_shap_bg: 50
+n_bootstrap: 1000
+seed: 42
+eval_only: false
+
+# Negative mining (FaceNet-style). Default "random" matches legacy behaviour.
+mining: random          # "random" | "hard" | "semi-hard"
+mining_warmup_epochs: 3 # epochs to keep "random" before switching strategy
+mining_pool_size: 0     # cap candidate pool (0 = scan all)
+
+mlflow:
+  enabled: true
+  experiment_name: ewat
+  run_name: typing_siamese
+  tracking_uri: null

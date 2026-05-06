@@ -174,6 +174,7 @@ def build_features(
     aliases: dict[str, str],
     graph_threshold: int,
     services: list[str] | None = None,
+    histogram_seed: int = 42,
 ) -> tuple[np.ndarray, list[ServiceGraph], list[LabelRecord]]:
     """Build signal + graphs + labels for one episode on a uniform grid."""
     t_start = float(bundle.boundaries["baseline_start"])
@@ -203,6 +204,7 @@ def build_features(
         namespace=prom_cfg.get("namespace", "ewat"),
         services=svc,
         aliases=aliases,
+        histogram_seed=histogram_seed,
     )
 
     # ------ Jaeger → spans --------------------------------------------
@@ -434,6 +436,7 @@ def _process_episode_worker(task: dict) -> dict:
             aliases=task["aliases"],
             graph_threshold=task["graph_threshold"],
             services=task["canonical_services"],
+            histogram_seed=task.get("histogram_seed", 42),
         )
     except Exception:
         return {"episode_id": ep_dir.name, "status": "error", "error": traceback.format_exc()}
@@ -500,6 +503,9 @@ def main() -> None:
 
     aliases = dict(base_cfg.telemetry.get("service_name_aliases", {}) or {})
     graph_threshold = int(base_cfg.graph.get("edge_presence_threshold", 0))
+    histogram_seed = int(
+        collection_cfg.collection.get("histogram_seed", base_cfg.get("histogram_seed", 42))
+    )
 
     canonical_services = sorted(str(s) for s in collection_cfg.collection.canonical_services)
 
@@ -539,6 +545,7 @@ def main() -> None:
             "collection_cfg_dict": collection_cfg_dict,
             "base_cfg_dict": base_cfg_dict,
             "num_threads": max(1, mp.cpu_count() // args.workers) if args.workers > 1 else 0,
+            "histogram_seed": histogram_seed,
         }
         for ep_dir in episodes
     ]

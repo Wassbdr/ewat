@@ -1,0 +1,27 @@
+# =============================================================================
+# Hydra config — precursor training (experiments.precursor.train_hydra)
+# =============================================================================
+# Compose / override:
+#   python -m experiments.precursor.train_hydra \
+#       typing_dir=experiments/typing \
+#       features_root=data/features/v3
+# =============================================================================
+
+defaults:
+  - _self_
+
+typing_dir: experiments/typing
+features_root: data/features/v3
+output: experiments/precursor
+
+k_values: [2, 4, 6, 8, 10, 12]
+reg_c: 1.0
+max_iter: 500
+n_bootstrap: 1000
+seed: 42
+
+mlflow:
+  enabled: true
+  experiment_name: ewat
+  run_name: precursor_train
+  tracking_uri: null

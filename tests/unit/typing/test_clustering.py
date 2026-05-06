@@ -102,3 +102,74 @@ def test_deterministic_given_same_seed():
     r2 = cluster_embeddings(X, k_range=range(2, 5), n_gap_refs=3, random_state=0)
     assert r1.k_optimal == r2.k_optimal
     np.testing.assert_array_equal(r1.labels, r2.labels)
+
+
+# ---------------------------------------------------------------------------
+# Linkage / metric variants
+# ---------------------------------------------------------------------------
+
+def _l2_normalize(x: np.ndarray) -> np.ndarray:
+    return x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-12)
+
+
+def test_unknown_linkage_raises():
+    from ewat.typing.clustering import cluster_embeddings
+    with pytest.raises(ValueError):
+        cluster_embeddings(_make_blobs(k=2), linkage="bogus")
+
+
+def test_unknown_metric_raises():
+    from ewat.typing.clustering import cluster_embeddings
+    with pytest.raises(ValueError):
+        cluster_embeddings(_make_blobs(k=2), metric="bogus")
+
+
+def test_ward_with_cosine_raises():
+    from ewat.typing.clustering import cluster_embeddings
+    with pytest.raises(ValueError):
+        cluster_embeddings(_make_blobs(k=2), linkage="ward", metric="cosine")
+
+
+def test_cosine_clustering_runs_on_normalised_embeddings():
+    from ewat.typing.clustering import cluster_embeddings
+    X = _l2_normalize(_make_blobs(k=3, n_per_cluster=20, d=8, seed=11))
+    result = cluster_embeddings(
+        X, k_range=range(2, 6), n_gap_refs=2,
+        linkage="average", metric="cosine",
+    )
+    assert result.linkage == "average"
+    assert result.metric == "cosine"
+    assert result.k_optimal == 3
+
+
+def test_compare_linkages_runs_multiple_methods():
+    from ewat.typing.clustering import compare_linkages
+    X = _l2_normalize(_make_blobs(k=4, n_per_cluster=15, d=8, seed=23))
+    results = compare_linkages(
+        X,
+        k_range=range(2, 7),
+        methods=(
+            ("ward", "euclidean"),
+            ("average", "cosine"),
+            ("complete", "cosine"),
+        ),
+        n_gap_refs=2,
+    )
+    assert set(results.keys()) == {
+        "ward__euclidean", "average__cosine", "complete__cosine",
+    }
+    for r in results.values():
+        assert r.k_optimal in range(2, 7)
+
+
+def test_compare_linkages_skips_invalid_methods_silently():
+    from ewat.typing.clustering import compare_linkages
+    X = _l2_normalize(_make_blobs(k=2, n_per_cluster=10, d=4))
+    results = compare_linkages(
+        X,
+        k_range=range(2, 5),
+        methods=(("ward", "cosine"), ("average", "cosine")),
+        n_gap_refs=2,
+    )
+    assert "ward__cosine" not in results
+    assert "average__cosine" in results

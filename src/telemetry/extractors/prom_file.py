@@ -48,12 +48,14 @@ class FilePrometheusCollector(PrometheusCollector):
         namespace: str = "ewat",
         services: list[str] | None = None,
         aliases: dict[str, str] | None = None,
+        histogram_seed: int = 42,
     ) -> None:
         super().__init__(
             endpoint="file://offline",
             namespace=namespace,
             services=services,
             aliases=aliases,
+            histogram_seed=histogram_seed,
         )
         self._parsed: dict[str, list[dict[str, Any]]] = {}
         self._time_grid: dict[str, np.ndarray] = {}

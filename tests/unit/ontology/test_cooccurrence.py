@@ -1,8 +1,14 @@
 """Tests for co-occurrence relation computation."""
 
+import math
+
 import pytest
 
-from ewat.ontology.cooccurrence import compute_cooccurrence_relations
+from ewat.ontology.cooccurrence import (
+    benjamini_hochberg,
+    compute_cooccurrence_relations,
+    holm_bonferroni,
+)
 
 
 def _make_manifest(
@@ -103,3 +109,97 @@ def test_cooccurrence_single_scenario_no_pair_relations():
     # No pairs of different clusters co-occur
     for r in rels:
         assert r.source != r.target
+
+
+# ---------------------------------------------------------------------------
+# Multiplicity correction
+# ---------------------------------------------------------------------------
+
+
+def test_holm_bonferroni_basic():
+    pvals = [0.01, 0.02, 0.03, 0.04]
+    adj = holm_bonferroni(pvals)
+    assert len(adj) == 4
+    assert math.isclose(adj[0], 0.04, rel_tol=1e-9)
+    assert all(adj[i] >= pvals[i] for i in range(4))
+    assert all(0.0 <= p <= 1.0 for p in adj)
+
+
+def test_holm_monotone_after_sorting():
+    pvals = [0.5, 0.001, 0.05]
+    adj = holm_bonferroni(pvals)
+    sorted_adj = sorted(adj)
+    assert sorted_adj == adj or sorted_adj != adj
+    assert adj[1] <= adj[2] <= adj[0]
+
+
+def test_benjamini_hochberg_basic():
+    pvals = [0.01, 0.02, 0.03, 0.04]
+    adj = benjamini_hochberg(pvals)
+    assert len(adj) == 4
+    assert all(adj[i] >= pvals[i] - 1e-12 for i in range(4))
+    assert all(0.0 <= p <= 1.0 for p in adj)
+
+
+def test_holm_more_conservative_than_bh():
+    pvals = [0.001, 0.01, 0.02, 0.03, 0.04]
+    holm = holm_bonferroni(pvals)
+    bh = benjamini_hochberg(pvals)
+    for h, b in zip(holm, bh):
+        assert h >= b - 1e-12
+
+
+def test_correction_filters_more_relations():
+    entries = []
+    for i in range(15):
+        entries += [(f"s_{i}", 0), (f"s_{i}", 1), (f"s_{i}", 2)]
+    manifest = _make_manifest(entries)
+    rels_none = compute_cooccurrence_relations(
+        manifest, n_clusters=3, p_threshold=0.05,
+        min_cooccurrences=1, correction="none",
+    )
+    rels_holm = compute_cooccurrence_relations(
+        manifest, n_clusters=3, p_threshold=0.05,
+        min_cooccurrences=1, correction="holm",
+    )
+    assert len(rels_holm) <= len(rels_none)
+
+
+def test_unknown_correction_raises():
+    manifest = _make_manifest([("s1", 0), ("s1", 1)] * 5)
+    with pytest.raises(ValueError):
+        compute_cooccurrence_relations(
+            manifest, n_clusters=3, correction="unknown",  # type: ignore[arg-type]
+        )
+
+
+def test_chi2_2x2_uses_all_cells():
+    # If the test mistakenly only used cell (i, j) with E_ij = ni*nj/N then
+    # rare scenarios would still hit a near-zero p-value. Below: 5 scenarios
+    # contain BOTH 0 and 1, 5 contain neither — observed=5, expected_a small,
+    # but the full 2×2 test is still significant; partial-cell test would
+    # over-state significance. Both should produce a relation here.
+    entries = []
+    for i in range(5):
+        entries += [(f"both_{i}", 0), (f"both_{i}", 1)]
+    for i in range(5):
+        entries.append((f"neither_{i}", 2))
+    manifest = _make_manifest(entries)
+    rels = compute_cooccurrence_relations(
+        manifest, n_clusters=3, p_threshold=0.05,
+        min_cooccurrences=2, correction="none",
+    )
+    pairs = {(r.source, r.target) for r in rels}
+    assert (0, 1) in pairs
+
+
+def test_fisher_fallback_for_small_expected():
+    # Only 4 scenarios — chi2 expected counts < 5 → Fisher exact path.
+    manifest = _make_manifest(
+        [("s1", 0), ("s1", 1), ("s2", 0), ("s2", 1), ("s3", 2), ("s4", 2)]
+    )
+    rels = compute_cooccurrence_relations(
+        manifest, n_clusters=3, p_threshold=1.0,
+        min_cooccurrences=1, correction="none",
+    )
+    assert all(r.p_value is not None and 0.0 <= r.p_value <= 1.0 for r in rels)

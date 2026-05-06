@@ -17,6 +17,11 @@ collection:
   namespace: ewat
   output_root: data/raw
 
+  # Deterministic histogram → samples reconstruction (Phase 2). Fixed seed so
+  # M(t) features (latency P99 etc.) are reproducible across runs of
+  # build_features.py for the same raw dump.
+  histogram_seed: 42
+
   # Canonical service set V. |V| = N is fixed across the entire dataset.
   # Chosen from the services actually active in telemetry (otel-demo,
   # probed via Jaeger /api/services + Loki label service_name):

@@ -8,8 +8,10 @@ import pytest
 
 from ewat.ontology.causal import (
     _ksg_mi,
-    _transfer_entropy,
+    _multivariate_te,
+    _permutation_p_value,
     _total_te,
+    _transfer_entropy,
     compute_causal_relations,
 )
 
@@ -197,3 +199,107 @@ def test_causal_series_too_short_skips():
             min_series_length=50,  # longer than data
         )
     assert rels == []
+
+
+# ---------------------------------------------------------------------------
+# (1+count)/(1+M) p-value and multiple-testing correction
+# ---------------------------------------------------------------------------
+
+
+def test_permutation_p_value_never_zero():
+    # Even when observed dominates all permutations, p > 0
+    p = _permutation_p_value(observed=10.0, perm_stats=[0.0] * 100)
+    assert p > 0.0
+    assert p == 1.0 / 101
+
+
+def test_permutation_p_value_at_most_one():
+    p = _permutation_p_value(observed=-1.0, perm_stats=[0.0] * 50)
+    assert p == 1.0
+
+
+def test_permutation_p_value_empty():
+    assert _permutation_p_value(1.0, []) == 1.0
+
+
+def test_multivariate_te_independent_low():
+    rng = np.random.default_rng(50)
+    T, d = 200, 4
+    x = rng.normal(0, 1, (T, d))
+    y = rng.normal(0, 1, (T, d))
+    te = _multivariate_te(x, y, lag=1, k=5)
+    assert te >= 0.0
+    assert te < 1.0
+
+
+def test_multivariate_te_causal_positive():
+    rng = np.random.default_rng(51)
+    T = 300
+    x = rng.normal(0, 1, (T, 3))
+    y = np.zeros_like(x)
+    y[1:] = 0.9 * x[:-1] + 0.1 * rng.normal(0, 1, (T - 1, 3))
+    te = _multivariate_te(x, y, lag=1, k=5)
+    assert te > 0.0
+
+
+def test_total_te_invalid_method_raises():
+    x = np.zeros((20, 3))
+    y = np.zeros((20, 3))
+    with pytest.raises(ValueError):
+        _total_te(x, y, method="bogus")  # type: ignore[arg-type]
+
+
+def test_causal_method_multivariate_runs():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manifest = _make_signal_store(Path(tmpdir))
+        rels = compute_causal_relations(
+            cluster_manifest=manifest,
+            features_root=Path(tmpdir),
+            n_clusters=3,
+            n_permutations=5,
+            min_support=2,
+            min_series_length=10,
+            te_method="multivariate",
+        )
+    for r in rels:
+        assert r.strength >= 0.0
+        assert r.p_value is not None
+        assert 0.0 <= r.p_value <= 1.0
+
+
+def test_causal_unknown_correction_raises():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manifest = _make_signal_store(Path(tmpdir))
+        with pytest.raises(ValueError):
+            compute_causal_relations(
+                cluster_manifest=manifest,
+                features_root=Path(tmpdir),
+                n_clusters=3,
+                correction="bogus",  # type: ignore[arg-type]
+            )
+
+
+def test_causal_holm_more_conservative_than_bh():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manifest = _make_signal_store(Path(tmpdir))
+        rels_bh = compute_causal_relations(
+            cluster_manifest=manifest,
+            features_root=Path(tmpdir),
+            n_clusters=3,
+            n_permutations=20,
+            p_threshold=0.5,
+            min_support=2,
+            min_series_length=10,
+            correction="bh",
+        )
+        rels_holm = compute_causal_relations(
+            cluster_manifest=manifest,
+            features_root=Path(tmpdir),
+            n_clusters=3,
+            n_permutations=20,
+            p_threshold=0.5,
+            min_support=2,
+            min_series_length=10,
+            correction="holm",
+        )
+    assert len(rels_holm) <= len(rels_bh)

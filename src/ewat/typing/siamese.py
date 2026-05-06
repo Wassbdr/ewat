@@ -87,20 +87,27 @@ class SiameseTyper(nn.Module):
             for p in self.encoder.parameters():
                 p.requires_grad_(False)
 
-    def embed(self, signal: torch.Tensor, adjacency: torch.Tensor) -> torch.Tensor:
+    def embed(
+        self,
+        signal: torch.Tensor,
+        adjacency: torch.Tensor,
+        lengths: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Encode and project a batch of episodes.
 
         Parameters
         ----------
         signal:    (B, T, N, d_feat)
         adjacency: (B, T, N, N, C)
+        lengths:   Optional (B,) long tensor of valid timesteps. Forwarded
+                   to the encoder for masked pooling.
 
         Returns
         -------
         (B, d_proj) — unit-sphere projection
         """
-        z_e = self.encoder(signal, adjacency)  # (B, d_embed)
-        return self.head(z_e)                  # (B, d_proj)
+        z_e = self.encoder(signal, adjacency, lengths=lengths)
+        return self.head(z_e)
 
     def distance(self, z_i: torch.Tensor, z_j: torch.Tensor) -> torch.Tensor:
         """Cosine distance between two batches of projections.
@@ -122,13 +129,17 @@ class SiameseTyper(nn.Module):
         adjacency_i: torch.Tensor,
         signal_j: torch.Tensor,
         adjacency_j: torch.Tensor,
+        lengths_i: torch.Tensor | None = None,
+        lengths_j: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Embed a pair and return (z_i, z_j, distance).
+        """Embed a pair and return ``(z_i, z_j, distance)``.
 
-        Convenience forward for the training loop.
+        Convenience forward for the training loop. ``lengths_i`` and
+        ``lengths_j`` are forwarded to the encoder so that masked pooling
+        excludes padded timesteps.
         """
-        z_i = self.embed(signal_i, adjacency_i)
-        z_j = self.embed(signal_j, adjacency_j)
+        z_i = self.embed(signal_i, adjacency_i, lengths=lengths_i)
+        z_j = self.embed(signal_j, adjacency_j, lengths=lengths_j)
         return z_i, z_j, self.distance(z_i, z_j)
 
 

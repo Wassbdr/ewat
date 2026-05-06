@@ -160,3 +160,100 @@ def test_residual_connection_is_active(encoder):
     z_trivial = encoder.head(encoder.input_proj(sig).mean(dim=(1, 2)))
     assert not torch.allclose(z, z_trivial, atol=1e-4), \
         "GCN residual has no effect — check spatial processing"
+
+
+# ---------------------------------------------------------------------------
+# Dynamic graph variant + masked pool
+# ---------------------------------------------------------------------------
+
+
+def test_dynamic_graph_default():
+    from ewat.encoder.stgcn import STGCNEncoder
+    enc = STGCNEncoder()
+    assert enc.dynamic_graph is True
+
+
+def test_static_graph_variant_runs():
+    from ewat.encoder.stgcn import STGCNEncoder
+    enc = STGCNEncoder(d_feat=17, n_nodes=6, d_hidden=16, d_embed=8,
+                       dynamic_graph=False, dropout=0.0)
+    sig, adj = _batch(B=2, T=6)
+    with torch.no_grad():
+        z = enc(sig, adj)
+    assert z.shape == (2, 8)
+
+
+def test_dynamic_vs_static_differ_when_adjacency_varies(encoder):
+    """When the adjacency varies in time, dynamic vs static encoders differ."""
+    from ewat.encoder.stgcn import STGCNEncoder
+    enc_static = STGCNEncoder(
+        d_feat=17, n_nodes=6, d_hidden=32, d_embed=64,
+        n_gcn_layers=2, tcn_kernel=3, tcn_layers=2,
+        n_adj_ch=3, dropout=0.0, dynamic_graph=False,
+    )
+    enc_static.load_state_dict(encoder.state_dict())  # share weights
+    encoder.eval()
+    enc_static.eval()
+
+    sig = torch.randn(1, 8, 6, 17)
+    adj = torch.zeros(1, 8, 6, 6, 3)
+    # Time-varying connectivity that averages to a constant block.
+    adj[0, :4, 0, 1, :] = 1.0
+    adj[0, 4:, 1, 2, :] = 1.0
+    with torch.no_grad():
+        z_dyn = encoder(sig, adj)
+        z_stat = enc_static(sig, adj)
+    assert not torch.allclose(z_dyn, z_stat, atol=1e-4), (
+        "Dynamic and static graphs produce identical embeddings on time-varying A(t)"
+    )
+
+
+def test_layernorm_used_in_temporal_block():
+    from ewat.encoder.stgcn import _TemporalBlock
+    block = _TemporalBlock(channels=16, kernel_size=3, dilation=1, dropout=0.0)
+    block.eval()
+    x = torch.randn(2, 16, 8)
+    with torch.no_grad():
+        y = block(x)
+    # The LayerNorm should produce roughly zero-mean / unit-variance
+    # outputs along the channel axis (after the gelu+conv).
+    means = y.mean(dim=1)
+    stds = y.std(dim=1, unbiased=False)
+    assert torch.all(means.abs() < 0.5)
+    assert torch.all(stds < 5.0)
+
+
+def test_masked_pool_ignores_padding():
+    from ewat.encoder.stgcn import STGCNEncoder
+    enc = STGCNEncoder(d_feat=4, n_nodes=3, d_hidden=8, d_embed=4,
+                       n_gcn_layers=1, tcn_layers=1, dropout=0.0)
+    enc.eval()
+
+    sig = torch.zeros(1, 6, 3, 4)
+    sig[0, :3] = torch.randn(3, 3, 4)
+    adj = torch.zeros(1, 6, 3, 3, 3)
+    adj[0, :3] = torch.rand(3, 3, 3, 3)
+
+    sig_short = sig[:, :3]
+    adj_short = adj[:, :3]
+
+    with torch.no_grad():
+        z_padded = enc(sig, adj, lengths=torch.tensor([3]))
+        z_short = enc(sig_short, adj_short)
+    assert torch.allclose(z_padded, z_short, atol=1e-5)
+
+
+def test_unmasked_pool_includes_padding():
+    """Without lengths, padded zeros bias the embedding (regression)."""
+    from ewat.encoder.stgcn import STGCNEncoder
+    enc = STGCNEncoder(d_feat=4, n_nodes=3, d_hidden=8, d_embed=4,
+                       n_gcn_layers=1, tcn_layers=1, dropout=0.0)
+    enc.eval()
+    sig = torch.zeros(1, 6, 3, 4)
+    sig[0, :3] = torch.randn(3, 3, 4)
+    adj = torch.zeros(1, 6, 3, 3, 3)
+    adj[0, :3] = torch.rand(3, 3, 3, 3)
+    with torch.no_grad():
+        z_padded = enc(sig, adj)
+        z_short = enc(sig[:, :3], adj[:, :3])
+    assert not torch.allclose(z_padded, z_short, atol=1e-5)

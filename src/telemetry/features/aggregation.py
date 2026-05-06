@@ -100,13 +100,31 @@ def reconstruct_from_histogram(
     bucket_bounds: np.ndarray,
     bucket_counts: np.ndarray,
     n_samples: int = 200,
+    rng: np.random.Generator | int | None = None,
 ) -> np.ndarray:
     """Reconstruct approximate raw samples from a Prometheus histogram.
 
     Prometheus exposes cumulative histograms (le buckets). We approximate
     the raw distribution by uniform-sampling within each bucket proportional
     to the bucket's count. This yields a sample-level distribution suitable
-    for `aggregate_p99_union` without computing percentile-of-percentiles.
+    for :func:`aggregate_p99_union` without computing
+    percentile-of-percentiles.
+
+    Determinism
+    -----------
+    The previous implementation used :func:`numpy.random.uniform` directly,
+    which depends on the global RNG state. Two consecutive
+    ``build_features`` invocations on the same Phase 1 dump could therefore
+    yield slightly different M features. The function now accepts an
+    explicit ``rng`` argument:
+
+    - ``rng=None`` (default) → emits a :class:`RuntimeWarning` once and
+      uses a fresh seedless generator.
+    - ``rng=int`` → seeds a fresh :class:`numpy.random.Generator`.
+    - ``rng=np.random.Generator`` → used directly.
+
+    Callers wired through :file:`configs/collection.yaml`
+    (``aggregation.histogram_seed``) propagate a global seed.
 
     Parameters
     ----------
@@ -119,12 +137,23 @@ def reconstruct_from_histogram(
     n_samples:
         Target number of synthetic samples to generate. Actual count may
         differ slightly due to integer rounding.
-
-    Returns
-    -------
-    np.ndarray
-        Approximate raw sample array.
+    rng:
+        :class:`numpy.random.Generator`, integer seed, or ``None``.
     """
+    import warnings
+
+    if rng is None:
+        warnings.warn(
+            "reconstruct_from_histogram called without an explicit rng — "
+            "M features may not be reproducible across runs. Pass an integer "
+            "seed or a numpy.random.Generator to fix this.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        rng = np.random.default_rng()
+    elif isinstance(rng, (int, np.integer)):
+        rng = np.random.default_rng(int(rng))
+
     total = float(np.sum(bucket_counts))
     if total == 0:
         return np.array([])
@@ -136,7 +165,7 @@ def reconstruct_from_histogram(
             prev_bound = float(bound)
             continue
         k = max(1, round(n_samples * count / total))
-        samples.append(np.random.uniform(prev_bound, float(bound), k))
+        samples.append(rng.uniform(prev_bound, float(bound), k))
         prev_bound = float(bound)
 
     return np.concatenate(samples) if samples else np.array([])

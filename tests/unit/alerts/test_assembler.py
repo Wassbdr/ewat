@@ -242,3 +242,106 @@ def test_no_drift_detector_produces_alerts():
     signal, adjacency = _make_signal()
     alerts = assembler.predict(signal, adjacency)
     assert len(alerts) == N_CLUSTERS
+
+
+# ---------------------------------------------------------------------------
+# New behaviour: episode_id=None resets, grouping by k*, step_seconds
+# ---------------------------------------------------------------------------
+
+
+def test_episode_id_none_always_resets_drift_detector():
+    """episode_id=None must trigger a reset on every call (defensive default)."""
+    assembler = _make_assembler(threshold=0.0)
+    detector = _make_mock_detector(flag=False)
+    assembler.drift_detector = detector
+    signal, adjacency = _make_signal()
+
+    assembler.predict(signal, adjacency, episode_id=None)
+    assert detector.reset.call_count == 1
+    assembler.predict(signal, adjacency, episode_id=None)
+    assert detector.reset.call_count == 2
+
+
+def test_first_call_resets_when_no_prior_episode():
+    """The first call must reset, fixing the empty-string-default bug."""
+    assembler = _make_assembler(threshold=0.0)
+    detector = _make_mock_detector(flag=False)
+    assembler.drift_detector = detector
+    signal, adjacency = _make_signal()
+
+    assembler.predict(signal, adjacency, episode_id="")
+    detector.reset.assert_called_once()
+
+
+def test_grouping_runs_one_encoder_pass_per_distinct_k():
+    """Multiple clusters with the same k* should share one encoder forward."""
+    typer = _make_typer()
+    classifiers = _make_classifiers()
+    # All three clusters share k*=4 → one encoder forward.
+    k_optimal = {0: 4, 1: 4, 2: 4}
+    assembler = AlertAssembler(typer, classifiers, k_optimal, {}, threshold=0.0)
+
+    embed_calls = {"n": 0}
+    real_embed = typer.embed
+
+    def counting_embed(sig: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
+        embed_calls["n"] += 1
+        return real_embed(sig, adj)
+
+    typer.embed = counting_embed  # type: ignore[assignment]
+    signal, adjacency = _make_signal(t=8)
+    assembler.predict(signal, adjacency)
+    assert embed_calls["n"] == 1
+
+
+def test_grouping_two_distinct_k_values():
+    """Two distinct k* values → two encoder forwards."""
+    typer = _make_typer()
+    classifiers = _make_classifiers()
+    k_optimal = {0: 2, 1: 4, 2: 4}
+    assembler = AlertAssembler(typer, classifiers, k_optimal, {}, threshold=0.0)
+
+    embed_calls = {"n": 0}
+    real_embed = typer.embed
+
+    def counting_embed(sig: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
+        embed_calls["n"] += 1
+        return real_embed(sig, adj)
+
+    typer.embed = counting_embed  # type: ignore[assignment]
+    signal, adjacency = _make_signal(t=8)
+    assembler.predict(signal, adjacency)
+    assert embed_calls["n"] == 2  # one per distinct k*
+
+
+def test_regime_mask_filters_window():
+    """When regime_mask is provided, only normal-regime steps feed the encoder."""
+    typer = _make_typer()
+    classifiers = _make_classifiers()
+    k_optimal = {c: 3 for c in range(N_CLUSTERS)}
+    assembler = AlertAssembler(typer, classifiers, k_optimal, {}, threshold=0.0)
+    signal, adjacency = _make_signal(t=10)
+    mask = np.zeros(10, dtype=bool)
+    mask[2:6] = True  # only 4 normal steps in the middle
+    alerts = assembler.predict(signal, adjacency, regime_mask=mask)
+    assert len(alerts) == N_CLUSTERS
+
+
+def test_regime_mask_wrong_length_raises():
+    assembler = _make_assembler(threshold=0.0)
+    signal, adjacency = _make_signal(t=8)
+    with pytest.raises(ValueError):
+        assembler.predict(signal, adjacency, regime_mask=np.ones(3, dtype=bool))
+
+
+def test_step_seconds_overrides_default():
+    typer = _make_typer()
+    classifiers = _make_classifiers()
+    k_optimal = {c: 3 for c in range(N_CLUSTERS)}
+    assembler = AlertAssembler(
+        typer, classifiers, k_optimal, {}, threshold=0.0, step_seconds=15.0,
+    )
+    signal, adjacency = _make_signal()
+    alerts = assembler.predict(signal, adjacency)
+    for a in alerts:
+        assert a.horizon_seconds == pytest.approx(a.horizon_steps * 15.0)

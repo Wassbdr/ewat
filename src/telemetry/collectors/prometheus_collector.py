@@ -232,6 +232,7 @@ class PrometheusCollector:
         timeout: float = 10.0,
         services: list[str] | None = None,
         aliases: dict[str, str] | None = None,
+        histogram_seed: int = 42,
     ) -> None:
         self._endpoint = endpoint.rstrip("/")
         self._namespace = namespace
@@ -239,6 +240,10 @@ class PrometheusCollector:
         self._timeout = timeout
         self._services: list[str] | None = services
         self._aliases: dict[str, str] = aliases or {}
+        # RNG used for histogram → samples reconstruction (P99 latency).
+        # Seeded for reproducibility across `build_features` runs.
+        self._histogram_seed: int = int(histogram_seed)
+        self._histogram_rng: np.random.Generator = np.random.default_rng(self._histogram_seed)
 
         _retry = Retry(total=3, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
         _adapter = HTTPAdapter(max_retries=_retry)
@@ -585,7 +590,9 @@ class PrometheusCollector:
             # All supported sources (Istio ms, OTel HTTP ms, OTel gRPC ms old semconv)
             # use millisecond bucket boundaries. Always divide by 1000 to get seconds.
             bounds_s = bounds / 1000.0
-            samples = reconstruct_from_histogram(bounds_s, inc_counts)
+            samples = reconstruct_from_histogram(
+                bounds_s, inc_counts, rng=self._histogram_rng
+            )
             svc_samples.setdefault(svc, []).append(samples)
 
         for svc, row in svc_idx.items():

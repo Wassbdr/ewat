@@ -152,33 +152,63 @@ def _stratified_temporal_split(
     episodes: list[FeaturedEpisode],
     train_ratio: float,
     val_ratio: float,
+    grouping: dict[str, str] | None = None,
+    min_test_per_group: int = 1,
+    min_val_per_group: int = 1,
 ) -> dict[str, list[str]]:
-    """Stratified temporal split: split 70/15/15 *within each scenario*.
+    """Stratified temporal split with a configurable grouping key.
 
-    Within each scenario, episodes are sorted by ``baseline_start`` and cut
-    at the ratio boundaries, preserving temporal order per scenario. This
-    ensures every scenario (including the 4 drift scenarios) appears in all
-    three splits — a requirement for H2 validation on held-out data.
+    Within each group, episodes are sorted by ``baseline_start`` and cut
+    at the ratio boundaries while *guaranteeing* at least
+    ``min_test_per_group`` episodes go to test (and ``min_val_per_group``
+    to val) when the group has enough episodes. This eliminates the
+    ``NaN AUROC`` rows on under-represented groups.
 
-    For a scenario with n episodes: n_train = max(1, round(n * train_ratio)),
-    n_val = max(1, round(n * val_ratio)), the remainder goes to test.
+    Parameters
+    ----------
+    grouping:
+        ``{episode_id → group_key}``. When ``None`` (default) episodes are
+        grouped by ``scenario``. Pass a cluster manifest's
+        ``{eid → cluster_id}`` map for cluster-aware splitting after a
+        first typing pass.
+    min_test_per_group:
+        Minimum number of episodes guaranteed in the test set for each
+        group, capped by the group size.
+    min_val_per_group:
+        Minimum number of episodes guaranteed in the val set for each
+        group, capped by the group size.
     """
     if train_ratio + val_ratio >= 1.0:
         raise SystemExit("train_ratio + val_ratio must be < 1.0")
+    if min_test_per_group < 0 or min_val_per_group < 0:
+        raise SystemExit("min_test_per_group and min_val_per_group must be ≥ 0")
 
     split: dict[str, list[str]] = {"train": [], "val": [], "test": []}
     grouped: dict[str, list[FeaturedEpisode]] = defaultdict(list)
     for ep in episodes:
-        grouped[ep.scenario].append(ep)
+        if grouping is not None:
+            key = str(grouping.get(ep.episode_id, "__unassigned__"))
+        else:
+            key = ep.scenario
+        grouped[key].append(ep)
 
-    for scenario, group_eps in sorted(grouped.items()):
+    for _, group_eps in sorted(grouped.items()):
         by_time = sorted(group_eps, key=lambda e: e.baseline_start)
         n = len(by_time)
+        # Honour minimum quotas, but never exceed the group size.
+        min_test = min(min_test_per_group, max(0, n - 1))
+        min_val = min(min_val_per_group, max(0, n - 1 - min_test))
         n_train = max(1, round(n * train_ratio))
-        n_val = max(1, round(n * val_ratio))
-        # Ensure at least one episode in test when n >= 3
-        if n >= 3 and n - n_train - n_val < 1:
-            n_val = max(0, n - n_train - 1)
+        n_val = max(min_val, round(n * val_ratio))
+        # Ensure at least min_test episodes in test.
+        if n - n_train - n_val < min_test:
+            shortage = min_test - (n - n_train - n_val)
+            n_train = max(1, n_train - shortage)
+        # Re-validate group sizing.
+        n_test = n - n_train - n_val
+        if n_test < min_test:
+            n_val = max(0, n - n_train - min_test)
+            n_test = n - n_train - n_val
         split["train"].extend(e.episode_id for e in by_time[:n_train])
         split["val"].extend(e.episode_id for e in by_time[n_train:n_train + n_val])
         split["test"].extend(e.episode_id for e in by_time[n_train + n_val:])
@@ -355,11 +385,36 @@ def main() -> None:
 
     services = _verify_services(kept)
 
-    if args.stratified:
-        split = _stratified_temporal_split(kept, args.train_ratio, args.val_ratio)
+    grouping: dict[str, str] | None = None
+    if args.cluster_manifest:
+        manifest_path = Path(args.cluster_manifest)
+        if not manifest_path.is_absolute():
+            manifest_path = REPO_ROOT / manifest_path
+        try:
+            manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise SystemExit(f"cluster manifest not found: {manifest_path}") from exc
+        grouping = {
+            eid: str(info.get("cluster", "__unassigned__"))
+            for eid, info in manifest_data.items()
+        }
         logger.info(
-            "stratified temporal split: train=%d  val=%d  test=%d",
+            "cluster-aware split: %d groups from %s",
+            len(set(grouping.values())), manifest_path,
+        )
+
+    if args.stratified or grouping is not None:
+        split = _stratified_temporal_split(
+            kept, args.train_ratio, args.val_ratio,
+            grouping=grouping,
+            min_test_per_group=args.min_test_per_cluster,
+            min_val_per_group=args.min_val_per_cluster,
+        )
+        logger.info(
+            "stratified temporal split: train=%d  val=%d  test=%d "
+            "(min_test_per_group=%d, min_val_per_group=%d)",
             len(split["train"]), len(split["val"]), len(split["test"]),
+            args.min_test_per_cluster, args.min_val_per_cluster,
         )
     else:
         split = _temporal_split(kept, args.train_ratio, args.val_ratio)
@@ -434,6 +489,28 @@ def _cli() -> argparse.Namespace:
     p.add_argument("--stratified", action="store_true",
                    help="use stratified temporal split (per-scenario 70/15/15) instead of "
                         "global temporal split — required for H2 validation")
+    p.add_argument(
+        "--cluster-manifest",
+        type=str,
+        default=None,
+        help=(
+            "optional path to cluster_manifest.json produced by typing/train.py. "
+            "When provided, overrides scenario-stratification by cluster-stratification. "
+            "Implies --stratified."
+        ),
+    )
+    p.add_argument(
+        "--min-test-per-cluster", type=int, default=1,
+        help=(
+            "minimum number of episodes guaranteed in the test split for each "
+            "stratification group (scenario or cluster). Eliminates NaN AUROC rows "
+            "on under-represented clusters."
+        ),
+    )
+    p.add_argument(
+        "--min-val-per-cluster", type=int, default=1,
+        help="minimum number of episodes guaranteed in the val split per group.",
+    )
     p.add_argument("--force", action="store_true")
     return p.parse_args()
 
