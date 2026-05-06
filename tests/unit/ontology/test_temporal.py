@@ -5,7 +5,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from ewat.ontology.temporal import compute_temporal_relations
 

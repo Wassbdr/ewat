@@ -1,7 +1,6 @@
 """Unit tests for src/ewat/drift/calibration.py."""
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -55,7 +54,6 @@ class TestEpisodeMMD2Sequence:
 
 class TestCalibrateEpsilon:
     def test_epsilon_positive(self):
-        rng = np.random.default_rng(42)
         drift_sigs = [_make_signal(T=60, shift=10.0, seed=i) for i in range(3)]
         normal_sigs = [_make_signal(T=60, shift=0.0, seed=i + 100) for i in range(3)]
         k = RFFKernel(sigma=1.0, rff_dim=64, seed=0)

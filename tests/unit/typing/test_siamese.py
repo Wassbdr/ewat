@@ -92,7 +92,6 @@ def test_siamese_embed_l2_normalized(typer):
 
 def test_siamese_distance_same_input_zero(typer):
     """d(z, z) must be 0 (or very close) for identical projections."""
-    from ewat.typing.siamese import ProjectionHead
     z = torch.randn(5, 32)
     z = torch.nn.functional.normalize(z, p=2, dim=-1)
     dist = typer.distance(z, z)
@@ -102,7 +101,6 @@ def test_siamese_distance_same_input_zero(typer):
 
 
 def test_siamese_distance_nonnegative(typer):
-    from ewat.typing.siamese import ProjectionHead
     z1 = torch.nn.functional.normalize(torch.randn(10, 32), p=2, dim=-1)
     z2 = torch.nn.functional.normalize(torch.randn(10, 32), p=2, dim=-1)
     dist = typer.distance(z1, z2)

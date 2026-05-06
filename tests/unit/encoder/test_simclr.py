@@ -148,7 +148,7 @@ class TestSimCLRTrainer:
         loader = _ListLoader(eps, batch_size=4)
         trainer = SimCLRTrainer(encoder, head, opt, temperature=0.5, seed=1)
         s1 = trainer.run_epoch(loader, epoch=1)
-        s2 = trainer.run_epoch(loader, epoch=2)
+        trainer.run_epoch(loader, epoch=2)
         s3 = trainer.run_epoch(loader, epoch=3)
         assert s1.train_loss > 0
         # Loss should generally decrease over the first few epochs on this

@@ -65,7 +65,6 @@ class TestDriftDetectorDriftRegime:
     def test_detects_large_shift(self):
         """A mean shift of 20σ should be detected."""
         det = _make_detector(epsilon=0.01, window_ref=10, window_cur=5, post_window=3)
-        rng = np.random.default_rng(2)
         # Warm up with zeros
         for _ in range(15):
             det.update(np.zeros(6))

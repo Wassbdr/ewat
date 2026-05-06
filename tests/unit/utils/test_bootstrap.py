@@ -88,7 +88,10 @@ def test_bootstrap_lo_le_hi():
     data = rng.normal(0, 1, size=80)
     ci = bootstrap_mean_ci(data, n=300, rng=np.random.default_rng(3))
     assert ci.lo <= ci.hi
-    assert ci.lo <= ci.estimate <= ci.hi or np.isclose(ci.lo, ci.estimate) or np.isclose(ci.hi, ci.estimate)
+    in_bounds = ci.lo <= ci.estimate <= ci.hi
+    on_lower = np.isclose(ci.lo, ci.estimate)
+    on_upper = np.isclose(ci.hi, ci.estimate)
+    assert in_bounds or on_lower or on_upper
 
 
 # ---------------------------------------------------------------------------
