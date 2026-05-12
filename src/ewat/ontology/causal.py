@@ -55,16 +55,36 @@ References
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
 from typing import Literal
 
 import numpy as np
+import pandas as pd
 from scipy.special import digamma  # type: ignore[import-untyped]
 from sklearn.neighbors import KDTree
 
 from ewat.ontology.cooccurrence import benjamini_hochberg, holm_bonferroni
 from ewat.ontology.graph import OntologyRelation
+
+
+@dataclass
+class ServiceCausalRelation:
+    """Directed causal relation between two services within a cluster type.
+
+    Represents TE(source_service → target_service) computed from episodes
+    belonging to cluster ``cluster``, using the KSG-1 hierarchical estimator
+    (TE averaged across episodes, not averaged signal then TE).
+    """
+
+    cluster: int
+    source_service: str
+    target_service: str
+    te_value: float
+    p_value: float
+    support: int
 
 # ---------------------------------------------------------------------------
 # KSG-1 mutual information estimator
@@ -357,3 +377,205 @@ def compute_causal_relations(
                 )
             )
     return relations
+
+
+# ---------------------------------------------------------------------------
+# Service-level causal relations
+# ---------------------------------------------------------------------------
+
+def _load_episode_signal(
+    features_root: Path,
+    episode_id: str,
+    regime: str | None,
+) -> np.ndarray | None:
+    """Load signal (T, N, 17) for one episode, optionally filtered by regime.
+
+    Returns None if loading fails or the filtered slice is empty.
+    NaN values are replaced with 0.
+    """
+    try:
+        sig = np.load(features_root / episode_id / "signal.npz")["signal"].astype(np.float32)
+        sig = np.nan_to_num(sig, nan=0.0)
+        if regime is not None:
+            df = pd.read_parquet(features_root / episode_id / "labels.parquet",
+                                 columns=["regime"])
+            mask = (df["regime"] == regime).values
+            if not mask.any():
+                return None
+            sig = sig[mask]
+        return sig if len(sig) > 0 else None
+    except Exception:
+        return None
+
+
+def _canonical_services(features_root: Path, episode_id: str) -> list[str]:
+    """Return ordered service names from services.json of an episode."""
+    path = features_root / episode_id / "services.json"
+    return json.loads(path.read_text())
+
+
+def compute_service_causal_relations(
+    cluster_manifest: dict[str, dict],
+    features_root: Path,
+    n_clusters: int,
+    regime: str | None = None,
+    lag: int = 1,
+    k_knn: int = 5,
+    n_permutations: int = 100,
+    p_threshold: float = 0.05,
+    min_support: int = 5,
+    min_series_length: int = 10,
+    te_method: Literal["univariate_sum", "multivariate"] = "univariate_sum",
+    seed: int = 42,
+    correction: Literal["holm", "bh", "none"] = "bh",
+) -> dict[int, list[ServiceCausalRelation]]:
+    """Compute service-level TE causal relations per cluster type.
+
+    Unlike ``compute_causal_relations`` (which compares averaged trajectories
+    of *different* episodes), this function estimates TE **within each episode**
+    between individual service time-series, then averages TE values across
+    episodes (hierarchical estimator — no ecological bias from pre-averaging).
+
+    For each cluster C_i and each ordered service pair (A, B):
+      1. Compute TE(signal_A → signal_B) on every episode of C_i.
+      2. Average across episodes → observed TE.
+      3. Permutation test: shuffle time axis of A's signal per episode,
+         recompute TE, average → null distribution.
+      4. Phipson–Smyth p-value, BH/Holm correction across N×(N−1) pairs.
+
+    Parameters
+    ----------
+    cluster_manifest:
+        ``{episode_id → {"cluster": int, ...}}`` from cluster_artifacts.
+    features_root:
+        Root of the feature store.
+    n_clusters:
+        Number of cluster types.
+    regime:
+        If given (``"normal"``, ``"injection"``, ``"recovery"``), restrict
+        analysis to steps of that regime. None = full episode.
+    lag:
+        TE lag in timesteps.
+    k_knn:
+        KSG nearest-neighbour count.
+    n_permutations:
+        Permutation test iterations.
+    p_threshold:
+        Max adjusted p-value to emit a relation.
+    min_support:
+        Minimum valid episodes per cluster.
+    min_series_length:
+        Minimum T (after regime filtering) for the KSG estimator.
+    te_method:
+        ``"univariate_sum"`` (fast) or ``"multivariate"`` (theoretically sound).
+    seed:
+        RNG seed.
+    correction:
+        Multiple-testing correction across N×(N−1) directed pairs.
+
+    Returns
+    -------
+    ``{cluster_id: [ServiceCausalRelation, ...]}`` — only significant relations.
+    """
+    features_root = Path(features_root)
+    rng = np.random.default_rng(seed)
+
+    cluster_eps: dict[int, list[str]] = {c: [] for c in range(n_clusters)}
+    for ep_id, info in cluster_manifest.items():
+        cluster_eps[int(info["cluster"])].append(ep_id)
+
+    # Infer service list from first available episode
+    services: list[str] = []
+    for ep_id in cluster_manifest:
+        try:
+            services = _canonical_services(features_root, ep_id)
+            break
+        except Exception:
+            continue
+    if not services:
+        raise RuntimeError("Could not load services.json from any episode.")
+    n_services = len(services)
+
+    results: dict[int, list[ServiceCausalRelation]] = {}
+
+    for cluster_id in range(n_clusters):
+        eps = cluster_eps[cluster_id]
+        if len(eps) < min_support:
+            continue
+
+        # Load and cache all valid signals for this cluster
+        signals: list[np.ndarray] = []
+        for ep_id in eps:
+            sig = _load_episode_signal(features_root, ep_id, regime)
+            if sig is not None and sig.shape[0] - lag >= min_series_length:
+                signals.append(sig)
+
+        if len(signals) < min_support:
+            continue
+
+        print(f"  C{cluster_id}: {len(signals)} episodes, "
+              f"T_mean={np.mean([s.shape[0] for s in signals]):.1f} steps")
+
+        candidates: list[tuple[int, int, float, int]] = []
+        raw_pvals: list[float] = []
+
+        # Iterate over all directed service pairs
+        for a in range(n_services):
+            for b in range(n_services):
+                if a == b:
+                    continue
+
+                # Observed TE: compute per episode, then average
+                obs_tes: list[float] = []
+                for sig in signals:
+                    x = sig[:, a, :]  # (T, 17)
+                    y = sig[:, b, :]  # (T, 17)
+                    te = _total_te(x, y, lag=lag, k=k_knn, method=te_method)
+                    obs_tes.append(te)
+
+                obs_mean = float(np.mean(obs_tes))
+                if obs_mean <= 0.0:
+                    continue
+
+                # Permutation null: shuffle X time axis within each episode
+                perm_means: list[float] = []
+                for _ in range(n_permutations):
+                    perm_tes = []
+                    for sig in signals:
+                        x_perm = rng.permutation(sig[:, a, :])
+                        y = sig[:, b, :]
+                        perm_tes.append(
+                            _total_te(x_perm, y, lag=lag, k=k_knn, method=te_method)
+                        )
+                    perm_means.append(float(np.mean(perm_tes)))
+
+                p_raw = _permutation_p_value(obs_mean, perm_means)
+                candidates.append((a, b, obs_mean, len(signals)))
+                raw_pvals.append(p_raw)
+
+        if not candidates:
+            continue
+
+        if correction == "bh":
+            adj_pvals = benjamini_hochberg(raw_pvals)
+        elif correction == "holm":
+            adj_pvals = holm_bonferroni(raw_pvals)
+        else:
+            adj_pvals = list(raw_pvals)
+
+        cluster_rels: list[ServiceCausalRelation] = []
+        for (a, b, te_val, support), p_adj in zip(candidates, adj_pvals):
+            if not np.isnan(p_adj) and p_adj < p_threshold:
+                cluster_rels.append(ServiceCausalRelation(
+                    cluster=cluster_id,
+                    source_service=services[a],
+                    target_service=services[b],
+                    te_value=round(float(te_val), 6),
+                    p_value=round(float(p_adj), 6),
+                    support=support,
+                ))
+
+        if cluster_rels:
+            results[cluster_id] = cluster_rels
+
+    return results

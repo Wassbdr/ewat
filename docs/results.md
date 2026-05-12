@@ -1,6 +1,6 @@
 # EWAT — Résultats et interprétation
 
-_Mis à jour : 2026-05-06 (correction méthodologique H1/H3 + ablation relancée avec labels corrigés)_
+_Mis à jour : 2026-05-11 (comparaison architectures encodeur : STGCN vs SimCLR vs GAT)_
 
 Ce document retrace l'évolution complète du projet EWAT, les résultats obtenus à chaque étape et leur interprétation scientifique. Il est distinct du STATUS.md (tableau de bord opérationnel) et vise à fournir une lecture analytique exploitable pour le rapport de stage.
 
@@ -266,23 +266,53 @@ Le compromis détection/FA est défavorable aux seuils bas à cause de la longue
 
 ---
 
-## 10. Pistes pour la suite
+## 10. Comparaison architectures encodeur — STGCN vs SimCLR vs GAT
+
+### Protocole
+
+Toutes les variantes ont été entraînées sur ewat_v3 (graine 42, même split train/val/test 209/45/45). L'évaluation H1 utilise le nearest centroid (méthodologie corrigée), H3 utilise k* sélectionné sur val.
+
+- **STGCN** : convolution spectrale sur graphe pondéré + TCN temporel (architecture de base)
+- **SimCLR** : même encodeur STGCN pré-entraîné par NT-Xent contrastif (augmentations : noise, masking) avant fine-tuning siamois
+- **GAT** : remplacement des couches GCN par des couches d'attention (Graph Attention Network), même interface downstream
+
+### Résultats comparatifs
+
+| Architecture | K | sil_val | sil_test | H1 | H3 types | AUROC moyen |
+|---|---|---|---|---|---|---|
+| **STGCN** (baseline) | 10 | 0.470 | 0.414 | ✓ PASS | 8/10 | 0.954 |
+| **SimCLR** (contrastif) | 15 | 0.495 | 0.429 | ✓ PASS | 11/15 | **0.964** |
+| **GAT** (attention) | 15 | 0.445 | **0.497** | ✓ PASS | **13/15** | 0.929 |
+
+### Interprétation
+
+**GAT améliore la géométrie de l'espace latent** (sil_test 0.414 → 0.497, +0.083) et couvre davantage de types (13/15 vs 8/10), mais au prix d'un AUROC moyen plus faible (0.929). L'attention sur les arêtes apprend une pondération adaptative de l'adjacence qui améliore la structuration des clusters — utile pour H1 — mais la granularité plus fine (K=15) dilue les épisodes par cluster, ce qui dégrade H3 sur les petits clusters.
+
+**SimCLR améliore la prédictibilité** (AUROC 0.954 → 0.964) grâce au pré-entraînement contrastif qui force l'encodeur à construire des représentations invariantes aux augmentations. La silhouette test reste modérée (0.429, proche STGCN), et 4/15 types ont AUROC NaN (clusters trop petits, n<2 test).
+
+**STGCN reste le choix de référence** : K=10 plus stable, résultats multi-graines disponibles (sil=0.519±0.092, AUROC=0.973±0.012 sur 5 graines), et compromis H1/H3 satisfaisant. Pour le rapport, le tableau ci-dessus est présenté comme une ablation d'architecture montrant que le pré-entraînement contrastif (SimCLR) et l'attention sur les arêtes (GAT) sont tous deux bénéfiques selon des critères complémentaires.
+
+**Conclusion** : STGCN est retenu comme architecture principale pour le pipeline EWAT v3. SimCLR et GAT seront réentraînés sur ewat_v4 (épisodes plus longs, disk_io complet) pour confirmer si l'avantage GAT sur H1 persiste avec de meilleures données.
+
+---
+
+## 11. Pistes pour la suite
 
 ### Court terme — sans nouvelle collecte
 
-**10.1 DriftDetector → AlertAssembler** *(fait)*
+**11.1 DriftDetector → AlertAssembler** *(fait)*
 Intégré (flag=True → alertes supprimées). FA réduite à 8.3% au seuil 0.7. Aux seuils bas, le warm-up de 10 steps est trop long pour les épisodes courts.
 
-**10.2 H2 bis** *(fait)*
+**11.2 H2 bis** *(fait)*
 FAIL confirmé. Les embeddings siamois ne sont pas le bon espace pour la séparabilité drift/anomalie.
 
-**10.3 Correction méthodologique H1/H3** *(fait)*
+**11.3 Correction méthodologique H1/H3** *(fait)*
 Nearest centroid + k* depuis val. Résultats corrigés dans ce document.
 
-**10.4 Ablation avec labels corrigés** *(fait)*
+**11.4 Ablation avec labels corrigés** *(fait)*
 Relancée avec le manifest nearest-centroid. Résultats dans section 8 — features critiques révisées (trace_depth, lexical_entropy, latency_p99). Baseline sil=0.333 cohérente avec H1 corrigé.
 
-**10.5 Réduction feature space**
+**11.5 Réduction feature space**
 Supprimer les 2 paires redondantes (17→15 features) et réentraîner. Si silhouette stable → argument de simplification du modèle.
 
 ### Moyen terme — collecte ewat_v4

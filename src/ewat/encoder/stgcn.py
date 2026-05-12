@@ -94,8 +94,9 @@ class _TemporalBlock(nn.Module):
 
     Input/output shape: ``(B, N, T, d)`` with causal padding on the left so
     that each output timestep only sees past inputs. The per-channel
-    LayerNorm is applied after the activation (previously declared but
-    never wired up in the forward pass).
+    LayerNorm (``self.norm``) exists as a parameter but is intentionally
+    NOT applied in the forward pass — the v3 checkpoint was trained without
+    it. Enable for newly trained models on v4 data.
     """
 
     def __init__(
@@ -117,8 +118,6 @@ class _TemporalBlock(nn.Module):
         out = self.conv(x)
         out = out[..., : -self._pad] if self._pad else out
         out = F.gelu(out)
-        # LayerNorm normalises the channel dim → permute (..., C) and back.
-        out = self.norm(out.transpose(1, 2)).transpose(1, 2)
         return self.drop(out)
 
 

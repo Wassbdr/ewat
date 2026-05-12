@@ -287,11 +287,22 @@ class TelemetryRecorder:
     # Loki
     # ------------------------------------------------------------------
 
-    def record_loki(self, t_start: float, t_end: float) -> LokiDump:
+    def record_loki(
+        self,
+        t_start: float,
+        t_end: float,
+        chunk_s: float = 300.0,
+    ) -> LokiDump:
         """Fetch all log lines emitted from ``self._namespace`` in the window.
 
-        Paginates forward in time when the number of returned lines equals
-        the per-query limit (Loki truncation heuristic).
+        Splits the window into ``chunk_s``-second slices before querying so
+        that each individual Loki request covers at most ``chunk_s`` seconds.
+        This keeps query latency bounded regardless of total episode duration
+        (ewat_v4 episodes are ~1350s, vs ~630s for ewat_v3; without chunking
+        the per-request scan exceeds the 90s timeout).
+
+        Within each chunk, paginates forward when the number of returned lines
+        equals the per-query limit (Loki truncation heuristic).
         """
         dump = LokiDump(
             start_unix_s=t_start,
@@ -307,13 +318,15 @@ class TelemetryRecorder:
         query = f'{{k8s_namespace_name="{self._namespace}"}}'
         cursor_ns = int(t_start * 1e9)
         end_ns = int(t_end * 1e9)
+        chunk_ns = int(chunk_s * 1e9)
         max_pages = 50  # hard safety cap on pagination loops
         page = 0
         while cursor_ns < end_ns and page < max_pages:
+            chunk_end_ns = min(cursor_ns + chunk_ns, end_ns)
             params = {
                 "query": query,
                 "start": cursor_ns,
-                "end": end_ns,
+                "end": chunk_end_ns,
                 "limit": self._loki_limit,
                 "direction": "forward",
             }
@@ -332,8 +345,6 @@ class TelemetryRecorder:
                 dump.errors[f"page_{page}"] = f"json: {exc}"
                 break
             streams = payload.get("data", {}).get("result", []) or []
-            if not streams:
-                break
             n_added = 0
             last_ts_ns = cursor_ns
             for stream in streams:
@@ -348,10 +359,13 @@ class TelemetryRecorder:
                 except (ValueError, IndexError):
                     continue
             dump.n_lines += n_added
-            if n_added < self._loki_limit:
-                break
-            dump.truncated = True
-            cursor_ns = last_ts_ns + 1
+            if n_added >= self._loki_limit:
+                # Full page within this chunk — advance past last seen timestamp.
+                dump.truncated = True
+                cursor_ns = last_ts_ns + 1
+            else:
+                # Partial page or empty chunk — advance to the next chunk boundary.
+                cursor_ns = chunk_end_ns
             page += 1
         dump.elapsed_s = time.time() - t0
         return dump

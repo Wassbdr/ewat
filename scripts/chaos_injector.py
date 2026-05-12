@@ -91,8 +91,8 @@ class ChaosInjector:
 
         return spec
 
-    _APPLY_TIMEOUT_S = 60.0
-    _DELETE_TIMEOUT_S = 30.0
+    _APPLY_TIMEOUT_S = 210.0   # must exceed the max kubectl rollout --timeout=180s in scenario scripts
+    _DELETE_TIMEOUT_S = 45.0
 
     def _run(self, command: list[str]) -> None:
         if self._dry_run:

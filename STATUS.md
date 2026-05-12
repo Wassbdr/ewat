@@ -1,6 +1,6 @@
 # EWAT — État courant du projet
 
-_Mis à jour : 2026-05-06 (multi-graines + baselines)_
+_Mis à jour : 2026-05-12 (baselines indépendants B3/B4, ablation rigoureuse, SimCLR/GAT, service-level TE, RCAEval zero-shot transfer)_
 
 > Résultats détaillés et interprétation scientifique → `docs/results.md`
 
@@ -89,37 +89,75 @@ S(t) ∈ ℝ^{N×17}
 
 ### Étape 2b — Ontologie (100 permutations — définitif)
 
+**Cluster-level TE (build.py — biais écologique documenté) :**
 - 22 relations temporelles, **0 causales**, 0 co-occurrence
 - Les 2 relations causales du dry-run (C6→C8, C2→C8, 20 perm.) étaient des faux positifs
 - Relations temporelles : 10 auto-transitions (Ci→Ci), 12 transitions inter-clusters (support ≥ 3)
 
+**Service-level TE (build_service.py — estimateur hiérarchique, sans biais écologique) :**
+- **124 relations causales significatives** (p < 0.05, BH-FDR) sur 8/10 clusters
+- C5 (rolling_deploy) et C6 (config_change) : **0 relation** — les drifts bénins ne produisent pas de cascade causale entre services (résultat scientifiquement attendu et validant)
+- `load-generator → frontend` : relation ubiquitaire (présente dans les 8 clusters actifs) — couplage structurel de trafic, TE variable de 0.047 (C4, crash) à 0.187 (C2, resource_leak)
+- **Relation unique à C8** (θ_{drift∩anomaly}) : `cart → load-generator` (TE=0.031) — seul cluster où ce sens de causalité est significatif, cohérent avec les dynamiques de retry/backoff pendant un déploiement défectueux
+- **C2 (resource_leak) amplitude maximale** : TE load-gen→frontend = 0.187 (vs 0.047–0.108 ailleurs) — l'épuisement progressif des ressources amplifie les couplages inter-services
+- Nb relations par cluster : C0=23, C4=20, C8=20, C1=19, C7=15, C3=10, C9=9, C2=8
+
 ### Étape 3 — Précurseurs (k ∈ {2,4,6,8,10,12} steps, k* sélectionné sur val)
 
-| Type | AUROC_val(k*) | AUROC_test(k*) | k* |
-|---|---|---|---|
-| C0 | 1.000 | **0.970** | 6 steps (3 min) |
-| C1 | 1.000 | **0.976** | 6 steps (3 min) |
-| C2 | 1.000 | **0.940** | 6 steps (3 min) |
-| C3 | 0.937 | **0.794** | 2 steps (1 min) |
-| C4 | 1.000 | **1.000** | 2 steps (1 min) |
-| C5 | 1.000 | **0.977** | 6 steps (3 min) |
-| C6 | 1.000 | NaN (n<2 test) | 2 steps |
-| C7 | 0.970 | **0.992** | 6 steps (3 min) |
-| C8 | 0.990 | **0.962** | 10 steps (5 min) |
-| C9 | NaN (n<2 val) | NaN | 2 steps |
+| Type | n_pos_test | k* | AUROC_val(k*) | AUROC_test(k*) | IC 95% bootstrap |
+|------|------------|-----|--------------|----------------|-----------------|
+| C0   | 8          | 6   | 0.985        | **0.973**      | [0.906, 1.000]  |
+| C1   | 3          | 6   | 1.000        | **0.992**      | [0.953, 1.000]  |
+| C2   | 5          | 6   | 0.970        | **0.945**      | [0.865, 1.000]  |
+| C3   | 3          | 2   | 0.889        | **0.794**      | [0.636, 0.930]  |
+| C4   | 8          | 2   | 1.000        | **1.000**      | [1.000, 1.000]  |
+| C5   | 2          | 6   | 1.000        | **0.977**      | [0.909, 1.000]  |
+| C6   | 1          | 2   | 1.000        | NaN            | n.a. (n_pos<2)  |
+| C7   | 7          | 6   | 0.992        | **0.992**      | [0.966, 1.000]  |
+| C8   | 7          | 10  | 0.988        | **0.962**      | [0.895, 1.000]  |
+| C9   | 1          | 2   | NaN          | NaN            | n.a. (n_pos<2)  |
 
 **H3 ✓ PASS** — 8/10 types prédictibles (graine 42) ; 7-8/K selon la graine.
-C6/C9 : NaN par manque d'épisodes test (n=1 ou 2).
+C6/C9 : NaN par manque d'épisodes test (n_pos=1). C3 IC le plus large [0.636, 0.930] (n_pos=3).
 
-**Baselines précurseurs** (graine 42, même labels EWAT) :
-| Baseline | AUROC test @k* |
-|---|---|
-| B0 (aléatoire) | 0.500 |
-| **B1 (features brutes, sans STGCN)** | **0.966** |
-| **B2 (k-means brut + LR)** | **0.975** |
-| **EWAT (STGCN + Siamois)** | **0.951** |
+_Correction 2026-05-11_ : k* identiques à STATUS.md original. AUROC légèrement supérieur (+0.3–1.6 pp) car le résidu STGCN du commit 6543c69 (LayerNorm TCN activé post-entraînement) est désormais corrigé — forward reverted au comportement de l'entraînement.
 
-Interprétation : B1/B2 légèrement supérieurs à EWAT sur AUROC. La valeur du STGCN réside dans la **structuration** de l'espace latent (H1, sil=0.519) et non dans la discriminabilité brute. B1/B2 prédisent les labels EWAT depuis le signal brut — ils ne découvrent pas une structure indépendante.
+**Baselines précurseurs** — deux niveaux de comparaison :
+
+_B0/B1/B2 (cible : labels EWAT — récupérabilité des clusters)_ :
+| Baseline | AUROC test @k* | Remarque |
+|---|---|---|
+| B0 (aléatoire) | 0.500 | référence |
+| **B1 (features brutes, sans STGCN)** | **0.966** | prédit labels EWAT |
+| **B2 (k-means brut + LR)** | **0.975** | prédit labels EWAT |
+| **EWAT (STGCN + Siamois)** | **0.951** | prédit ses propres labels |
+
+_B3/B4 (cible : scénarios Chaos Mesh — vérité terrain indépendante, k=6, macro-AUROC OvR)_ :
+| Condition | macro-AUROC test | IC 95% | Δ vs B3 |
+|-----------|-----------------|--------|---------|
+| B3 (features brutes) | 0.835 | [0.773, 0.888] | — |
+| B4 (STGCN z_e, d=64) | 0.835 | [0.772, 0.885] | +0.000 |
+
+**Macro Δ=0.000 — coïncidence mathématique, non neutralité.** Les AUROCs sont des ratios de paires concordantes entiers sur 126 (= 3 pos × 42 neg). La somme des Δ par scénario = 0 exactement (75 paires gagnées − 75 perdues), redistribuées sans gain net. Le détail par scénario révèle la redistribution :
+
+| Scénario | B3 | B4 | Δ |
+|---|---|---|---|
+| fail_slow_cpu | 0.476 | **0.746** | **+0.270** |
+| drift_scale_up | 0.460 | **0.571** | **+0.111** |
+| intermittent_error | 0.810 | **0.913** | **+0.103** |
+| cpu_starvation | 0.722 | **0.754** | +0.032 |
+| memory_pressure | 0.937 | **0.968** | +0.032 |
+| oom | 0.897 | **0.944** | +0.048 |
+| noisy_neighbor | **0.960** | 0.714 | **−0.246** |
+| drift_config_change | **1.000** | 0.873 | **−0.127** |
+| resource_leak | **0.937** | 0.833 | **−0.103** |
+| crash | **0.960** | 0.921 | −0.040 |
+| fail_slow_latency | **0.690** | 0.643 | −0.048 |
+| network_loss | **0.722** | 0.690 | −0.032 |
+
+_Interprétation_ : l'encodeur **redistribue** la discriminabilité entre types de pannes. Il aide les pannes basées sur la saturation CPU/latence (fail_slow_cpu +27pp) et nuit aux pannes config/réseau (noisy_neighbor −25pp). Sur n=45 test, cette redistribution est exactement compensée — elle ne le sera presque certainement plus sur ewat_v4.
+
+**Interprétation globale B3/B4** : B1/B2 mesurent la *récupérabilité* des labels EWAT depuis le signal brut (circulaire — la cible est EWAT lui-même). B3/B4 utilisent la vérité terrain Chaos Mesh indépendante : Δ_macro=0.000 confirme que l'encodeur STGCN n'ajoute **pas de discriminabilité prédictive agrégée** au-delà des features brutes. La valeur du STGCN est **géométrique** (structuration de l'espace latent pour le clustering, H1 sil=0.519) et **redistributive** (réorganise la séparabilité par type) plutôt que prédictive au sens global.
 
 ### Évaluation multi-graines — robustesse H1 et H3 (5 graines)
 
@@ -140,12 +178,12 @@ K optimal stable : {9, 10, 10, 10, 11} selon la graine.
 | Méthode | Détection anomalie | FA drift | Lead time |
 |---|---|---|---|
 | **z-score (σ=2.0–3.5)** | **100%** | **100%** | 2.5 min |
-| EWAT seuil 0.3 | 100% | 100% | 4.2 min |
-| EWAT seuil 0.4 | 93.9% | 100% | 3.9 min |
-| EWAT seuil 0.5 | 75.8% | 100% | 4.0 min |
-| **EWAT seuil 0.7** | **48.5%** | **8.3%** | **2.9 min** |
+| EWAT seuil 0.3 | 100% | 100% | 4.6 min |
+| EWAT seuil 0.4 | 97.0% | 100% | 3.8 min |
+| EWAT seuil 0.5 | 78.8% | 100% | 3.9 min |
+| **EWAT seuil 0.7** | **57.6%** | **8.3%** | **3.0 min** |
 
-**Apport EWAT** : le z-score ne distingue pas drift et anomalie (FA=100% sur les drifts bénins à tous les seuils). EWAT au seuil 0.7 réduit la FA à 8.3% en maintenant un lead time de 2.9 min. Baselines précurseurs B0/B1/B2 → `experiments/baselines/precursor_baselines.py`.
+**Apport EWAT** : le z-score ne distingue pas drift et anomalie (FA=100% sur les drifts bénins à tous les seuils). EWAT au seuil 0.7 réduit la FA à 8.3% en maintenant un lead time de 3.0 min. Baselines précurseurs B0/B1/B2 → `experiments/baselines/precursor_baselines.py`.
 
 ### Simulation en ligne — AlertAssembler (test set, 45 épisodes)
 
@@ -153,37 +191,75 @@ DriftDetector intégré. Labels corrigés → "correct cluster" maintenant signi
 
 | Seuil | Détection | Cluster correct | FA drift | Lead |
 |---|---|---|---|---|
-| 0.3 | **100%** | 66.7% | 100% | 4.2 min |
-| 0.4 | 93.9% | **72.7%** | 100% | 3.9 min |
-| 0.5 | 75.8% | 66.7% | 100% | 4.0 min |
-| **0.7** | **48.5%** | **45.5%** | **8.3%** | **2.9 min** |
+| 0.3 | **100%** | 42.4% | 100% | 4.6 min |
+| 0.4 | 97.0% | 66.7% | 100% | 3.8 min |
+| 0.5 | 78.8% | 63.6% | 100% | 3.9 min |
+| 0.6 | 75.8% | 63.6% | 50.0% | 3.7 min |
+| **0.7** | **57.6%** | **51.5%** | **8.3%** | **3.0 min** |
 
 Point opérationnel recommandé : seuil 0.7 (FA maîtrisée). FA=100% aux seuils 0.3–0.5 car classifieurs très sensibles sur épisodes drift (court warm-up DriftDetector).
 
-### Ablation modalités + features (test set, masquage à l'inférence — labels corrigés)
+_Correction 2026-05-11_ : résultats corrigés vs STATUS précédent (48.5%/8.3%) — bug TCN LayerNorm résolu + précurseurs réentraînés. Détection améliorée (+9.1 pp), FA inchangée.
 
-**Par modalité** : M (métriques) porte l'essentiel. T et L seuls → silhouette négative.
+### Ablation modalités (réentraînement complet — graine 42)
 
-| Condition | Silhouette | Δ | Sig. |
-|---|---|---|---|
-| full | 0.333 | — | — |
-| M+T | 0.310 | −0.024 | ✗ |
-| M_only | 0.271 | −0.062 | ✓ |
-| M+L | 0.234 | −0.099 | ✓ |
-| T+L | −0.124 | −0.457 | ✓ |
-| T_only | −0.151 | −0.485 | ✓ |
-| L_only | −0.212 | −0.546 | ✓ |
+**Ablation rigoureuse** : réentraînement encodeur+siamois complet pour chaque condition (vs. masquage à l'inférence, biaisé OOD). Script : `experiments/ablation/run_retrain.py`.
+
+| Condition | n_feat | sil_train | sil_test | Δ vs full |
+|-----------|--------|-----------|----------|-----------|
+| **full** | 17 | 0.378 | **0.439** | — |
+| **M_only** | 7 | 0.241 | **0.497** | **+0.058** |
+| T_only | 6 | 0.064 | 0.412 | −0.027 |
+| M+L | 11 | 0.251 | 0.382 | −0.057 |
+| T+L | 10 | 0.022 | 0.341 | −0.098 |
+| M+T | 13 | 0.318 | 0.316 | −0.123 |
+| L_only | 4 | −0.138 | 0.051 | −0.388 |
+
+**Résultat contre-intuitif** : M_only (7 features métriques seules) bat le modèle full (+0.058). M+T est pire que M_only — les features T ajoutent du bruit au STGCN sur 209 épisodes train, dégradant la géométrie siamoise. La valeur de T et L est prédictive (précurseurs), pas géométrique (clustering).
+
+**Comparaison avec masquage à l'inférence** : le masquage concluait "M porte l'essentiel, T/L aident à la marge" — biais confirmé (inférence OOD). Les ordres de grandeur changent mais le classement qualitatif (M > T > L) reste cohérent.
+
+### Ablation features (masquage à l'inférence — labels corrigés)
+
+_Note : ablation par feature = mesure de sensibilité du modèle entraîné, pas importance causale. À interpréter comme "quelles features le modèle full exploite-t-il le plus", non comme "quelles features seraient les plus importantes si réentraîné"._
 
 **Features critiques** (leave-one-out, p<0.05) : `trace_depth` (Δ−0.069), `lexical_entropy` (Δ−0.069), `latency_p99` (Δ−0.062), `disk_io` (Δ−0.010)
 
 **Paires redondantes** : `latency_p99`↔`span_dur_median` (ρ=0.936), `error_rate_http`↔`abnormal_span_rate` (ρ=0.927)
+
+### Comparaison architectures encodeur — STGCN vs SimCLR vs GAT
+
+Toutes les architectures entraînées sur ewat_v3 (graine 42), évaluées avec la méthodologie corrigée (nearest centroid pour H1, k* sur val pour H3).
+
+| Architecture | K | sil_val | sil_test | H1 | H3 types | AUROC moyen |
+|---|---|---|---|---|---|---|
+| **STGCN** (baseline) | 10 | 0.470 | 0.414 | ✅ | 8/10 | 0.954 |
+| **SimCLR** (NT-Xent) | 15 | 0.495 | 0.429 | ✅ | 11/15 | **0.964** |
+| **GAT** (attention) | 15 | 0.445 | **0.497** | ✅ | **13/15** | 0.929 |
+
+Interprétations :
+- **GAT** : meilleure géométrie de l'espace latent (sil_test=0.497, +0.083 vs STGCN) et plus de types prédictibles (13/15), mais AUROC moyen plus faible (0.929). L'attention sur les arêtes améliore la structuration des clusters sans nécessairement améliorer la discriminabilité.
+- **SimCLR** : meilleur AUROC moyen (0.964) mais 4 types NaN (clusters trop petits, n<2 test). Le pré-entraînement contrastif améliore la prédictibilité à K constant.
+- **STGCN** : K=10 (le plus stable), compromis silhouette/AUROC satisfaisant. Choix retenu pour le pipeline principal (plus simple, résultats multi-graines disponibles).
+
+Commandes de référence :
+```bash
+# SimCLR
+python -m experiments.encoder.simclr_train --dataset data/datasets/ewat_v3 --features-root data/features/v3 --output experiments/encoder/simclr
+python -m experiments.typing.train --encoder-checkpoint experiments/encoder/simclr/checkpoints/best_encoder.pt --output experiments/typing/simclr ...
+python -m experiments.precursor.train --typing-dir experiments/typing/simclr --encoder-dir experiments/encoder/simclr --output experiments/precursor/simclr ...
+# GAT
+python -m experiments.encoder.train --encoder-arch stgat --output experiments/encoder/gat ...
+python -m experiments.typing.train --encoder-checkpoint experiments/encoder/gat/checkpoints/best_encoder.pt --output experiments/typing/gat ...
+python -m experiments.precursor.train --typing-dir experiments/typing/gat --encoder-dir experiments/encoder/gat --output experiments/precursor/gat ...
+```
 
 ### Analyse des clusters — NMI, pureté, SHAP validation
 
 - **NMI (cluster ↔ scénario) = 0.518** — alignement modéré avec les labels Chaos Mesh (attendu pour un clustering non supervisé)
 - **Pureté moyenne = 0.503** — C6 (drift_config_change) : 0.800 ; C0 (fail_slow_cpu) : 0.286 (mélange de types)
 - **Heatmap** : `experiments/typing/scenario_cluster_heatmap.png`
-- **SHAP gradient vs. permutation importance** : Spearman ρ moyen = **−0.34** (corrélation négative) — la méthode gradient×input n'est pas validée par la permutation. Limitation à déclarer dans la publication ; utiliser permutation importance pour les fiches finales.
+- **Interprétabilité (2026-05-11)** : ρ_Spearman(gradient×input, permutation) = **−0.34** (anti-corrélé) → gradient×input **invalidé**. Les fiches `experiments/typing/fiches/cluster_*.json` ont été régénérées avec `method='permutation_importance'` (50 shuffles, drop silhouette moyen par feature et par cluster). Top features globaux : net_sat, latency_p99, disk_io > latency_cv > span_dur_median. retry_rate, log_warn_rate, queue_depth ≈ 0 (candidats à la suppression ewat_v4). Script : `experiments/typing/permutation_importance.py`.
 
 ### H2b — Régime θ_{drift∩anomaly}
 
@@ -195,6 +271,34 @@ Point opérationnel recommandé : seuil 0.7 (FA maîtrisée). FA=100% aux seuils
 - Absence de clusters "drift pur" (drift% élevé ET alert% faible) : la suppression d'alerte n'est pas fonctionnelle sur épisodes courts
 
 Conclusion H2b : renforce H2a. L'échec de la discrimination drift/anomalie vient de la durée d'épisode trop courte (~21 steps), pas d'un défaut de conception.
+
+### Transfert zero-shot — RCAEval RE2-OB (90 épisodes, 30 types de pannes)
+
+**Protocole** : application du pipeline EWAT (encodeur STGCN + scaler + centroides ewat_v3) sur les données RCAEval sans réentraînement. RCAEval utilise le même Online Boutique avec 6 services EWAT, mais sur un cluster K8s différent, 48 steps/épisode vs. 21 pour ewat_v3.
+
+4 stratégies de normalisation testées :
+
+| Stratégie | Features | H1 silhouette | H3 AUROC |
+|---|---|---|---|
+| ewat_v3 scaler | 17 | 0.778 ⚠️ artefact | 0.510 ≈ chance |
+| rcaeval scaler | 17 | 0.234 ✗ | 0.497 |
+| instance norm | 17 | 0.287 ✗ | 0.507 |
+| **instance norm** | **M(t) seul** | **0.684 ✓** | **0.495 ✗** |
+
+**Meilleur résultat (instance + M_only)** : H1 ✓ PASS (sil=0.684), H3 ✗ FAIL.
+L'encodeur regroupe 81/90 épisodes RCAEval dans C2 (resource_leak ewat_v3) avec pureté 0.80-1.00
+— mais TOUS les types de panne (cpu, mem, delay...) mappent sur le même cluster. Détection
+d'anomalie générique ✓, discrimination par type ✗.
+
+**H3 AUROC ≈ 0.5 systématiquement** : les précurseurs ewat_v3 (~21 steps) ne reconnaissent
+pas les signatures pré-injection RCAEval (48 steps). La normalisation instance-level efface
+en outre la déviation pré-injection par construction.
+
+**Conclusion** : goulot d'étranglement = scaler non transférable. Avec instance norm + M_only,
+l'encodeur détecte "anomalie" mais ne discrimine pas les types sans réentraînement.
+Few-shot transfer nécessaire pour H3.
+
+Rapport complet : `experiments/rcaeval/results.md`
 
 ---
 
@@ -272,6 +376,8 @@ python -m experiments.verification.verify_h1_h3 \
 ### Moyen terme
 
 11. **ewat_v4** : OTel SDK → disk_io 0% NaN
-12. **Ablation rigoureuse** : réentraînement complet par condition (~41h CPU)
-13. **Contrastive pre-training (SimCLR)** : NT-Xent + augmentations
-14. **GAT vs GCN** : comparaison architectures encodeur
+12. ✅ **Ablation rigoureuse** : M_only bat full (+0.058 sil_test) — T/L ajoutent du bruit au clustering STGCN sur n=209
+13. ✅ **Contrastive pre-training (SimCLR)** : K=15, sil_test=0.429, AUROC=0.964 (11/15 types)
+14. ✅ **GAT vs GCN** : GAT K=15, sil_test=0.497 (+0.083 vs STGCN), AUROC=0.929, 13/15 types
+15. ✅ **Service-level TE (ontologie intra-épisode)** : 124 relations sur 8/10 clusters — C5/C6 (drift pur) = 0 relation (résultat validant), C8 unique `cart→load-gen`
+16. ✅ **RCAEval RE2-OB zero-shot** : avec instance norm + M_only → H1 sil=0.684 ✓ (détection anomalie générique), H3 AUROC=0.495 ✗ (discrimination de types impossible sans réentraînement). Rapport → `experiments/rcaeval/results.md`
