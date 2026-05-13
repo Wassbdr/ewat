@@ -611,6 +611,7 @@ def _record_and_persist(
     enable_prometheus: bool,
     enable_jaeger: bool,
     enable_loki: bool,
+    loki_chunk_s: float = 300.0,
 ) -> dict[str, Any]:
     """Issue the 3 bulk dumps and persist them to ``episode_dir``."""
     manifest: dict[str, Any] = {"sources": {}}
@@ -679,7 +680,7 @@ def _record_and_persist(
     if enable_loki:
         logger.info("  fetch loki logs")
         t0 = time.time()
-        loki: LokiDump = recorder.record_loki(t_start, t_end)
+        loki: LokiDump = recorder.record_loki(t_start, t_end, chunk_s=loki_chunk_s)
         stats = _write_gz_json(
             episode_dir / "loki_logs.json.gz",
             {
@@ -796,6 +797,7 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
     loki_endpoint = str(base_cfg.telemetry.loki.get("endpoint", ""))
     prom_step_s = int(base_cfg.telemetry.prometheus.get("scrape_interval_s", 15))
     prom_window = str(collection_cfg.get("prom_rate_window", "2m"))
+    loki_chunk_s = float(collection_cfg.get("loki_chunk_s", 300.0))
     recorder_params = {
         "prom_step_s": prom_step_s,
         "prom_rate_window": prom_window,
@@ -903,6 +905,7 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
                     enable_prometheus=enable_prometheus,
                     enable_jaeger=enable_jaeger,
                     enable_loki=enable_loki,
+                    loki_chunk_s=loki_chunk_s,
                 )
 
                 # Kill port-forwards immediately after dump — no point

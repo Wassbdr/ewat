@@ -41,6 +41,7 @@ collection:
   prom_timeout_s: 30.0
   jaeger_timeout_s: 60.0
   loki_timeout_s: 90.0
+  loki_chunk_s: 60.0
   jaeger_limit: 1500
   loki_limit: 5000
 

@@ -340,7 +340,10 @@ class TelemetryRecorder:
                 payload = resp.json()
             except requests.RequestException as exc:
                 dump.errors[f"page_{page}"] = f"http: {exc}"
-                break
+                logger.warning("Loki chunk %d/%s timeout/error — skipping to next chunk: %s", page, chunk_end_ns, exc)
+                cursor_ns = chunk_end_ns
+                page += 1
+                continue
             except ValueError as exc:
                 dump.errors[f"page_{page}"] = f"json: {exc}"
                 break
