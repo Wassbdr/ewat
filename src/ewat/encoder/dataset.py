@@ -38,7 +38,7 @@ class EpisodeDataset(Dataset):
     FEATURE_NAMES: list[str] = [
         "cpu_util", "ram_util", "latency_p99", "error_rate_http",
         "net_sat", "disk_io", "queue_depth",
-        "span_dur_median", "abnormal_span_rate", "trace_depth", "fan_out",
+        "span_dur_p99", "abnormal_span_rate", "trace_depth", "fan_out",
         "retry_rate", "latency_cv",
         "log_error_rate", "log_warn_rate", "semantic_anomaly", "lexical_entropy",
     ]

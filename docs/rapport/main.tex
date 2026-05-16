@@ -1,0 +1,194 @@
+% ============================================================
+%  EWAT — Rapport de stage
+%  Wasim Badraoui — Devoteam — 2026
+% ============================================================
+
+\documentclass[12pt, a4paper]{article}
+
+% --- Encodage et langue ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+
+% --- Mise en page ---
+\usepackage[top=2.5cm, bottom=2.5cm, left=3cm, right=3cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+
+% --- Mathématiques ---
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+
+% --- Tableaux et figures ---
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+
+% --- Code et algorithmes ---
+\usepackage{listings}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% --- Typographie ---
+\usepackage{microtype}
+\usepackage{lmodern}
+
+% --- Liens et PDF ---
+\usepackage[
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue,
+  pdftitle={EWAT — Early Warning and Anomaly Typing},
+  pdfauthor={Wassim Badraoui}
+]{hyperref}
+
+% --- Bibliographie ---
+\usepackage[
+  backend=biber,
+  style=numeric,
+  sorting=none
+]{biblatex}
+\addbibresource{bibliography.bib}
+
+% --- Symboles personnalisés ---
+\usepackage{pifont}
+\newcommand{\xmark}{\ding{55}}
+
+% --- Titres de section ---
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+% ============================================================
+
+\begin{document}
+
+% --- Page de titre ---
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+
+  {\LARGE\bfseries EWAT\par}
+  \vspace{0.5em}
+  {\large Early Warning and Anomaly Typing\par}
+  \vspace{0.5em}
+  {\large dans les architectures microservices Kubernetes\par}
+
+  \vspace{2cm}
+
+  {\large Rapport de stage\par}
+  \vspace{1em}
+  {\normalsize Devoteam — 2026\par}
+
+  \vspace{2cm}
+
+  {\large\bfseries Wassim Badraoui\par}
+  \vspace{0.5em}
+  {\normalsize EPITA — Promotion 2026\par}
+  {\normalsize \texttt{wassim.badraoui@epita.fr}\par}
+
+  \vfill
+
+  \begin{abstract}
+    \noindent
+    Les architectures microservices Kubernetes génèrent un flux permanent de changements
+    bénins — déploiements progressifs, autoscaling, reconfigurations — que les systèmes
+    de détection d'anomalies classiques confondent avec de vraies pannes, produisant
+    un taux de fausses alarmes de 100\,\% sur les drifts bénins quel que soit le seuil.
+    Ce rapport présente EWAT (\emph{Early Warning and Anomaly Typing}), un pipeline
+    de détection précoce et de typage automatique des anomalies en quatre étapes :
+    détection de drift par MMD via Random Fourier Features avec mécanisme look-through,
+    encodage spatio-temporel par réseau STGCN, typage contrastif siamois avec clustering
+    hiérarchique, et classifieurs de précurseurs typés par type de cluster.
+    Évalué sur ewat\_v3 (299 épisodes, 15 scénarios, cluster Kubernetes réel),
+    le pipeline valide deux hypothèses principales : H1 (silhouette test $= 0.519 \pm 0.092$
+    sur 5 graines, les embeddings sont structurables) et H3 (AUROC $= 0.973 \pm 0.012$,
+    lead time opérationnel de 3\,min). Il réduit les fausses alarmes sur drifts de 100\,\%
+    à 8.3\,\% par rapport à la baseline z-score tout en maintenant un lead time de 3.0\,min.
+    L'hypothèse H2a (look-through) est réfutée ($p = 0.27$) pour une raison identifiée
+    et quantifiée : les épisodes trop courts ($\approx 21$ steps) ne laissent pas de fenêtre
+    utile suffisante au mécanisme de confirmation temporelle, motivant la collecte ewat\_v4
+    avec des épisodes $\geq 40$ steps.
+  \end{abstract}
+
+  \vspace{1cm}
+
+  \textbf{Mots-clés :} détection d'anomalies, early warning, microservices, Kubernetes,
+  STGCN, Transfer Entropy, drift de concept, typage contrastif.
+\end{titlepage}
+
+% --- Table des matières ---
+\tableofcontents
+\newpage
+
+% ============================================================
+%  Corps du rapport
+% ============================================================
+
+\input{sections/01_introduction}
+\newpage
+
+\input{sections/02_formalisation}
+\newpage
+
+\input{sections/03_dataset}
+\newpage
+
+\input{sections/04_pipeline}
+\newpage
+
+\input{sections/05_resultats}
+\newpage
+
+\input{sections/06_experiments}
+\newpage
+
+\input{sections/07_discussion}
+\newpage
+
+\input{sections/08_difficultes}
+\newpage
+
+% ============================================================
+%  Conclusion
+% ============================================================
+
+\section*{Conclusion}
+\addcontentsline{toc}{section}{Conclusion}
+
+EWAT démontre qu'il est possible de distinguer automatiquement les drifts bénins des
+anomalies réelles dans un environnement microservices Kubernetes, à condition de modéliser
+explicitement les quatre régimes opérationnels $\Theta$ et de combiner un encodeur
+spatio-temporel avec un typage contrastif.
+
+Les deux contributions centrales sont empiriques et robustes. H1 (structurabilité,
+sil $= 0.519 \pm 0.092$, 5 graines) établit que les types de pannes forment des groupes
+séparables dans l'espace latent STGCN — une condition nécessaire à tout système de typage
+automatique. H3 (prédictibilité, AUROC $= 0.973 \pm 0.012$, lead time $3$\,min)
+démontre que ces types sont prédictibles avant l'injection, avec un horizon opérationnel
+suffisant pour déclencher un rollback automatisé.
+
+La réfutation de H2a n'invalide pas le mécanisme look-through : elle fournit une
+contrainte précise ($\geq 40$ steps par épisode) et un plan de validation pour ewat\_v4.
+Cette honnêteté méthodologique — rapporter les résultats négatifs avec leur cause
+et leur remède — est elle-même une contribution : elle permet de distinguer les
+limitations de données des limitations de conception.
+
+À court terme, ewat\_v4 lèvera les limitations L1 et L2 (épisodes longs, disk\_io sans NaN)
+pour tester H2a dans des conditions adéquates et confirmer le lead time réel des précurseurs.
+À moyen terme, le GAT (sil\_test $= 0.497$, $13/15$ types prédictibles) et la Stratégie B
+de few-shot transfer ouvrent la voie à un pipeline transférable sur de nouveaux clusters
+sans collecte complète.
+
+% ============================================================
+%  Bibliographie
+% ============================================================
+
+\printbibliography[heading=bibintoc, title={Références}]
+
+\end{document}

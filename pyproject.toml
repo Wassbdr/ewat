@@ -10,17 +10,14 @@ dependencies = [
     "opentelemetry-exporter-otlp",
     "opentelemetry-exporter-prometheus",
     "kubernetes",
-    "torch>=2.2",
-    "torch-geometric",
-    "networkx",
-    "scikit-learn",
-    "scipy",
-    "numpy",
+    "torch==2.11.0",
+    "torch-geometric==2.7.0",
+    "scikit-learn==1.8.0",
+    "scipy==1.17.1",
+    "numpy==1.26.4",
     "pandas",
     "pyarrow",
     "statsmodels",
-    "jpype1",
-    "pyinform",
     "shap",
     "captum",
     "sentence-transformers",
@@ -53,11 +50,19 @@ select = ["E", "F", "I", "N", "W", "UP"]
 [tool.ruff.lint.per-file-ignores]
 "notebooks/*.ipynb" = ["E501"]
 "scripts/record_episode.py" = ["E402"]
-"scripts/build_features.py" = ["E402", "I001", "N803", "N806"]
+"scripts/build_features.py" = ["E402", "E501", "I001", "N803", "N806"]
+"scripts/adapt_rcaeval.py" = ["E401", "E402", "E501", "F401", "F541", "I001", "N802", "N806"]
+"scripts/analyze_features.py" = ["E501", "F541", "N803", "N806"]
+"scripts/chaos_injector.py" = ["E501"]
+"scripts/impute_features.py" = ["E501", "N806"]
+"scripts/patch_error_rate.py" = ["N806"]
+"scripts/patch_latency_p99.py" = ["N806"]
+"scripts/validate_v4.py" = ["N806"]
 "src/telemetry/collectors/log_collector.py" = ["N803", "N806"]
 "src/telemetry/collectors/prometheus_collector.py" = ["N803", "N806"]
 "src/telemetry/collectors/trace_collector.py" = ["N803", "N806"]
 "src/telemetry/signal_builder.py" = ["N802", "N806"]
+"src/telemetry/recorder.py" = ["E501"]
 "src/ewat/drift/mmd.py" = ["N803", "N806"]
 "src/ewat/drift/calibration.py" = ["N806"]
 "src/ewat/drift/detector.py" = ["N803", "N806"]

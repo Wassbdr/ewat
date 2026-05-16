@@ -1,0 +1,181 @@
+% ============================================================
+%  Section 7 — Discussion
+% ============================================================
+
+\section{Discussion}
+\label{sec:discussion}
+
+Deux hypothèses sont validées (H1 sil $= 0.519 \pm 0.092$, H3 AUROC $= 0.973 \pm 0.012$),
+une est réfutée (H2a $p = 0.27$) et une présente un PASS trivial (H2b Fisher $p = 0.35$).
+Cette section discute ce que ces résultats apportent collectivement, comment ils se
+positionnent par rapport à la baseline z-score et à l'état de l'art, puis liste
+les limitations identifiées et les perspectives pour la prochaine itération.
+
+\subsection{Résultats négatifs comme contribution}
+\label{sec:negative_results}
+
+Un résultat négatif non exploitable est un échec : l'expérience n'apporte pas
+d'information nouvelle. Un résultat négatif exploitable est une contribution :
+il identifie précisément une contrainte, fournit une quantification et suggère
+une direction corrective.
+
+H2a appartient à la deuxième catégorie. Le mécanisme look-through MMD-RFF est
+conçu correctement : il transmet le signal pendant le drift avec le flag approprié,
+et le DriftDetector se recalibre lorsque le drift est stabilisé. Ce que la réfutation
+de H2a révèle n'est pas un défaut de conception, mais une contrainte de données
+quantifiée : sur des épisodes de $\approx 21$ steps, le warm-up du DriftDetector
+($\approx 8$ steps) et la confirmation temporelle ($3$--$6$ steps) consomment jusqu'à
+$14/21 = 67$\,\% de l'épisode avant que le mécanisme soit pleinement opérationnel.
+Il ne reste alors que $\approx 7$ steps utiles — une fenêtre trop courte pour que
+le test de Student unilatéral atteigne $p < 0.05$ avec $n = 45$ épisodes.
+
+La même contrainte explique H2b trivial : avec une fenêtre de confirmation de 5 steps,
+le DriftDetector déclenche sur quasi tous les épisodes quel que soit leur type,
+rendant l'overlap drift+alerte informatif pour aucun cluster en particulier.
+L'OR de Fisher ($1.48$, $p = 0.35$) pour C8 vs drift pur confirme l'absence de
+discrimination statistique.
+
+Ces deux résultats négatifs sont reproductibles : le même protocole appliqué sur
+ewat\_v4 avec des épisodes $\geq 40$ steps testera H2a dans des conditions où le
+mécanisme peut effectivement opérer. Si H2a est validée sur ewat\_v4, la réfutation
+sur ewat\_v3 aura permis d'identifier précisément la longueur minimale d'épisode
+nécessaire.
+
+\paragraph{L'alerte précède le drift flag.}
+L'analyse temporelle de H2b révèle un résultat supplémentaire : l'alerte précurseur
+précède le drift flag dans 85--100\,\% des épisodes (timing gap médian $< 0$
+pour tous les clusters). Le DriftDetector est un indicateur tardif, pas précoce.
+Cela est cohérent avec son fonctionnement : il mesure un changement de distribution
+déjà établi, là où les précurseurs (étape 3) détectent des signatures
+\emph{pré-injection}. Ce résultat renforce l'intérêt de l'étape 3 indépendamment
+du mécanisme de détection de drift.
+
+\subsection{Apport EWAT vis-à-vis du z-score}
+\label{sec:ewat_vs_zscore}
+
+La baseline z-score représente l'approche la plus répandue en production : une alarme
+univariée sur chaque métrique, déclenchée lorsque la valeur dépasse $\sigma$ écarts-types
+au-dessus de la moyenne glissante. Cette baseline est simple, explicable et robuste —
+mais elle souffre d'un défaut structurel : elle n'a aucun moyen de distinguer un drift
+bénin d'une anomalie réelle, car les deux produisent des déviations statistiques similaires.
+En conséquence, le taux de fausses alarmes sur les drifts reste à 100\,\% pour tout
+$\sigma \in [2.0, 3.5]$.
+
+EWAT au seuil 0.7 réduit ce taux à 8.3\,\% — une réduction d'un facteur 12 — tout
+en conservant un lead time de 3.0\,min. Ce gain découle directement du typage contrastif :
+les clusters de drift bénin (C5, C6, C9) ont des précurseurs entraînés sur leurs
+signatures spécifiques, ce qui permet à l'AlertAssembler de les distinguer des anomalies.
+
+Deux nuances sont importantes. D'abord, la détection d'anomalies réelles au seuil 0.7
+est de 57.6\,\%, inférieure aux 100\,\% du z-score. Ce trade-off FA/détection est explicite
+et contrôlable : le seuil 0.3 retrouve 100\,\% de détection avec 100\,\% de FA, le seuil 0.7
+offre le meilleur équilibre sur les données disponibles. La courbe FA/détection n'était pas
+disponible avec le z-score (le seuil $\sigma$ contrôle la sensibilité globale, pas la
+discrimination drift/anomalie).
+Ensuite, EWAT produit une sortie structurée — le type $C_i$, la probabilité $\hat{p}_i$,
+le lead time estimé $k^*_i$, et la fiche d'interprétabilité $\text{fiche}_{C_i}$ —
+là où le z-score ne produit qu'un binaire. Cette richesse informationnelle permet à
+l'opérateur de prioriser et de préparer sa réponse avant la dégradation.
+
+\subsection{Valeur de l'encodeur STGCN}
+\label{sec:stgcn_value}
+
+La comparaison B3/B4 (baselines précurseurs sur les scénarios Chaos Mesh) révèle que
+l'encodeur STGCN n'améliore pas l'AUROC macro agrégé par rapport aux features brutes
+(B3 $=$ B4 $= 0.835$). Cette égalité numérique est une coïncidence sur $n = 45$ épisodes
+— les AUROCs sont des rapports de paires concordantes entiers sur 126, et l'égalité
+exacte résulte d'une redistribution de $\pm 75$ paires concordantes entre scénarios.
+
+La valeur du STGCN est donc de deux natures. Géométriquement, il structure l'espace
+latent de façon exploitable par le clustering siamois (H1 sil $= 0.519$ vs sil $\approx 0.3$
+attendu sans structuration). Redistributivement, il améliore fortement certains types
+difficiles (\texttt{fail\_slow\_cpu} $+0.270$, \texttt{drift\_scale\_up} $+0.111$)
+au prix d'une dégradation sur des types déjà bien séparables dans l'espace brut
+(\texttt{noisy\_neighbor} $-0.246$, \texttt{drift\_config\_change} $-0.127$).
+
+Le résultat de l'ablation H1 (M\_only $+0.058$ vs full) indique que, sur 209 épisodes
+d'entraînement, le signal des métriques Prometheus suffit à structurer l'espace latent
+et que les traces et logs ajoutent du bruit géométrique. Ce résultat suggère que la valeur
+de $T(t)$ et $L(t)$ est prédictive (H3) plutôt que géométrique (H1), ce qui justifie
+de conserver les deux modalités dans le pipeline complet.
+
+\subsection{Limitations}
+\label{sec:limitations}
+
+\begin{description}
+  \item[\textbf{L1 — Épisodes trop courts} ($\approx 21$ steps).]
+    Conséquence directe sur H2a (look-through) et sur le plafond du lead time observable.
+    L'AUROC précurseur est mesuré sur un horizon maximal $k^* = 10$ steps (5\,min),
+    limité par la durée des épisodes. Le lead time réel pourrait être plus long si les
+    précurseurs étaient visibles plus tôt dans des épisodes prolongés.
+    Résolu dans ewat\_v4 ($\geq 40$ steps, $\geq 20$\,min par épisode).
+
+  \item[\textbf{L2 — disk\_io 16.7\,\% NaN} (\texttt{product-catalog}).]
+    Le nœud \texttt{observit-cluster1-workers-58w74-mwxb2} est resté en état NotReady
+    pendant l'intégralité de la collecte ewat\_v3. L'ablation LOO montre que
+    \texttt{disk\_io} est la feature la plus critique pour H3 ($\Delta = -0.088$)
+    malgré ses NaN — son importance réelle est probablement sous-estimée.
+    Résolu dans ewat\_v4 par déploiement d'un OTel SDK applicatif indépendant du nœud.
+
+  \item[\textbf{L3 — Méthode gradient invalidée}.]
+    $\rho_\text{Spearman}(\text{gradient} \times \text{input},\, \text{permutation}) = -0.34$
+    sur ewat\_v3 : la méthode gradient×input est anti-corrélée avec la permutation importance.
+    Les fiches de clusters ont été régénérées avec \texttt{permutation\_importance}
+    (50 shuffles), validées par KernelSHAP ($\rho > 0$ pour $9/10$ clusters
+    \cite{lundberg2017}). Seul C3 (\texttt{noisy\_neighbor}) reste discordant ($\rho = -0.07$).
+    Les fiches sont indicatives et non certifiées pour C3.
+
+  \item[\textbf{L4 — Transfert de domaine limité}.]
+    Le pipeline entraîné sur ewat\_v3 détecte des anomalies génériques sur RCAEval
+    (H1 sil $= 0.684$ avec instance norm + M\_only) mais ne discrimine pas les types
+    (H3 AUROC $\approx 0.5$ pour tout $n_\text{few}$).
+    La Stratégie A (refit scaler seul) est insuffisante.
+    La Stratégie B (fine-tuning classifieurs LR ou dernière couche encodeur avec épisodes
+    labellisés RCAEval) est planifiée pour ewat\_v4.
+
+  \item[\textbf{L5 — Transfer Entropy cluster-level : biais écologique}.]
+    L'estimateur cluster-level agrège les séries temporelles de tous les épisodes d'un
+    cluster avant d'estimer la TE, confondant les effets intra-épisode et inter-épisodes
+    (biais écologique). L'estimateur service-level (intra-épisode) corrige ce biais
+    et produit 124 relations causales significatives — mais la TE reste univariée par
+    feature, sous-estimant les synergies dans $\mathbb{R}^{17}$.
+
+  \item[\textbf{L6 — Faibles effectifs pour C6 et C9}.]
+    $n_\text{pos\_test} = 1$ pour \texttt{drift\_config\_change} (C6) et
+    \texttt{drift\_scale\_up} (C9) : l'AUROC H3 n'est pas calculable.
+    Ces deux types de drift bénin requièrent un nombre d'épisodes test plus élevé,
+    notamment $n_\text{pos\_test} \geq 5$ pour des IC bootstrap fiables.
+\end{description}
+
+\subsection{Perspectives — ewat\_v4}
+\label{sec:ewat_v4}
+
+\paragraph{Données.}
+La priorité principale est de corriger L1 et L2 simultanément. Les épisodes ewat\_v4
+seront collectés sur $\geq 40$ steps ($\geq 20$\,min), laissant au DriftDetector un
+budget de confirmation suffisant ($\leq 35$\,\% de l'épisode consommé par le warm-up
+et la confirmation). Le nœud NotReady sera remplacé ou contourné par un OTel SDK
+applicatif, ramenant le NaN de \texttt{disk\_io} à $0$\,\%.
+Les scénarios C6 et C9 seront sur-représentés dans la collecte (objectif :
+$n_\text{pos\_test} \geq 5$ par type) pour permettre le calcul des IC bootstrap H3.
+
+\paragraph{Méthodologie.}
+H2a sera réévaluée sur ewat\_v4 avec le même protocole (test de Student unilatéral
+apparié, 45 épisodes test, seuil $p < 0.05$) pour tester si la longueur d'épisode
+était bien le seul goulot d'étranglement. KernelSHAP sera réexécuté avec $n_\text{bg} \geq 50$
+(vs 20 sur ewat\_v3) pour valider les fiches de clusters sur C3.
+La Stratégie B du few-shot transfer sera implémentée : fine-tuning des classifieurs LR
+sur des épisodes RCAEval labellisés, puis évaluation de H3 AUROC $> 0.7$ en transfert.
+
+\paragraph{Architecture.}
+Le GAT est le candidat naturel pour ewat\_v4 : il produit la meilleure géométrie
+(sil\_test $= 0.497$) et le plus grand nombre de types prédictibles ($13/15$).
+Sur des épisodes plus longs, le mécanisme d'attention adaptative sur $G(t)$ devrait
+amplifier son avantage par rapport au STGCN.
+Les features à $\Delta \approx 0$ en LOO (\texttt{retry\_rate}, \texttt{log\_warn\_rate},
+\texttt{queue\_depth}) seront supprimées, réduisant $S(t)$ de $\mathbb{R}^{N \times 17}$
+à $\mathbb{R}^{N \times 14}$ — ce qui simplifiera l'encodeur sans perte mesurable
+de prédictibilité.
+La TE multivariée dans $\mathbb{R}^{17}$ (estimateur JIDT ou k-NN multivarié)
+remplacera la somme des TE univariés pour capturer les synergies entre features,
+corrigeant la limitation L5.

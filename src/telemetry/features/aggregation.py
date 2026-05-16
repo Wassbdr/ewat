@@ -3,7 +3,7 @@
 Rules (per CLAUDE.md):
 - Saturation (CPU, RAM, net_sat, disk_io, queue_depth) → max
 - Rates (error_rate, warn_rate, retry_rate, abnormal_rate) → volume-weighted sum
-- Latency (latency_p99, span_dur_med) → P99 on the *union* of raw duration lists
+- Latency (latency_p99, span_dur_p99) → P99 on the *union* of raw duration lists
 - Structural (trace_depth, fan_out, latency_cv, semantic_anomaly, lexical_entropy) → median
 
 Never use simple mean. Never compute percentile-of-percentiles for latency.

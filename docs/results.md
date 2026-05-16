@@ -234,7 +234,7 @@ Le compromis détection/FA est défavorable aux seuils bas à cause de la longue
 
 | Paire | ρ |
 |---|---|
-| `latency_p99` ↔ `span_dur_median` | 0.936 |
+| `latency_p99` ↔ `span_dur_p99` | 0.936 |
 | `error_rate_http` ↔ `abnormal_span_rate` | 0.927 |
 
 ### Interprétation
@@ -243,7 +243,7 @@ Le compromis détection/FA est défavorable aux seuils bas à cause de la longue
 
 **Hiérarchie des features (labels corrigés)** :
 - `trace_depth` (Δ=−0.069) et `lexical_entropy` (Δ=−0.069) sont co-premières — profondeur de trace (T) et diversité lexicale des logs (L) capturent des patterns complémentaires aux métriques.
-- `latency_p99` (Δ=−0.062) — troisième malgré sa redondance partielle avec `span_dur_median`.
+- `latency_p99` (Δ=−0.062) — troisième malgré sa redondance partielle avec `span_dur_p99`.
 - `disk_io` (Δ=−0.010) — significatif mais faible effet absolu ; son importance monte probablement avec ewat_v4 (NaN→0%).
 - `net_sat` et `cpu_util` : non significatifs p<0.05 avec labels corrigés (p=0.090 et 0.246) — résultat différent de l'ancien ablation biaisé.
 

@@ -7,7 +7,7 @@ The collector queries a Jaeger-compatible backend for OTLP spans in the window
 Cluster backend: rca-jaeger.rca-sandbox.svc.cluster.local:16686
 
 Features (columns 7–12 in S(t), columns 0–5 in T(t)):
-    0  span_dur_med       Median span duration (P99 on union, seconds)
+    0  span_dur_p99       P99 span duration (P99 on union of raw durations, seconds)
     1  abnormal_span_rate Fraction of error/abnormal spans
     2  trace_depth        Median max depth of trace trees
     3  fan_out            Median fan-out (children per span)
@@ -15,7 +15,7 @@ Features (columns 7–12 in S(t), columns 0–5 in T(t)):
     5  latency_cv         Latency coefficient of variation (std / mean)
 
 Aggregation (pod → service):
-    span_dur_med     → p99_union on raw durations
+    span_dur_p99     → p99_union on raw durations
     abnormal_rate    → volume_weighted
     retry_rate       → volume_weighted
     trace_depth      → median
@@ -42,7 +42,7 @@ from telemetry.features.aggregation import (
 )
 
 # Local column indices within T_t (shape N×6) — NOT global S(t) indices
-_T_SPAN_DUR_MED = 0
+_T_SPAN_DUR_P99 = 0
 _T_ABNORMAL_RATE = 1
 _T_TRACE_DEPTH = 2
 _T_FAN_OUT = 3
@@ -637,8 +637,8 @@ class TraceCollector:
             n_error = sum(1 for sp in spans_s if sp.status_code == "ERROR")
             n_retry = sum(1 for sp in spans_s if sp.is_retry)
 
-            # span_dur_med — P99 on union (single service = single pod group here)
-            T_t[row, _T_SPAN_DUR_MED] = aggregate_p99_union([durations.astype(np.float32)])
+            # span_dur_p99 — P99 on union of raw span durations
+            T_t[row, _T_SPAN_DUR_P99] = aggregate_p99_union([durations.astype(np.float32)])
 
             # abnormal_span_rate
             T_t[row, _T_ABNORMAL_RATE] = n_error / max(n_spans, 1)

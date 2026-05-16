@@ -1,0 +1,206 @@
+% ============================================================
+%  Section 8 — Difficultés rencontrées et corrections
+% ============================================================
+
+\section{Difficultés rencontrées et évolutions méthodologiques}
+\label{sec:difficulties}
+
+Ce stage a été marqué par plusieurs difficultés techniques et méthodologiques, dont
+certaines n'ont été identifiées qu'après des semaines d'expérimentation. Cette section
+les documente honnêtement, en expliquant comment chacune a été détectée, diagnostiquée
+et résolue — ou pourquoi elle reste une limitation ouverte.
+
+\subsection{Fuite d'information inter-splits (correction H1/H3)}
+\label{sec:diff_leakage}
+
+\paragraph{Problème.}
+La version initiale du code d'évaluation appliquait \texttt{fit\_predict} indépendamment
+sur chaque split pour assigner les labels de cluster. En pratique, le clustering
+sur le split de validation et le clustering sur le split de test produisaient chacun leur
+propre géométrie — sans lien avec les centroides calculés sur train.
+Cela donnait des scores de silhouette artificiellement optimistes
+(\texttt{sil\_val}~$= 0.601$, \texttt{sil\_test}~$= 0.615$) car le clustering était
+ajusté à la distribution locale de chaque split plutôt qu'évalué en généralisation.
+
+\paragraph{Détection.}
+L'incohérence a été détectée lors de l'analyse des clusters val et test : les centroides
+val ne correspondaient pas aux centroides train, et des épisodes de même scénario
+se retrouvaient dans des clusters différents selon le split. Ce comportement est un
+signal clair de fuite d'information.
+
+\paragraph{Correction.}
+La correction consiste à calculer les centroides une seule fois sur train, puis à
+assigner les labels val et test par \textbf{plus proche centroïde} (\emph{nearest centroid})
+depuis ces centroides figés. Cette approche simule fidèlement le comportement en
+production : un nouvel épisode est typé par rapport à la structure apprise sur les
+données d'entraînement, sans re-clustering.
+Après correction, les scores descendent à \texttt{sil\_test}~$= 0.414$ (graine 42),
+soit une baisse de $-0.201$. Malgré cette baisse, H1 reste validée — ce qui renforce
+la confiance dans la robustesse réelle du résultat.
+
+La même correction a été appliquée à H3 : la sélection de $k^*_i$ utilisait
+précédemment le jeu de test, ce qui constituait une forme d'optimisme par sélection.
+$k^*_i$ est désormais sélectionné exclusivement sur val, et l'AUROC rapporté
+sur test uniquement.
+
+\subsection{Bug LayerNorm TCN (correction silencieuse)}
+\label{sec:diff_layernorm}
+
+\paragraph{Problème.}
+Un commit de refactoring (commit \texttt{6543c69}) avait activé un module
+\texttt{LayerNorm} dans le TCN de l'encodeur après l'entraînement : le modèle était
+entraîné sans LayerNorm activé, mais l'inférence l'utilisait.
+Ce décalage train/inférence produisait des embeddings légèrement hors distribution,
+dégradant silencieusement les performances sans déclencher d'erreur.
+
+\paragraph{Détection.}
+Le bug a été identifié lors de la comparaison des résultats avant et après le commit :
+l'AUROC H3 avait baissé de $1$--$2$\,pp sans modification du protocole d'évaluation.
+Une inspection du code a révélé la divergence entre le forward pass à l'entraînement
+et à l'inférence.
+
+\paragraph{Correction.}
+Le forward pass de l'encodeur a été restauré au comportement de l'entraînement
+(LayerNorm désactivé). Les précurseurs ont été réentraînés à partir de l'encodeur corrigé.
+L'AUROC H3 a retrouvé ses niveaux attendus (+0.3 à +1.6\,pp selon le cluster).
+Ce bug illustre l'importance de versionner séparément les checkpoints du modèle
+et le code d'inférence, ou d'utiliser \texttt{torch.jit.script} pour figer le graphe
+de calcul au moment de l'entraînement.
+
+\subsection{Méthode d'explicabilité gradient invalidée}
+\label{sec:diff_saliency}
+
+\paragraph{Problème.}
+La méthode d'explicabilité initiale pour les fiches de clusters était le gradient saliency
+(gradient$\times$input) : pour chaque feature, le gradient du score de clustering
+par rapport à cette feature est calculé, puis multiplié par sa valeur.
+Cette méthode est rapide et différentiable, ce qui la rendait attractive pour générer
+automatiquement des fiches d'interprétabilité.
+
+\paragraph{Détection.}
+La validation croisée entre gradient$\times$input et permutation importance a révélé
+une corrélation de Spearman $\rho = -0.34$ : les deux méthodes s'accordent sur quelles
+features sont importantes dans seulement $33$\,\% des cas, et sont \emph{anti-corrélées}
+en moyenne. Ce résultat était inattendu et a nécessité une investigation approfondie.
+
+\paragraph{Cause identifiée.}
+Le problème vient de la non-linéarité de l'encodeur STGCN combinée à la perte
+contrastive siamoise. Le gradient mesure la sensibilité locale du score en un point,
+mais cette sensibilité locale ne reflète pas l'importance globale d'une feature pour
+la structuration des clusters — d'autant plus que la loss contrastive crée des
+gradients qui pointent dans des directions géométriquement complexes dans l'espace
+des embeddings.
+
+\paragraph{Correction.}
+Les fiches ont été régénérées avec la \textbf{permutation importance} (50 shuffles) :
+chaque feature est permutée aléatoirement et la baisse de score de silhouette mesure
+son importance. Cette méthode est model-agnostic et mesure une importance globale,
+non locale. Elle a ensuite été validée par KernelSHAP \cite{lundberg2017}
+($\rho_\text{Spearman}(\text{SHAP}, \text{permutation}) > 0$ pour $9/10$ clusters),
+ce qui confirme la cohérence des fiches pour la majorité des types.
+
+\subsection{Biais écologique dans la Transfer Entropy cluster-level}
+\label{sec:diff_te}
+
+\paragraph{Problème.}
+La première implémentation de la Transfer Entropy pour l'ontologie construisait une
+seule série temporelle par cluster en concaténant tous les épisodes du cluster,
+puis estimait la TE entre services sur cette série unique.
+Cette approche confond deux niveaux d'analyse : les dynamiques intra-épisode
+(comment les services interagissent pendant un incident) et les dynamiques inter-épisodes
+(tendances à travers les répétitions d'un scénario).
+C'est un biais écologique classique en écologie statistique, ici transposé au domaine
+des séries temporelles.
+
+\paragraph{Détection et correction.}
+Le biais a été identifié lors de la comparaison des résultats entre un dry-run
+à 20 permutations (qui produisait 2 relations causales, C6$\to$C8 et C2$\to$C8)
+et 100 permutations (qui produisait 0 relation) : les relations observées à faibles
+permutations étaient des faux positifs créés par la structure artificielle de la
+concaténation.
+
+La correction a été de basculer vers un estimateur \textbf{service-level} :
+la TE est estimée indépendamment sur chaque épisode, puis les p-values sont agrégées
+par correction BH-FDR et les TE moyennées par cluster.
+Cette approche respecte l'indépendance des épisodes et produit 124 relations causales
+significatives sur 8/10 clusters, dont le résultat validant que les drifts bénins
+(C5, C6) ne génèrent aucune cascade causale inter-services.
+
+\subsection{Résultats inattendus sur les baselines}
+\label{sec:diff_baselines}
+
+\paragraph{M\_only bat le modèle full pour H1.}
+L'ablation par réentraînement a produit un résultat contre-intuitif : le modèle
+entraîné uniquement sur les métriques Prometheus ($n_\text{feat} = 7$) surpasse le
+modèle complet pour la silhouette de clustering ($+0.058$). Intuitivement, davantage
+de features devraient aider.
+
+L'explication rétrospective est un sur-paramétrage du typage contrastif sur
+$n_\text{train} = 209$ épisodes : les features de traces et de logs introduisent
+de la variabilité intra-cluster (signatures variables d'un épisode à l'autre pour un
+même type de panne) qui brouille la perte contrastive. Sur ewat\_v4 avec
+$n_\text{train}$ plus grand, ce comportement devrait s'inverser.
+La leçon opérationnelle est de ne pas supposer que davantage de features améliore
+nécessairement le clustering sur des petits datasets.
+
+\paragraph{STGCN n'améliore pas l'AUROC macro sur les scénarios.}
+La comparaison B3/B4 (features brutes vs STGCN sur les scénarios Chaos Mesh)
+a montré un macro-AUROC identique ($0.835$). Cela a d'abord semblé indiquer que
+l'encodeur n'apportait rien. Une analyse détaillée par scénario a révélé une
+redistribution non triviale : $+0.270$ sur \texttt{fail\_slow\_cpu},
+$-0.246$ sur \texttt{noisy\_neighbor}. La coïncidence numérique résulte d'une
+compensation exacte sur $n = 45$ épisodes, et non d'une neutralité de l'encodeur.
+Cette distinction entre neutralité et redistribution compensée est importante pour
+interpréter les résultats sur ewat\_v4, où la compensation ne tiendra probablement plus.
+
+\paragraph{Look-through moins performant que le seuil simple pour le TPR drift.}
+H2a a montré que le look-through réduit le TPR drift de $0.67$ à $0.42$.
+Ce résultat paraît paradoxal : le mécanisme devrait améliorer la détection, pas la
+dégrader. L'explication est que le warm-up du DriftDetector ($\approx 8$ steps) et la
+confirmation temporelle ($3$--$6$ steps) retardent le flag drift au point de le manquer
+sur des épisodes courts — là où le seuil simple déclenche immédiatement.
+Le look-through est conçu pour réduire les faux positifs, non pour améliorer le TPR
+sur des épisodes aussi courts.
+
+\subsection{Collecte de données : pannes d'infrastructure}
+\label{sec:diff_infra}
+
+\paragraph{Nœud NotReady.}
+Le nœud \texttt{observit-cluster1-workers-58w74-mwxb2} est resté en état NotReady
+pendant toute la durée de la collecte ewat\_v3, rendant les métriques \texttt{disk\_io}
+du service \texttt{product-catalog} indisponibles ($16.7$\,\% de NaN).
+Ce problème n'a été identifié qu'après les premières validations du dataset, lorsque
+le taux de NaN anormalement élevé pour une seule combinaison service/feature a attiré
+l'attention.
+
+L'imputation par zéro a été retenue comme solution de compromis : elle n'introduit pas
+de biais directionnel (zéro est une valeur neutre pour les IOPS), mais sous-estime
+l'importance de la feature — confirmé par l'ablation LOO ($\Delta = -0.088$).
+La correction structurelle (remplacement du nœud ou déploiement OTel SDK applicatif)
+est planifiée pour ewat\_v4.
+
+\paragraph{Épisode \texttt{network\_loss\_018} rejeté.}
+Un épisode a produit $100$\,\% de NaN sur toutes les features de logs (Loki indisponible
+pendant la fenêtre d'enregistrement). Cet épisode a été rejeté, réduisant le dataset
+de 300 à 299 épisodes. Ce type d'échec est inhérent à la collecte sur infrastructure
+réelle : la stack d'observabilité elle-même peut être affectée par les injections
+de pannes réseau.
+
+\subsection{Transfert de domaine : hypothèse initiale invalidée}
+\label{sec:diff_transfer}
+
+L'hypothèse de départ pour l'évaluation sur RCAEval était qu'un simple ajustement
+du scaler suffirait à transférer le pipeline sur un nouveau cluster hébergeant le même
+logiciel. Cette hypothèse s'est révélée incorrecte : H3 AUROC reste à $\approx 0.5$
+quel que soit $n_\text{few}$ avec la Stratégie A.
+
+Le diagnostic a nécessité trois étapes. D'abord, tester quatre stratégies de
+normalisation pour isoler l'effet du scaler. Ensuite, vérifier que l'encodeur
+produisait bien des embeddings cohérents (H1 PASS avec instance norm + M\_only).
+Enfin, vérifier que l'échec de H3 n'était pas dû à une inadéquation des features mais
+à la durée des épisodes ($\times 2.3$) qui déplace les signatures pré-injection
+hors de la fenêtre $k^*$ apprise sur ewat\_v3.
+
+Ce diagnostic multi-factoriel a pris plusieurs jours et illustre la complexité du
+domain shift dans les pipelines de machine learning sur séries temporelles :
+le shift n'affecte pas uniformément toutes les étapes du pipeline.

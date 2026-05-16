@@ -23,7 +23,7 @@ M_QUEUE_DEPTH = 6    # Queue depth / pending requests
 # ---------------------------------------------------------------------------
 # T(t) — Trace features (indices 7–12)
 # ---------------------------------------------------------------------------
-T_SPAN_DUR_MED = 7       # Median span duration (seconds) — P99 on union
+T_SPAN_DUR_P99 = 7       # P99 span duration (seconds) — P99 on union of raw durations
 T_ABNORMAL_RATE = 8      # Fraction of error/abnormal spans
 T_TRACE_DEPTH = 9        # Median max depth of trace trees
 T_FAN_OUT = 10           # Median fan-out (children per span)
@@ -59,7 +59,7 @@ FEATURE_NAMES: list[str] = [
     "net_sat",
     "disk_io",
     "queue_depth",
-    "span_dur_med",
+    "span_dur_p99",
     "abnormal_span_rate",
     "trace_depth",
     "fan_out",
@@ -86,7 +86,7 @@ AGGREGATION_RULE: dict[str, str] = {
     "net_sat": "max",
     "disk_io": "max",
     "queue_depth": "max",
-    "span_dur_med": "p99_union",
+    "span_dur_p99": "p99_union",
     "abnormal_span_rate": "volume_weighted",
     "trace_depth": "median",
     "fan_out": "median",

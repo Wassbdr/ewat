@@ -28,7 +28,7 @@ M(t) ∈ ℝ^{N×7} — Métriques (sources : Prometheus existant + OTel Metrics
 7. Longueur de file d'attente (pending requests, queue depth)
 
 T(t) ∈ ℝ^{N×6} — Traces (source : OTel Collector, spans OTLP) :
-1. Durée médiane des spans
+1. Durée P99 des spans (`span_dur_p99`) — P99 sur l'union des durées brutes de tous les pods du service
 2. Taux de spans anormaux
 3. Profondeur de trace
 4. Fan-out
@@ -48,6 +48,13 @@ L(t) ∈ ℝ^{N×4} — Logs (source : OTel Collector, logs OTLP) :
 Quatre régimes, pas trois. θ_{drift∩anomaly} modélise les déploiements défectueux (simultanément drift et anomalie). Traité par le mécanisme de look-through (étape 0).
 
 S(t) ∼ D_{θ(t)}(G(t)) — le signal n'est pas une somme additive.
+
+**Correspondance θ ↔ labels du dataset** (`labels.parquet`, colonne `regime`) :
+- `normal` → θ_normal (phase de référence, avant injection)
+- `injection` → θ_anomaly (chaos actif)
+- `drift_anomaly` → θ_{drift∩anomaly} (déploiement défectueux simultané)
+- `recovery` → phase opérationnelle post-injection, sans équivalent θ (période de retour à la normale, exclue des évaluations H1/H3)
+- θ_drift (drift bénin pur : rolling deploy, autoscaling) n'est **pas** un label de régime ; il est détecté orthogonalement par le DriftDetector via le flag booléen `drift_flag` dans `labels.parquet`.
 
 ## Pipeline EWAT
 

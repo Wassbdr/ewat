@@ -1,0 +1,101 @@
+% ============================================================
+%  Section 1 — Introduction
+% ============================================================
+
+\section{Introduction}
+\label{sec:intro}
+
+Les architectures microservices déployées sur Kubernetes sont devenues la norme dans les
+organisations qui adoptent une cadence de livraison continue. Chaque service peut être mis
+à jour, mis à l'échelle ou reconfiguré indépendamment, ce qui produit un flux permanent
+de changements bénins dans le signal d'observabilité : déploiements progressifs, autoscaling
+horizontal, modifications de quota. Les outils de détection d'anomalies classiques — fondés
+sur des seuils statiques ou des z-scores univariés \cite{myrtollari2025} — ne distinguent pas
+ces drifts bénins des vraies pannes. Il en résulte un niveau élevé de faux positifs en production, qui épuise la
+confiance des équipes d'exploitation et retarde la réaction aux incidents réels.
+
+EWAT (\emph{Early Warning and Anomaly Typing}) est un pipeline de détection précoce et de
+typage automatique des anomalies conçu pour répondre à ce problème. Son positionnement est
+explicitement distinct du RCA (\emph{Root Cause Analysis}) \cite{fu2025} : là où le RCA est post-mortem
+(où, pourquoi, après la panne), EWAT est un système d'alerte précoce (quoi, dans combien de
+temps, avant la panne). L'objectif n'est pas d'identifier la cause racine, mais de détecter
+les signes précurseurs d'une dégradation imminente et d'en caractériser le type pour orienter
+la réaction opérationnelle.
+
+\subsection{Contexte}
+
+Ce stage s'est déroulé chez Devoteam, société de conseil spécialisée en transformation
+numérique, dans un contexte de montée en puissance de l'observabilité des plateformes cloud.
+Le cluster expérimental \texttt{observit-cluster1} (RKE2 v1.32, 9 nœuds) héberge l'application
+\emph{Online Boutique} de Google, une boutique en ligne de référence composée de microservices
+hétérogènes. La stack d'observabilité combine Prometheus pour les métriques d'infrastructure
+et un OpenTelemetry Collector pour les traces et logs applicatifs — deux sources
+complémentaires qui constituent ensemble le signal $S(t) \in \mathbb{R}^{N \times 17}$.
+
+Les injections de pannes contrôlées sont réalisées avec Chaos Mesh, un opérateur Kubernetes
+qui permet de simuler des scénarios reproductibles : saturation CPU, fuite mémoire,
+déploiement défectueux, montée en charge soudaine. Cet outillage permet de constituer un
+dataset labellisé tout en conservant un cluster réel, avec ses couplages inter-services et ses
+bruits opérationnels — une condition indispensable pour que les résultats soient transférables
+en production.
+
+\subsection{Problème}
+
+Un déploiement progressif (\texttt{rolling\_deploy}) et une saturation CPU (\texttt{cpu\_starvation})
+produisent tous deux des anomalies statistiques dans les métriques de latence et d'erreur.
+Un z-score à $\sigma = 2.5$ déclenche une alerte dans les deux cas sans distinction.
+Ce comportement est documenté dans la section~\ref{sec:alerts_results} : quel que soit
+le seuil $\sigma \in [2.0, 3.5]$, le taux de fausses alarmes sur les drifts bénins reste
+à 100\,\%.
+
+La distinction fondamentale entre drift et anomalie exige une modélisation explicite de
+quatre régimes opérationnels $\theta(t) \in \Theta$ plutôt que trois.
+Trois régimes (\emph{normal}, \emph{drift}, \emph{anomalie}) sont insuffisants car ils
+ne modélisent pas le cas hybride $\theta_{\text{drift} \cap \text{anomaly}}$ : un
+déploiement défectueux qui présente simultanément les signatures d'un drift bénin
+(changement de distribution graduel) et d'une anomalie réelle (dégradation des SLOs).
+Ce quatrième régime, incarné par le scénario \texttt{faulty\_deploy\_overlap} du dataset,
+requiert un mécanisme de \emph{look-through} pour ne pas supprimer le signal d'anomalie
+pendant la transition de drift.
+
+\subsection{Contributions}
+
+Ce travail apporte quatre contributions principales :
+
+\begin{enumerate}
+  \item \textbf{Formalisation à quatre régimes et pipeline EWAT \textit{end-to-end}.}
+    Définition formelle de $G(t)$, $S(t) \in \mathbb{R}^{N \times 17}$,
+    des quatre régimes $\Theta$, et d'un pipeline en quatre étapes séquentielles
+    (Section~\ref{sec:formalisation}). Implémentation complète avec 302 tests unitaires
+    et lint propre (Ruff, mypy).
+
+  \item \textbf{H1 validée — structurabilité empirique des types de pannes.}
+    Les embeddings STGCN forment des clusters bien séparés dans l'espace latent :
+    silhouette test $= 0.519 \pm 0.092$ sur 5 graines, minimum $= 0.414 \gg 0.3$
+    (seuil de Kaufman \& Rousseeuw \cite{kaufman1990}).
+    $K = 10$ clusters stables, $K^* \in \{9, 10, 11\}$ selon la graine.
+
+  \item \textbf{H3 validée — précurseurs typés à horizon $k^*$ opérationnel.}
+    AUROC moyen $= 0.973 \pm 0.012$ sur 5 graines, 7--8 types prédictibles sur $K$.
+    Horizon optimal $k^* = 6$ steps (3\,min) pour 5 types sur 8 — lead time opérationnel
+    directement exploitable.
+
+  \item \textbf{H2 négatif exploitable — motivation de ewat\_v4.}
+    Le mécanisme look-through n'apporte pas de réduction significative du FPR sur anomalie
+    ($p = 0.27$). La cause est identifiée précisément : les épisodes de $\approx 21$ steps
+    laissent $\approx 7$ steps utiles après le warm-up du DriftDetector (8 steps) et la
+    confirmation temporelle (3--6 steps). Ce résultat négatif motive la collecte ewat\_v4
+    avec des épisodes $\geq 40$ steps.
+\end{enumerate}
+
+\subsection{Plan du document}
+
+La section~\ref{sec:formalisation} pose les bases mathématiques du problème.
+La section~\ref{sec:dataset} décrit le dataset ewat\_v3 (299 épisodes, 15 scénarios).
+La section~\ref{sec:pipeline} détaille l'implémentation de chaque étape du pipeline.
+La section~\ref{sec:results} rapporte les résultats des hypothèses H1, H2a, H2b et H3,
+ainsi que la comparaison avec la baseline z-score.
+La section~\ref{sec:experiments} présente les expériences complémentaires : ablation des
+modalités, comparaison d'architectures, ontologie causale et transfert de domaine sur RCAEval.
+La section~\ref{sec:discussion} discute les apports, les limitations et les perspectives
+pour ewat\_v4.

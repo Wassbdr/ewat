@@ -1,0 +1,166 @@
+% ============================================================
+%  Section 2 — Formalisation
+% ============================================================
+
+\section{Formalisation du problème}
+\label{sec:formalisation}
+
+Une formalisation explicite est nécessaire pour deux raisons. D'abord, elle contraint les
+choix d'implémentation : les règles d'agrégation intra-service, le nombre de régimes $|\Theta|$
+et le budget de latence découlent directement des définitions formelles.
+Ensuite, elle définit les critères de falsification des hypothèses de manière non ambiguë,
+ce qui rend les résultats négatifs aussi informatifs que les résultats positifs.
+
+\subsection{Graphe de services}
+\label{sec:graph}
+
+Soit $G(t) = (V, E(t), w_E(t))$ le graphe de services à l'instant $t$, où $V$ est
+l'ensemble des services Kubernetes (Deployments), constant avec $|V| = N = 6$,
+et $E(t)$ les arêtes pondérées par
+$w_E : E(t) \to \mathbb{R}^3$, $e_{ij}(t) \mapsto (\text{volume}_{ij},\,
+\text{latence\_med}_{ij},\, \text{taux\_erreur}_{ij})$.
+
+Une arête $e_{ij}$ est présente à l'instant $t$ si et seulement si le volume de requêtes
+entre le service $i$ et le service $j$ est strictement positif sur la fenêtre glissante
+précédente. Les poids sont agrégés depuis les spans OTel selon les règles suivantes,
+choisies pour respecter les propriétés statistiques de chaque type de mesure :
+\begin{itemize}
+  \item Saturation (CPU, RAM, \texttt{net\_sat}, \texttt{disk\_io}) : \textbf{maximum}
+    sur les pods du service — la saturation la plus haute détermine le comportement.
+  \item Taux (\texttt{error\_rate}, \texttt{log\_warn\_rate}) : \textbf{somme pondérée
+    par volume} — un service à faible trafic et taux élevé ne doit pas être dilué.
+  \item Latence (\texttt{latency\_p99}, \texttt{span\_dur\_median}) : \textbf{percentile
+    99 sur l'union} des distributions individuelles des pods — jamais un percentile de
+    percentiles, qui sous-estime les queues de distribution \cite{gregg2013}.
+  \item Métriques structurelles (\texttt{trace\_depth}, \texttt{fan\_out},
+    \texttt{lexical\_entropy}) : \textbf{médiane} — robuste aux outliers transitoires.
+\end{itemize}
+
+\subsection{Signal de télémétrie}
+\label{sec:signal}
+
+Le signal $S(t) \in \mathbb{R}^{N \times 17}$ est défini comme la concaténation de
+trois modalités :
+\[
+  S(t) = \bigl[M(t) \mid T(t) \mid L(t)\bigr]
+\]
+avec :
+\begin{itemize}
+  \item $M(t) \in \mathbb{R}^{N \times 7}$ — métriques Prometheus, couvrant les ressources
+    selon la méthodologie USE \cite{gregg2013} (utilisation, saturation, erreurs) :
+    \texttt{cpu\_util}, \texttt{ram\_util}, \texttt{latency\_p99},
+    \texttt{error\_rate\_http}, \texttt{net\_sat}, \texttt{disk\_io},
+    \texttt{queue\_depth}.
+  \item $T(t) \in \mathbb{R}^{N \times 6}$ — traces OTel, capturant la structure et
+    la qualité des appels inter-services :
+    \texttt{span\_dur\_median}, \texttt{abnormal\_span\_rate}, \texttt{trace\_depth},
+    \texttt{fan\_out}, \texttt{retry\_rate}, \texttt{latency\_cv}.
+  \item $L(t) \in \mathbb{R}^{N \times 4}$ — logs OTel, dont deux features sémantiques :
+    \texttt{log\_error\_rate}, \texttt{log\_warn\_rate},
+    \texttt{semantic\_anomaly} (distance SentenceBERT au centroïde normal),
+    \texttt{lexical\_entropy}.
+\end{itemize}
+
+La modalité $M(t)$ fournit les signaux de ressource matures et stables ; $T(t)$ capture
+les effets de propagation dans le graphe d'appel ; $L(t)$ enrichit avec une sémantique
+applicative non disponible dans les métriques brutes.
+L'ablation par réentraînement (Section~\ref{sec:ablation_h1}) montre que $M(t)$ seul suffit
+pour la structuration géométrique (H1), tandis que $T(t)$ et $L(t)$ sont indispensables
+pour la prédictibilité des précurseurs (H3).
+
+\subsection{Régimes opérationnels}
+\label{sec:regimes}
+
+Nous définissons quatre régimes $\theta(t) \in \Theta$ :
+\[
+  \Theta = \{\theta_\text{normal},\; \theta_\text{drift},\;
+             \theta_\text{anomaly},\; \theta_{\text{drift} \cap \text{anomaly}}\}
+\]
+
+$\theta_\text{normal}$ est l'état nominal du système, sans injection.
+$\theta_\text{drift}$ correspond aux changements bénins de distribution — déploiements
+progressifs, autoscaling, modifications de quota — qui ne dégradent pas les SLOs.
+$\theta_\text{anomaly}$ regroupe les vrais incidents : saturation ressource, crash, fuite
+mémoire, latence anormale.
+$\theta_{\text{drift} \cap \text{anomaly}}$ modélise le cas hybride d'un déploiement
+défectueux : la distribution change (drift) et les SLOs se dégradent simultanément (anomalie).
+Ce quatrième régime exige un mécanisme de look-through dans l'étape de détection de drift,
+afin de ne pas supprimer le signal d'anomalie sous prétexte qu'un drift est en cours.
+Trois régimes seraient insuffisants : le régime $\theta_{\text{drift} \cap \text{anomaly}}$
+ne peut pas être correctement géré ni comme drift pur (l'alerte serait supprimée)
+ni comme anomalie pure (la logique de recalibration du détecteur serait incorrecte).
+
+\subsection{Pipeline EWAT}
+\label{sec:pipeline_overview}
+
+Le pipeline se décompose en quatre étapes séquentielles, conçues pour être indépendantes
+et testables unitairement :
+
+\begin{description}
+  \item[\textbf{Étape 0} — Détection de drift (MMD-RFF).]
+    $\widehat{\text{MMD}}^2(W_\text{ref}, W_\text{cur})$ via Random Fourier Features
+    avec mécanisme \emph{look-through} \cite{hinder2024}.
+    La complexité est $O(nD)$ avec $D = 256$ features aléatoires, permettant une inférence
+    en temps réel. Le seuil $\varepsilon_\text{drift} = 0.5226$ est calibré par critère
+    de Youden sur les drifts bénins injectés (AUC $= 0.60$ sur train).
+    Budget de latence : $< 1$\,s.
+
+  \item[\textbf{Étape 1} — Encodeur STGCN.]
+    $z_e = \text{Enc}_\theta(S_{[t-W,t+\delta]}, G(t)) \in \mathbb{R}^{64}$,
+    convolution spatio-temporelle sur le graphe de services \cite{yu2018}.
+    L'encodeur joint la dimension spatiale (structure du graphe $G(t)$) et la dimension
+    temporelle (série $S(t)$) via un réseau TCN, produisant un embedding
+    $z_e \in \mathbb{R}^{64}$ par épisode.
+    Budget : $< 2$\,s.
+
+  \item[\textbf{Étape 2} — Typage contrastif.]
+    Réseau siamois appris sur les paires de scénarios Chaos Mesh :
+    $d_\varphi(z_i, z_j) \to 0$ si même type, $\to 1$ sinon.
+    Le clustering hiérarchique agglomératif sur les embeddings produit
+    $K$ types $\{C_1, \ldots, C_K\}$ sélectionnés par score de silhouette sur train
+    ($K = 10$ sur ewat\_v3).
+    En validation et test, les labels sont assignés par plus proche centroïde depuis les
+    centroides train — ce qui garantit l'absence de fuite d'information inter-splits.
+
+  \item[\textbf{Étape 2b} — Ontologie.]
+    Relations temporelles ($C_i \to C_j$, support $\geq 3$),
+    causales (Transfer Entropy, estimateur KSG \cite{kraskov2004},
+    100 permutations, BH-FDR \cite{benjamini1995})
+    et de co-occurrence ($\chi^2$ Yates, correction Holm--Bonferroni).
+
+  \item[\textbf{Étape 3} — Précurseurs typés.]
+    $\hat{p}_i(t) = f_i(S_{[t-k,t]}, G(t)) \in [0,1]$,
+    $k^*_i = \arg\max_k \text{AUROC}(f_i, k)$ sélectionné sur val,
+    évalué sur test uniquement.
+    Budget : $< 1$\,s.
+\end{description}
+
+La sortie est $\text{Alert}(t) = (C_i,\, \hat{p}_i(t),\, k^*_i,\, \text{fiche}_{C_i})$,
+enrichie d'une fiche d'interprétabilité par cluster générée par permutation importance
+et validée par KernelSHAP.
+
+\subsection{Hypothèses et critères de falsification}
+\label{sec:hypotheses}
+
+Chaque hypothèse est formulée avec un critère quantitatif de falsification, de sorte
+qu'un résultat négatif soit aussi informatif qu'un résultat positif.
+
+\textbf{H1 — Structurabilité.}
+Les embeddings STGCN forment des clusters exploitables dans l'espace latent,
+définis par silhouette $\geq 0.3$ en held-out sur 5 graines $\times$ 5 splits.
+Le seuil $0.3$ est justifié par Kaufman \& Rousseeuw \cite{kaufman1990} comme limite
+minimale d'une structure exploitable.
+
+\textbf{H2a — Séparabilité drift par look-through.}
+Le mécanisme look-through réduit significativement le FPR sur anomalie à rappel constant,
+mesuré par un test de Student unilatéral apparié ($p < 0.05$) sur les 45 épisodes test.
+
+\textbf{H2b — Identification du régime $\theta_{\text{drift} \cap \text{anomaly}}$.}
+Le cluster C8 (\texttt{faulty\_deploy\_overlap}) présente un overlap drift\,+\,alerte
+significativement supérieur aux clusters de drift pur (C5, C6, C9),
+testé par Fisher exact ou proportion bootstrap.
+
+\textbf{H3 — Prédictibilité des précurseurs typés.}
+L'AUROC par type est supérieur à la baseline aléatoire ($0.5$) pour chaque horizon $k$,
+$k^*_i$ sélectionné sur val et évalué sur test.
+Les intervalles de confiance à 95\,\% sont estimés par bootstrap (1000 rééchantillonnages).

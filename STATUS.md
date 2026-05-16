@@ -1,6 +1,6 @@
 # EWAT — État courant du projet
 
-_Mis à jour : 2026-05-12 (baselines indépendants B3/B4, ablation rigoureuse, SimCLR/GAT, service-level TE, RCAEval zero-shot transfer)_
+_Mis à jour : 2026-05-13 (H2b critère strict, KernelSHAP validation, ablation H3, few-shot transfer RCAEval)_
 
 > Résultats détaillés et interprétation scientifique → `docs/results.md`
 
@@ -33,7 +33,7 @@ S(t) ∈ ℝ^{N×17}
     ↓ Sortie : Alert(t) = (C_i, p̂_i(t), k*_i, fiche_{C_i})
 ```
 
-302 tests unitaires, lint propre. Toutes les étapes implémentées et évaluées sur ewat_v3.
+401 tests unitaires, lint propre. Toutes les étapes implémentées et évaluées sur ewat_v3.
 
 ---
 
@@ -41,11 +41,11 @@ S(t) ∈ ℝ^{N×17}
 
 | Phase | État | Détail |
 |---|---|---|
-| Phase 1 — record | ✅ 300 épisodes | 15 scénarios × 20 rép. (1 exclu : `network_loss_018`) |
-| Phase 2 — build_features | ✅ 299 épisodes | `data/features/v3/` — 15/17 features à 0% NaN |
+| Phase 1 — record | ✅ 300 épisodes | 15 scénarios × 20 rép. (`data/raw/` contient aussi `collection.log`, `rcaeval/`, `run_20260416_112413/` — non comptés) |
+| Phase 2 — build_features | ✅ 300 épisodes buildés | `data/features/v3/` — **16/17** features à 0% NaN dans ewat_v3 (`network_loss_018` buildé mais exclu du split Phase 3) |
 | Phase 3 — assemble | ✅ | `ewat_v3` — split stratifié 209/45/45 |
 
-**NaN restant** : disk_io 16.7% (product-catalog, nœud NotReady) — résolu en ewat_v4.
+**NaN restant** : disk_io 16.7% (product-catalog, nœud NotReady) — résolu en ewat_v4. Les 4 features log (log_error_rate, log_warn_rate, semantic_anomaly, lexical_entropy) ont 0.33% NaN **uniquement dans network_loss_018** (exclu du split) ; dans ewat_v3 elles sont à 0%.
 
 ---
 
@@ -219,13 +219,29 @@ _Correction 2026-05-11_ : résultats corrigés vs STATUS précédent (48.5%/8.3%
 
 **Comparaison avec masquage à l'inférence** : le masquage concluait "M porte l'essentiel, T/L aident à la marge" — biais confirmé (inférence OOD). Les ordres de grandeur changent mais le classement qualitatif (M > T > L) reste cohérent.
 
+### Ablation H3 — impact du masquage sur l'AUROC précurseur (2026-05-13)
+
+Script : `experiments/ablation/eval_precursor_h3.py`. Masquage à l'inférence sur PrecursorClassifiers pré-entraînés (k* val-optimal). Distinct de l'ablation H1.
+
+**Résultat inverse de H1** : pour H3, le modèle full (AUROC=0.954) bat toutes les réductions. T et L ajoutent du bruit géométrique (H1) mais sont utiles pour la prédictibilité (H3).
+
+| Condition | Macro-AUROC | Δ vs full |
+|---|---|---|
+| **full** | **0.954** | — |
+| M+L | 0.916 | −0.038 |
+| M_only | 0.756 | −0.198 |
+| T+L | 0.563 | −0.391 |
+| L_only | 0.488 | −0.466 |
+
+**Features les plus critiques pour H3** (leave-one-out) : `disk_io` (Δ=−0.088), `lexical_entropy` (−0.049), `latency_p99` (−0.042). disk_io est le plus critique malgré 16.7% NaN → argument fort pour ewat_v4.
+
 ### Ablation features (masquage à l'inférence — labels corrigés)
 
 _Note : ablation par feature = mesure de sensibilité du modèle entraîné, pas importance causale. À interpréter comme "quelles features le modèle full exploite-t-il le plus", non comme "quelles features seraient les plus importantes si réentraîné"._
 
 **Features critiques** (leave-one-out, p<0.05) : `trace_depth` (Δ−0.069), `lexical_entropy` (Δ−0.069), `latency_p99` (Δ−0.062), `disk_io` (Δ−0.010)
 
-**Paires redondantes** : `latency_p99`↔`span_dur_median` (ρ=0.936), `error_rate_http`↔`abnormal_span_rate` (ρ=0.927)
+**Paires redondantes** : `latency_p99`↔`span_dur_p99` (ρ=0.936), `error_rate_http`↔`abnormal_span_rate` (ρ=0.927)
 
 ### Comparaison architectures encodeur — STGCN vs SimCLR vs GAT
 
@@ -259,7 +275,8 @@ python -m experiments.precursor.train --typing-dir experiments/typing/gat --enco
 - **NMI (cluster ↔ scénario) = 0.518** — alignement modéré avec les labels Chaos Mesh (attendu pour un clustering non supervisé)
 - **Pureté moyenne = 0.503** — C6 (drift_config_change) : 0.800 ; C0 (fail_slow_cpu) : 0.286 (mélange de types)
 - **Heatmap** : `experiments/typing/scenario_cluster_heatmap.png`
-- **Interprétabilité (2026-05-11)** : ρ_Spearman(gradient×input, permutation) = **−0.34** (anti-corrélé) → gradient×input **invalidé**. Les fiches `experiments/typing/fiches/cluster_*.json` ont été régénérées avec `method='permutation_importance'` (50 shuffles, drop silhouette moyen par feature et par cluster). Top features globaux : net_sat, latency_p99, disk_io > latency_cv > span_dur_median. retry_rate, log_warn_rate, queue_depth ≈ 0 (candidats à la suppression ewat_v4). Script : `experiments/typing/permutation_importance.py`.
+- **Interprétabilité (2026-05-11)** : ρ_Spearman(gradient×input, permutation) = **−0.34** (anti-corrélé) → gradient×input **invalidé**. Les fiches `experiments/typing/fiches/cluster_*.json` ont été régénérées avec `method='permutation_importance'` (50 shuffles, drop silhouette moyen par feature et par cluster). Top features globaux : net_sat, latency_p99, disk_io > latency_cv > span_dur_p99. retry_rate, log_warn_rate, queue_depth ≈ 0 (candidats à la suppression ewat_v4). Script : `experiments/typing/permutation_importance.py`.
+- **KernelSHAP validation (2026-05-13)** : ρ_Spearman(SHAP, permutation_importance) > 0 pour **9/10 clusters** (seuil ≥ 7) → fiches permutation_importance **validées**. Seul C3 (noisy_neighbor) discordant (ρ=−0.07). Fiches SHAP : `experiments/typing/fiches/cluster_*_shap.json`. Script : `experiments/typing/kernel_shap_importance.py`.
 
 ### H2b — Régime θ_{drift∩anomaly}
 
@@ -271,6 +288,11 @@ python -m experiments.precursor.train --typing-dir experiments/typing/gat --enco
 - Absence de clusters "drift pur" (drift% élevé ET alert% faible) : la suppression d'alerte n'est pas fonctionnelle sur épisodes courts
 
 Conclusion H2b : renforce H2a. L'échec de la discrimination drift/anomalie vient de la durée d'épisode trop courte (~21 steps), pas d'un défaut de conception.
+
+**H2b critère strict** (2026-05-13, `experiments/h2_overlap/eval_strict.py`) :
+- Fisher exact C8 vs drift pur (C5+C6+C9) : OR=1.48, **p=0.35** → non significatif. H2b PASS reste trivial.
+- Sensibilité threshold : à seuil 0.7, seulement 6/10 clusters passent (C0, C1, C3, C5, C8, C9).
+- **Timing** : l'alerte précurseur précède le drift flag dans **85–100% des cas** (timing_gap médian < 0 pour tous les clusters). Le DriftDetector est un indicateur tardif, pas précoce.
 
 ### Transfert zero-shot — RCAEval RE2-OB (90 épisodes, 30 types de pannes)
 
@@ -299,6 +321,21 @@ l'encodeur détecte "anomalie" mais ne discrimine pas les types sans réentraîn
 Few-shot transfer nécessaire pour H3.
 
 Rapport complet : `experiments/rcaeval/results.md`
+
+### Transfert few-shot — RCAEval Stratégie A (2026-05-13)
+
+Script : `experiments/rcaeval/eval_fewshot.py`. Re-fit du StandardScaler sur n_few épisodes RCAEval, encodeur + classifieurs ewat_v3 conservés. n_repeats=5.
+
+| n_few | H1 sil | H3 AUROC | H1 pass | H3 pass |
+|---|---|---|---|---|
+| 1 | 0.442±0.179 | 0.507±0.007 | ✓ | ✗ |
+| 3 | 0.388±0.120 | 0.503±0.004 | ✓ | ✗ |
+| 5 | 0.311±0.182 | 0.503±0.001 | ✓ | ✗ |
+| 10 | 0.347±0.050 | 0.502±0.001 | ✓ | ✗ |
+| 20 | 0.237±0.070 | 0.504±0.003 | ✗ | ✗ |
+| 40 | 0.222±0.045 | 0.503±0.006 | ✗ | ✗ |
+
+**H3 bloqué à ≈0.50 quel que soit n_few** : l'adaptation du scaler seul est insuffisante. L'espace latent ewat_v3 ne sépare pas les types de pannes RCAEval. **Stratégie B** nécessaire (fine-tuning du classifieur LR ou de l'encodeur sur quelques épisodes labellisés RCAEval).
 
 ---
 
@@ -372,12 +409,20 @@ python -m experiments.verification.verify_h1_h3 \
 8. ✅ **H2b** : PASS formel mais trivial — DD sensible sur épisodes courts, reinforces H2a
 9. ✅ **Baselines précurseurs (B0/B1/B2)** : B1=0.966, B2=0.975 (vs EWAT=0.951) — valeur du STGCN = structuration latente
 10. ✅ **Analyse clusters** : NMI=0.518, pureté=0.503, SHAP ρ=−0.34 (limitation)
+11. ✅ **H2b critère strict** : Fisher C8 vs drift pur p=0.35 (trivial confirmé) + timing (alerte avant drift flag)
+12. ✅ **KernelSHAP validation** : 9/10 clusters concordants → fiches permutation_importance validées
+13. ✅ **Ablation H3 précurseurs** : full bat M_only pour H3 (inverse H1) ; disk_io feature la plus critique (Δ=−0.088)
+14. ✅ **Few-shot transfer Stratégie A** : H3 bloqué ≈0.50 quel que soit n_few — scaler seul insuffisant, Stratégie B nécessaire
 
 ### Moyen terme
 
-11. **ewat_v4** : OTel SDK → disk_io 0% NaN
-12. ✅ **Ablation rigoureuse** : M_only bat full (+0.058 sil_test) — T/L ajoutent du bruit au clustering STGCN sur n=209
-13. ✅ **Contrastive pre-training (SimCLR)** : K=15, sil_test=0.429, AUROC=0.964 (11/15 types)
-14. ✅ **GAT vs GCN** : GAT K=15, sil_test=0.497 (+0.083 vs STGCN), AUROC=0.929, 13/15 types
-15. ✅ **Service-level TE (ontologie intra-épisode)** : 124 relations sur 8/10 clusters — C5/C6 (drift pur) = 0 relation (résultat validant), C8 unique `cart→load-gen`
-16. ✅ **RCAEval RE2-OB zero-shot** : avec instance norm + M_only → H1 sil=0.684 ✓ (détection anomalie générique), H3 AUROC=0.495 ✗ (discrimination de types impossible sans réentraînement). Rapport → `experiments/rcaeval/results.md`
+15. **ewat_v4** : OTel SDK → disk_io 0% NaN, épisodes ≥ 40 steps
+16. ✅ **Ablation rigoureuse** : M_only bat full (+0.058 sil_test) — T/L ajoutent du bruit au clustering STGCN sur n=209
+17. ✅ **Contrastive pre-training (SimCLR)** : K=15, sil_test=0.429, AUROC=0.964 (11/15 types)
+18. ✅ **GAT vs GCN** : GAT K=15, sil_test=0.497 (+0.083 vs STGCN), AUROC=0.929, 13/15 types
+19. ✅ **Service-level TE (ontologie intra-épisode)** : 124 relations sur 8/10 clusters — C5/C6 (drift pur) = 0 relation (résultat validant), C8 unique `cart→load-gen`
+20. ✅ **RCAEval RE2-OB zero-shot** : avec instance norm + M_only → H1 sil=0.684 ✓ (détection anomalie générique), H3 AUROC=0.495 ✗ (discrimination de types impossible sans réentraînement). Rapport → `experiments/rcaeval/results.md`
+
+### Rapport de stage
+
+**En cours** — matériau complet dans `docs/results.md` et `docs/limitations.md`.
