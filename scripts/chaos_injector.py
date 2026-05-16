@@ -57,7 +57,7 @@ class ChaosInjector:
         self._ensure_exists(scenario_path)
 
         if scenario_path.suffix == ".yaml":
-            self._run(["kubectl", "-n", self._namespace, "apply", "-f", str(scenario_path)])
+            self._run(["kubectl", "-n", self._namespace, "apply", "--validate=false", "-f", str(scenario_path)])
         elif scenario_path.suffix == ".sh":
             self._run(["bash", str(scenario_path), "inject"])
         else:
@@ -78,6 +78,7 @@ class ChaosInjector:
                     "-n",
                     self._namespace,
                     "delete",
+                    "--validate=false",
                     "-f",
                     str(scenario_path),
                     "--ignore-not-found=true",
