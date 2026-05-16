@@ -25,27 +25,76 @@ from __future__ import annotations
 
 import pickle
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 
+VALID_CLASSIFIER_TYPES = ("lr", "lr_tuned", "rf", "svc")
+
 
 class PrecursorClassifier:
-    """One-vs-rest logistic regression classifiers per cluster type.
+    """One-vs-rest binary classifiers per cluster type.
 
     Parameters
     ----------
-    n_clusters:  Number of cluster types.
-    C:           Inverse regularisation strength for LogisticRegression.
-    max_iter:    Max iterations for LogisticRegression solver.
+    n_clusters:       Number of cluster types.
+    reg_c:            Inverse regularisation for LogisticRegression (``"lr"`` only).
+    max_iter:         Max solver iterations (``"lr"`` and ``"lr_tuned"`` only).
+    classifier_type:  One of ``"lr"`` (default, backward-compatible),
+                      ``"lr_tuned"`` (LogisticRegressionCV over C grid),
+                      ``"rf"`` (RandomForest, balanced), ``"svc"`` (CalibratedSVC, balanced).
     """
 
-    def __init__(self, n_clusters: int, reg_c: float = 1.0, max_iter: int = 500) -> None:
+    def __init__(
+        self,
+        n_clusters: int,
+        reg_c: float = 1.0,
+        max_iter: int = 500,
+        classifier_type: str = "lr",
+    ) -> None:
+        if classifier_type not in VALID_CLASSIFIER_TYPES:
+            raise ValueError(
+                f"classifier_type must be one of {VALID_CLASSIFIER_TYPES}, got {classifier_type!r}"
+            )
         self.n_clusters = n_clusters
         self.reg_c = reg_c
         self.max_iter = max_iter
-        self._classifiers: dict[int, LogisticRegression] = {}
+        self.classifier_type = classifier_type
+        self._classifiers: dict[int, Any] = {}
+
+    def _build_binary_clf(self) -> Any:
+        if self.classifier_type == "lr_tuned":
+            from sklearn.linear_model import LogisticRegressionCV
+            return LogisticRegressionCV(
+                Cs=[0.01, 0.1, 1.0, 10.0, 100.0],
+                max_iter=self.max_iter,
+                solver="lbfgs",
+                penalty="l2",
+                class_weight="balanced",
+                cv=5,
+                scoring="roc_auc",
+            )
+        if self.classifier_type == "rf":
+            from sklearn.ensemble import RandomForestClassifier
+            return RandomForestClassifier(
+                n_estimators=200,
+                max_features="sqrt",
+                class_weight="balanced",
+                random_state=42,
+                n_jobs=1,
+            )
+        if self.classifier_type == "svc":
+            from sklearn.calibration import CalibratedClassifierCV
+            from sklearn.svm import SVC
+            return CalibratedClassifierCV(
+                SVC(kernel="rbf", class_weight="balanced", probability=False),
+                cv=5,
+                method="sigmoid",
+            )
+        # "lr" — default, backward-compatible (no class_weight change)
+        return LogisticRegression(C=self.reg_c, max_iter=self.max_iter, solver="lbfgs")
 
     def fit(self, z: np.ndarray, labels: np.ndarray) -> None:
         """Fit one binary classifier per cluster type.
@@ -59,9 +108,9 @@ class PrecursorClassifier:
             y = (labels == c).astype(int)
             if y.sum() == 0 or y.sum() == len(y):
                 # Degenerate — skip; predict_proba will return 0 or 1 for all
-                self._classifiers[c] = None  # type: ignore[assignment]
+                self._classifiers[c] = None
                 continue
-            clf = LogisticRegression(C=self.reg_c, max_iter=self.max_iter, solver="lbfgs")
+            clf = self._build_binary_clf()
             clf.fit(z, y)
             self._classifiers[c] = clf
 

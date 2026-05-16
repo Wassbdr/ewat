@@ -78,7 +78,6 @@ class ChaosInjector:
                     "-n",
                     self._namespace,
                     "delete",
-                    "--validate=false",
                     "-f",
                     str(scenario_path),
                     "--ignore-not-found=true",

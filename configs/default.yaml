@@ -98,7 +98,7 @@ ontology:
     significance: 0.05
 
 precursor:
-  horizons_min: [2, 5, 10, 20, 30, 60]
+  k_values: [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]
   model: "per_type"
   metric: "auroc"
   class_balance: "oversample"
@@ -106,7 +106,7 @@ precursor:
 
 evaluation:
   h1:
-    seeds: 5
+    seeds: 10
     splits: 5
     silhouette_threshold: 0.3
     complementary: ["gap_statistic", "bic_gmm"]
@@ -150,8 +150,8 @@ chaos_mesh:
   cool_down_s: 300
 
 mlflow:
-  tracking_uri: "http://localhost:5000"
-  experiment_name: "ewat"
+  tracking_uri: "file:///home/wassimbadraoui/repos/ewat/mlruns"
+  experiment_name: "ewat_improvements"
 
 random:
   seed: 42

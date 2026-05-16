@@ -92,11 +92,14 @@ class _SpatialGCNLayer(nn.Module):
 class _TemporalBlock(nn.Module):
     """Causal 1-D convolution over the time axis, applied node-wise.
 
-    Input/output shape: ``(B, N, T, d)`` with causal padding on the left so
-    that each output timestep only sees past inputs. The per-channel
-    LayerNorm (``self.norm``) exists as a parameter but is intentionally
-    NOT applied in the forward pass — the v3 checkpoint was trained without
-    it. Enable for newly trained models on v4 data.
+    Input/output shape: ``(B*N, d, T)`` with causal padding on the left so
+    that each output timestep only sees past inputs.
+
+    Parameters
+    ----------
+    use_layer_norm:
+        Apply per-channel LayerNorm after GELU. Disabled by default for
+        backward compatibility with v3 checkpoints; enable for new runs.
     """
 
     def __init__(
@@ -105,11 +108,12 @@ class _TemporalBlock(nn.Module):
         kernel_size: int = 3,
         dilation: int = 1,
         dropout: float = 0.1,
+        use_layer_norm: bool = False,
     ) -> None:
         super().__init__()
         pad = (kernel_size - 1) * dilation
         self.conv = nn.Conv1d(channels, channels, kernel_size, dilation=dilation, padding=pad)
-        self.norm = nn.LayerNorm(channels)
+        self.norm = nn.LayerNorm(channels) if use_layer_norm else None
         self.drop = nn.Dropout(dropout)
         self._pad = pad
 
@@ -118,6 +122,9 @@ class _TemporalBlock(nn.Module):
         out = self.conv(x)
         out = out[..., : -self._pad] if self._pad else out
         out = F.gelu(out)
+        if self.norm is not None:
+            # (B*N, d, T) → (B*N, T, d) for LayerNorm → back
+            out = self.norm(out.transpose(-1, -2)).transpose(-1, -2)
         return self.drop(out)
 
 
@@ -149,6 +156,9 @@ class STGCNEncoder(nn.Module):
         ``A(t)``. If ``False``, the time-averaged adjacency
         ``A_bar = mean_t A(t)`` is used instead — this matches the
         historical behaviour and is kept as an ablation variant.
+    use_layer_norm:
+        Apply LayerNorm in each TCN block after GELU. Disabled by default
+        for backward compatibility with v3 checkpoints. Enable for new runs.
     """
 
     def __init__(
@@ -163,6 +173,7 @@ class STGCNEncoder(nn.Module):
         n_adj_ch: int = 3,
         dropout: float = 0.1,
         dynamic_graph: bool = True,
+        use_layer_norm: bool = False,
     ) -> None:
         super().__init__()
 
@@ -183,6 +194,7 @@ class STGCNEncoder(nn.Module):
                 kernel_size=tcn_kernel,
                 dilation=2 ** i,
                 dropout=dropout,
+                use_layer_norm=use_layer_norm,
             )
             for i in range(tcn_layers)
         ])
@@ -196,6 +208,7 @@ class STGCNEncoder(nn.Module):
 
         self._d_embed = d_embed
         self._dynamic_graph = bool(dynamic_graph)
+        self._use_layer_norm = bool(use_layer_norm)
 
     @property
     def embedding_dim(self) -> int:
