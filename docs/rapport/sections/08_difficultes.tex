@@ -1,5 +1,5 @@
 % ============================================================
-%  Section 8 — Difficultés rencontrées et corrections
+%  Section 8 --- Difficultés rencontrées et corrections
 % ============================================================
 
 \section{Difficultés rencontrées et évolutions méthodologiques}
@@ -8,7 +8,7 @@
 Ce stage a été marqué par plusieurs difficultés techniques et méthodologiques, dont
 certaines n'ont été identifiées qu'après des semaines d'expérimentation. Cette section
 les documente honnêtement, en expliquant comment chacune a été détectée, diagnostiquée
-et résolue — ou pourquoi elle reste une limitation ouverte.
+et résolue --- ou pourquoi elle reste une limitation ouverte.
 
 \subsection{Fuite d'information inter-splits (correction H1/H3)}
 \label{sec:diff_leakage}
@@ -17,7 +17,7 @@ et résolue — ou pourquoi elle reste une limitation ouverte.
 La version initiale du code d'évaluation appliquait \texttt{fit\_predict} indépendamment
 sur chaque split pour assigner les labels de cluster. En pratique, le clustering
 sur le split de validation et le clustering sur le split de test produisaient chacun leur
-propre géométrie — sans lien avec les centroides calculés sur train.
+propre géométrie --- sans lien avec les centroides calculés sur train.
 Cela donnait des scores de silhouette artificiellement optimistes
 (\texttt{sil\_val}~$= 0.601$, \texttt{sil\_test}~$= 0.615$) car le clustering était
 ajusté à la distribution locale de chaque split plutôt qu'évalué en généralisation.
@@ -35,7 +35,7 @@ depuis ces centroides figés. Cette approche simule fidèlement le comportement 
 production : un nouvel épisode est typé par rapport à la structure apprise sur les
 données d'entraînement, sans re-clustering.
 Après correction, les scores descendent à \texttt{sil\_test}~$= 0.414$ (graine 42),
-soit une baisse de $-0.201$. Malgré cette baisse, H1 reste validée — ce qui renforce
+soit une baisse de $-0.201$. Malgré cette baisse, H1 reste validée --- ce qui renforce
 la confiance dans la robustesse réelle du résultat.
 
 La même correction a été appliquée à H3 : la sélection de $k^*_i$ utilisait
@@ -87,7 +87,7 @@ en moyenne. Ce résultat était inattendu et a nécessité une investigation app
 Le problème vient de la non-linéarité de l'encodeur STGCN combinée à la perte
 contrastive siamoise. Le gradient mesure la sensibilité locale du score en un point,
 mais cette sensibilité locale ne reflète pas l'importance globale d'une feature pour
-la structuration des clusters — d'autant plus que la loss contrastive crée des
+la structuration des clusters --- d'autant plus que la loss contrastive crée des
 gradients qui pointent dans des directions géométriquement complexes dans l'espace
 des embeddings.
 
@@ -158,7 +158,7 @@ H2a a montré que le look-through réduit le TPR drift de $0.67$ à $0.42$.
 Ce résultat paraît paradoxal : le mécanisme devrait améliorer la détection, pas la
 dégrader. L'explication est que le warm-up du DriftDetector ($\approx 8$ steps) et la
 confirmation temporelle ($3$--$6$ steps) retardent le flag drift au point de le manquer
-sur des épisodes courts — là où le seuil simple déclenche immédiatement.
+sur des épisodes courts --- là où le seuil simple déclenche immédiatement.
 Le look-through est conçu pour réduire les faux positifs, non pour améliorer le TPR
 sur des épisodes aussi courts.
 
@@ -175,7 +175,7 @@ l'attention.
 
 L'imputation par zéro a été retenue comme solution de compromis : elle n'introduit pas
 de biais directionnel (zéro est une valeur neutre pour les IOPS), mais sous-estime
-l'importance de la feature — confirmé par l'ablation LOO ($\Delta = -0.088$).
+l'importance de la feature --- confirmé par l'ablation LOO ($\Delta = -0.088$).
 La correction structurelle (remplacement du nœud ou déploiement OTel SDK applicatif)
 est planifiée pour ewat\_v4.
 

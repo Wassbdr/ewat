@@ -1,5 +1,5 @@
 % ============================================================
-%  Section 4 — Implémentation du pipeline
+%  Section 4 --- Implémentation du pipeline
 % ============================================================
 
 \section{Implémentation du pipeline}
@@ -7,11 +7,11 @@
 
 Chaque étape du pipeline est un module indépendant et testable, avec une interface
 d'entrée/sortie explicite. Cette modularité permet de substituer une composante
-sans réentraîner le reste du pipeline — condition indispensable pour les expériences
+sans réentraîner le reste du pipeline --- condition indispensable pour les expériences
 d'ablation et de comparaison d'architectures.
 L'ensemble du pipeline compte 302 tests unitaires et passe le lint Ruff et mypy sans erreur.
 
-\subsection{Étape 0 — Détection de drift (MMD-RFF)}
+\subsection{Étape 0 --- Détection de drift (MMD-RFF)}
 \label{sec:drift}
 
 La détection de drift s'appuie sur la statistique MMD² (Maximum Mean Discrepancy)
@@ -22,7 +22,7 @@ une inférence en temps réel sur des fenêtres glissantes de signaux multivari�
 Le seuil $\varepsilon_\text{drift} = 0.5226$ est calibré par critère de Youden sur les
 épisodes d'entraînement contenant des drifts bénins injectés (AUC $= 0.60$ sur train).
 Ce niveau d'AUC modeste reflète la difficulté intrinsèque de la détection de drift
-sur des épisodes courts — le DriftDetector a davantage valeur d'indicateur complémentaire
+sur des épisodes courts --- le DriftDetector a davantage valeur d'indicateur complémentaire
 que de détecteur primaire.
 
 \begin{figure}[h]
@@ -47,7 +47,7 @@ Trois cas sont distingués :
     confirmation négative : recalibration ($W_\text{ref} \leftarrow W_\text{cur}$).
 \end{itemize}
 
-\subsection{Étape 1 — Encodeur STGCN}
+\subsection{Étape 1 --- Encodeur STGCN}
 \label{sec:encoder}
 
 L'encodeur est un Spatio-Temporal Graph Convolutional Network \cite{yu2018} qui joint
@@ -62,7 +62,7 @@ $d_\text{hidden} = 64$, $d_\text{embed} = 64$. L'entraînement est auto-supervis
 Ce préentraînement auto-supervisé permet d'exploiter les épisodes normaux
 (sans injection) pour structurer l'espace latent avant le typage contrastif.
 
-\subsection{Étape 2 — Typage siamois}
+\subsection{Étape 2 --- Typage siamois}
 \label{sec:typing}
 
 Le réseau siamois apprend une distance métrique $d_\varphi$ dans l'espace des embeddings
@@ -75,10 +75,10 @@ Les embeddings projetés $\{\varphi(z_e^{(i)})\}$ sont ensuite regroupés par cl
 hiérarchique agglomératif avec linkage de Ward, $K$ étant sélectionné par maximum du
 score de silhouette sur le jeu d'entraînement ($K = 10$ sur ewat\_v3).
 Les labels de validation et de test sont assignés par plus proche centroïde depuis les
-centroides calculés sur train — correction méthodologique essentielle pour éviter la
+centroides calculés sur train --- correction méthodologique essentielle pour éviter la
 fuite d'information inter-splits qui existait dans une version antérieure du code.
 
-\subsection{Étape 2b — Ontologie}
+\subsection{Étape 2b --- Ontologie}
 \label{sec:ontology}
 
 L'ontologie $\mathcal{O} = (\mathcal{C}, \mathcal{R})$ encode trois types de relations
@@ -94,7 +94,7 @@ La Transfer Entropy est estimée par l'estimateur KSG (Kraskov-Stögbauer-Grassb
 \cite{kraskov2004}, avec 100 permutations de bootstrap pour le test de significativité
 et correction BH-FDR \cite{benjamini1995} pour les tests multiples.
 Une distinction critique sépare l'estimateur cluster-level (qui agrège toutes les séries
-temporelles d'un cluster avant d'estimer la TE — biais écologique documenté) de
+temporelles d'un cluster avant d'estimer la TE --- biais écologique documenté) de
 l'estimateur service-level (intra-épisode, sans biais). Les résultats rapportés en
 Section~\ref{sec:ontology_results} utilisent l'estimateur service-level.
 
@@ -102,7 +102,7 @@ Section~\ref{sec:ontology_results} utilisent l'estimateur service-level.
 Test $\chi^2$ Yates 2$\times$2 avec fallback Fisher exact si le nombre attendu est $< 5$,
 correction Holm--Bonferroni pour les tests multiples.
 
-\subsection{Étape 3 — Précurseurs typés}
+\subsection{Étape 3 --- Précurseurs typés}
 \label{sec:precursor}
 
 Pour chaque type $C_i$, un classifieur logistique one-vs-rest $f_i$ est entraîné
@@ -121,7 +121,7 @@ $\text{Alert}(t) = (C_i,\, \hat{p}_i(t),\, k^*_i,\, \text{fiche}_{C_i})$.
 La fiche $\text{fiche}_{C_i}$ contient les features les plus importantes pour ce cluster,
 calculées par permutation importance et validées par KernelSHAP.
 
-\subsection{Alertes — AlertAssembler}
+\subsection{Alertes --- AlertAssembler}
 \label{sec:alerts_impl}
 
 L'AlertAssembler intègre les sorties des étapes 0, 2 et 3 en mode streaming step-by-step.

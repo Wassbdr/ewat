@@ -1,5 +1,5 @@
 % ============================================================
-%  Section 5 — Résultats des hypothèses
+%  Section 5 --- Résultats des hypothèses
 % ============================================================
 
 \section{Résultats}
@@ -12,7 +12,7 @@ chacune produisant un réentraînement complet de l'encodeur et du réseau siamo
 Les intervalles de confiance à 95\,\% sur l'AUROC sont obtenus par bootstrap
 ($n = 1000$ rééchantillonnages).
 
-\subsection{H1 — Structurabilité des embeddings}
+\subsection{H1 --- Structurabilité des embeddings}
 \label{sec:h1}
 
 \paragraph{Protocole.}
@@ -50,8 +50,8 @@ minimum $= 0.414 \gg 0.3$ (seuil de Kaufman \& Rousseeuw).
 $K = 10$ clusters stable (écart-type $= 0.7$).
 
 Les types de pannes sont structurellement séparables dans l'espace latent STGCN.
-Cette séparabilité est le résultat du couplage entre la convolution spatiale sur $G(t)$ —
-qui encode la propagation des effets dans le graphe d'appel — et le typage contrastif,
+Cette séparabilité est le résultat du couplage entre la convolution spatiale sur $G(t)$ ---
+qui encode la propagation des effets dans le graphe d'appel --- et le typage contrastif,
 qui rapproche les épisodes de même scénario et éloigne les épisodes de scénarios différents.
 L'analyse NMI (NMI cluster $\leftrightarrow$ scénario $= 0.518$, pureté moyenne $= 0.503$)
 confirme un alignement modéré avec les labels Chaos Mesh, ce qui est attendu pour un
@@ -67,7 +67,7 @@ clustering non supervisé sur 15 scénarios distincts.
 \label{fig:cluster_heatmap}
 \end{figure}
 
-\subsection{H2a — Séparabilité du drift par look-through}
+\subsection{H2a --- Séparabilité du drift par look-through}
 \label{sec:h2a}
 
 \paragraph{Protocole.}
@@ -81,7 +81,7 @@ le look-through à rappel drift constant.
 
 \begin{table}[h]
 \centering
-\caption{Look-through vs.\ seuil simple — test set (45 épisodes).}
+\caption{Look-through vs.\ seuil simple --- test set (45 épisodes).}
 \label{tab:h2a}
 \begin{tabular}{lcc}
 \toprule
@@ -101,14 +101,14 @@ Le mécanisme look-through n'apporte pas de réduction significative du FPR sur 
 La cause est identifiée et quantifiable. Chaque épisode dure $\approx 21$ steps.
 Le DriftDetector nécessite un warm-up de $\approx 8$ steps avant d'avoir une fenêtre
 de référence stable, et le mécanisme de confirmation temporelle requiert $3$--$6$ steps
-supplémentaires. Il ne reste donc que $\approx 7$ steps utiles par épisode — soit 33\,\%
-de la durée totale — pour que le look-through opère. Sur cette fenêtre réduite,
+supplémentaires. Il ne reste donc que $\approx 7$ steps utiles par épisode --- soit 33\,\%
+de la durée totale --- pour que le look-through opère. Sur cette fenêtre réduite,
 la puissance statistique est insuffisante pour atteindre $p < 0.05$.
 
 Ce résultat est complété par une évaluation du look-through sur les embeddings STGCN
 (H2a bis) : FPR$_\text{lt} = 0.788 >$ baseline $= 0.667$, $p = 0.978$. Les embeddings
 STGCN capturent le \emph{type} de panne (H1 validée), pas le \emph{régime}
-drift/anomalie — ce qui est cohérent avec leur conception : le réseau siamois
+drift/anomalie --- ce qui est cohérent avec leur conception : le réseau siamois
 est entraîné sur des paires de scénarios, sans supervision sur la distinction
 drift/anomalie.
 
@@ -116,7 +116,7 @@ Ce résultat négatif est honnête et exploitable : il ne remet pas en cause la 
 du mécanisme, mais définit précisément la contrainte de données à lever dans ewat\_v4
 ($\geq 40$ steps par épisode).
 
-\subsection{H2b — Identification du régime $\theta_{\text{drift} \cap \text{anomaly}}$}
+\subsection{H2b --- Identification du régime $\theta_{\text{drift} \cap \text{anomaly}}$}
 \label{sec:h2b}
 
 \paragraph{Protocole.}
@@ -126,7 +126,7 @@ et une alerte précurseur à une fréquence significativement supérieure aux cl
 de drift pur (C5 + C6 + C9 poolés). Le critère formel (overlap $> 30$\,\%) est
 complété par un critère strict : test Fisher exact et analyse de sensibilité au seuil.
 
-\paragraph{Résultats — critère formel.}
+\paragraph{Résultats --- critère formel.}
 L'overlap drift+alerte dépasse 30\,\% pour les 10/10 clusters, y compris pour C5, C6
 et C9 (drifts purs). Ce résultat est trivial : le DriftDetector, avec une fenêtre de
 5 steps, déclenche sur quasi tous les épisodes quel que soit leur type, et les classifieurs
@@ -134,7 +134,7 @@ précurseurs (seuil 0.4) déclenchent également très fréquemment.
 C8 présente : drift\% $= 0.85$, alerte\% $= 0.92$, overlap\% $= 0.77$, cohérent avec
 $\theta_{\text{drift} \cap \text{anomaly}}$, mais sans contrôle statistique sur les drifts purs.
 
-\paragraph{Résultats — critère strict (analyse de sensibilité).}
+\paragraph{Résultats --- critère strict (analyse de sensibilité).}
 
 \begin{table}[h]
 \centering
@@ -153,9 +153,9 @@ $> 90$\,\% & 1/10 (C1 uniquement) \\
 \end{table}
 
 Fisher exact C8 vs.\ drift pur (C5+C6+C9 poolés) :
-$\text{OR} = 1.48$, $p = 0.35$ — \textbf{non significatif}.
+$\text{OR} = 1.48$, $p = 0.35$ --- \textbf{non significatif}.
 
-\paragraph{Résultats — timing.}
+\paragraph{Résultats --- timing.}
 L'analyse temporelle révèle que l'alerte précurseur \emph{précède} le flag drift dans
 85--100\,\% des épisodes (timing gap médian $< 0$ pour tous les clusters).
 Le DriftDetector est un indicateur \emph{tardif} : il confirme une transition de régime
@@ -166,11 +166,11 @@ délai depuis l'injection.
 \paragraph{Interprétation.}
 H2b PASS trivial renforce le diagnostic de H2a : le DriftDetector est trop sensible sur
 des épisodes de 21 steps pour discriminer drift et anomalie. La conclusion est la même
-dans les deux cas — limitation de données, pas défaut de conception. Sur ewat\_v4
+dans les deux cas --- limitation de données, pas défaut de conception. Sur ewat\_v4
 ($\geq 40$ steps), la fenêtre de confirmation sera suffisante pour tester H2b
 avec un contrôle statistique valide.
 
-\subsection{H3 — Prédictibilité des précurseurs typés}
+\subsection{H3 --- Prédictibilité des précurseurs typés}
 \label{sec:h3}
 
 \paragraph{Protocole.}
@@ -207,7 +207,7 @@ C9 & drift\_scale\_up      & 2  & NaN   & $n_\text{pos} < 2$ \\
 8/10 types prédictibles. C6 et C9 : NaN par insuffisance de positifs ($n_\text{pos} = 1$).
 
 L'horizon optimal $k^* = 6$ steps (3\,min) pour 5 types sur 8 établit un
-\textbf{lead time opérationnel de 3\,min} — temps suffisant pour déclencher une
+\textbf{lead time opérationnel de 3\,min} --- temps suffisant pour déclencher une
 procédure de rollback sur Kubernetes avant que la dégradation n'atteigne les SLOs utilisateurs.
 C3 présente l'IC le plus large ([0.636, 0.930], $n_\text{pos} = 3$),
 reflétant la faible représentation de \texttt{noisy\_neighbor} dans le test set
@@ -237,16 +237,16 @@ reflétant la faible représentation de \texttt{noisy\_neighbor} dans le test se
 789  & 0.977 & 8/11 & \checkmark \\
 1337 & 0.972 & 7/10 & \checkmark \\
 \midrule
-\textbf{Agrégé} & $\mathbf{0.973 \pm 0.012}$ & 7–8/K & \textbf{5/5} \\
+\textbf{Agrégé} & $\mathbf{0.973 \pm 0.012}$ & 7--8/K & \textbf{5/5} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 La variance inter-graines est faible (écart-type $= 0.012$), ce qui confirme la robustesse
 des précurseurs aux initialisations aléatoires du pipeline. L'AUROC moyen reste supérieur
-à $0.95$ pour toutes les graines — bien au-dessus du seuil de falsification ($0.5$).
+à $0.95$ pour toutes les graines --- bien au-dessus du seuil de falsification ($0.5$).
 
-\subsection{Système d'alerte — comparaison avec le z-score}
+\subsection{Système d'alerte --- comparaison avec le z-score}
 \label{sec:alerts_results}
 
 \begin{table}[h]
@@ -258,8 +258,8 @@ des précurseurs aux initialisations aléatoires du pipeline. L'AUROC moyen rest
 \toprule
 \textbf{Méthode} & \textbf{Détection} & \textbf{IC\,95\,\%} & \textbf{FA drift} & \textbf{Lead time} \\
 \midrule
-z-score ($\sigma \in [2.0, 3.5]$) & 100\,\% & — & 100\,\% & 2.5\,min \\
-EWAT seuil 0.3 & 100\,\% & — & 100\,\% & 4.6\,min \\
+z-score ($\sigma \in [2.0, 3.5]$) & 100\,\% & --- & 100\,\% & 2.5\,min \\
+EWAT seuil 0.3 & 100\,\% & --- & 100\,\% & 4.6\,min \\
 EWAT seuil 0.5 & 78.8\,\% & [62.0, 89.4]\,\% & 100\,\% & 3.9\,min \\
 \textbf{EWAT seuil 0.7} & \textbf{57.6\,\%} & \textbf{[40.8, 72.8]\,\%} & \textbf{8.3\,\%} & \textbf{3.0\,min} \\
 \bottomrule
@@ -274,7 +274,7 @@ EWAT seuil 0.5 & 78.8\,\% & [62.0, 89.4]\,\% & 100\,\% & 3.9\,min \\
 \toprule
 \textbf{Seuil} & \textbf{FA observée} & \textbf{IC\,95\,\% Wilson} & \textbf{$n_\text{drift}$} \\
 \midrule
-0.5 & 100\,\% & — & 12 \\
+0.5 & 100\,\% & --- & 12 \\
 0.7 & 8.3\,\% & [1.5, 35.4]\,\% & 12 \\
 \bottomrule
 \end{tabular}
@@ -282,7 +282,7 @@ EWAT seuil 0.5 & 78.8\,\% & [62.0, 89.4]\,\% & 100\,\% & 3.9\,min \\
 
 L'apport principal d'EWAT par rapport à la baseline z-score est la réduction du taux de
 fausses alarmes sur les drifts bénins. Quel que soit le seuil $\sigma \in [2.0, 3.5]$,
-le z-score déclenche une alerte sur 100\,\% des épisodes de drift bénin — il ne dispose
+le z-score déclenche une alerte sur 100\,\% des épisodes de drift bénin --- il ne dispose
 d'aucun mécanisme pour distinguer un déploiement progressif d'une vraie anomalie.
 Ce comportement est \emph{structurel} : un z-score univarié mesure l'écart à la moyenne
 glissante de chaque métrique indépendamment. Un drift bénin et une anomalie réelle
@@ -298,7 +298,7 @@ Ce gain est obtenu grâce au typage contrastif : les clusters de drift (C5, C6, 
 des précurseurs entraînés spécifiquement sur les signatures de drift bénin, ce qui permet
 à l'AlertAssembler de distinguer ces signatures des anomalies réelles.
 
-La détection d'anomalies réelles au seuil 0.7 est de 57.6\,\% [40.8, 72.8]\,\% — en deçà
+La détection d'anomalies réelles au seuil 0.7 est de 57.6\,\% [40.8, 72.8]\,\% --- en deçà
 des 100\,\% du z-score. Ce trade-off est explicite et contrôlable par le seuil : le seuil 0.3
 retrouve 100\,\% de détection avec 100\,\% de FA, tandis que le seuil 0.7 offre le meilleur
 équilibre FA/détection sur les données disponibles.

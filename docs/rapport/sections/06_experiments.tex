@@ -1,5 +1,5 @@
 % ============================================================
-%  Section 6 — Expériences complémentaires
+%  Section 6 --- Expériences complémentaires
 % ============================================================
 
 \section{Expériences complémentaires}
@@ -11,7 +11,7 @@ et à la prédictibilité (H3), la comparaison d'architectures d'encodeur, la st
 causale inter-services révélée par l'ontologie, et la transférabilité du pipeline
 sur un dataset externe.
 
-\subsection{Ablation des modalités — H1 (réentraînement)}
+\subsection{Ablation des modalités --- H1 (réentraînement)}
 \label{sec:ablation_h1}
 
 \paragraph{Protocole.}
@@ -26,19 +26,19 @@ les 3 modalités en isolation (M, T, L) et les 4 paires et triplet possibles.
 
 \begin{table}[h]
 \centering
-\caption{Ablation modalités sur H1 — réentraînement complet (graine 42).}
+\caption{Ablation modalités sur H1 --- réentraînement complet (graine 42).}
 \label{tab:ablation_h1}
 \begin{tabular}{lcccr}
 \toprule
 \textbf{Condition} & \textbf{$n_\text{feat}$} & \textbf{sil\_train} & \textbf{sil\_test} & \textbf{$\Delta$ vs full} \\
 \midrule
-\textbf{full}    & 17 & 0.378 & 0.439 & — \\
+\textbf{full}    & 17 & 0.378 & 0.439 & --- \\
 \textbf{M\_only} & 7  & 0.241 & \textbf{0.497} & \textbf{+0.058} \\
-T\_only          & 6  & 0.064 & 0.412 & −0.027 \\
-M+L              & 11 & 0.251 & 0.382 & −0.057 \\
-T+L              & 10 & 0.022 & 0.341 & −0.098 \\
-M+T              & 13 & 0.318 & 0.316 & −0.123 \\
-L\_only          & 4  & −0.138 & 0.051 & −0.388 \\
+T\_only          & 6  & 0.064 & 0.412 & -0.027 \\
+M+L              & 11 & 0.251 & 0.382 & -0.057 \\
+T+L              & 10 & 0.022 & 0.341 & -0.098 \\
+M+T              & 13 & 0.318 & 0.316 & -0.123 \\
+L\_only          & 4  & -0.138 & 0.051 & -0.388 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -53,20 +53,20 @@ L'explication probable est un sur-paramétrage : le STGCN dispose de suffisammen
 capacité pour ajuster les 17 features, mais les features de traces et de logs introduisent
 de la variabilité intra-cluster (un même type de panne peut avoir des signatures de logs
 très différentes d'un épisode à l'autre) qui brouille la structure contrastive.
-L\_only présente même un sil\_train négatif — la modalité logs seule ne structure pas
+L\_only présente même un sil\_train négatif --- la modalité logs seule ne structure pas
 l'espace latent sur les données disponibles.
 
 Ce résultat contraste fortement avec celui de H3 (Section~\ref{sec:ablation_h3}) :
 les modalités $T$ et $L$ sont géométriquement bruitées pour le clustering, mais
 indispensables pour la prédictibilité des précurseurs.
 
-\subsection{Ablation features — H3 (masquage à l'inférence)}
+\subsection{Ablation features --- H3 (masquage à l'inférence)}
 \label{sec:ablation_h3}
 
 \paragraph{Protocole.}
 Pour H3, la question est différente : quelles features le classifieur LR entraîné
 exploite-t-il le plus pour prédire les précurseurs ? Cette mesure de sensibilité
-s'effectue par masquage à l'inférence — les features sont mises à zéro dans les
+s'effectue par masquage à l'inférence --- les features sont mises à zéro dans les
 fenêtres pré-injection $[t-k^*, t]$ sans réentraînement, et l'impact sur l'AUROC macro
 est mesuré. Il s'agit explicitement d'une mesure de sensibilité du modèle entraîné,
 non d'une importance causale.
@@ -77,19 +77,19 @@ leave-one-out (une feature à la fois).
 
 \begin{table}[h]
 \centering
-\caption{Ablation modalités sur H3 — masquage à l'inférence (graine 42, AUROC macro moyen).}
+\caption{Ablation modalités sur H3 --- masquage à l'inférence (graine 42, AUROC macro moyen).}
 \label{tab:ablation_h3_modality}
 \begin{tabular}{lcc}
 \toprule
 \textbf{Condition} & \textbf{AUROC macro} & \textbf{$\Delta$ vs full} \\
 \midrule
-\textbf{full}    & \textbf{0.954} & — \\
-M+L              & 0.916          & −0.038 \\
-M+T              & 0.891          & −0.063 \\
-M\_only          & 0.756          & −0.198 \\
-T+L              & 0.563          & −0.391 \\
-T\_only          & 0.520          & −0.434 \\
-L\_only          & 0.488          & −0.466 \\
+\textbf{full}    & \textbf{0.954} & --- \\
+M+L              & 0.916          & -0.038 \\
+M+T              & 0.891          & -0.063 \\
+M\_only          & 0.756          & -0.198 \\
+T+L              & 0.563          & -0.391 \\
+T\_only          & 0.520          & -0.434 \\
+L\_only          & 0.488          & -0.466 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -98,15 +98,15 @@ L\_only          & 0.488          & −0.466 \\
 
 \begin{table}[h]
 \centering
-\caption{Top features LOO pour H3 — masquage à l'inférence (graine 42).}
+\caption{Top features LOO pour H3 --- masquage à l'inférence (graine 42).}
 \label{tab:ablation_h3_loo}
 \begin{tabular}{lcc}
 \toprule
 \textbf{Feature} & \textbf{AUROC sans} & \textbf{$\Delta$} \\
 \midrule
-\texttt{disk\_io}          & 0.866 & −0.088 \\
-\texttt{lexical\_entropy}  & 0.905 & −0.049 \\
-\texttt{latency\_p99}      & 0.912 & −0.042 \\
+\texttt{disk\_io}          & 0.866 & -0.088 \\
+\texttt{lexical\_entropy}  & 0.905 & -0.049 \\
+\texttt{latency\_p99}      & 0.912 & -0.042 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -123,13 +123,13 @@ malgré ses 16.7\,\% de NaN. Cette feature capture l'augmentation des IOPS préc
 certains types de pannes (saturation de ressource, fuite mémoire), un signal précurseur
 d'autant plus informatif qu'il est peu corrélé aux autres métriques.
 Son importance réelle est probablement sous-estimée sur ewat\_v3 à cause des NaN
-— argument direct pour résoudre L2 dans ewat\_v4.
+--- argument direct pour résoudre L2 dans ewat\_v4.
 
 Deux paires de features sont fortement redondantes :
 \texttt{latency\_p99} $\leftrightarrow$ \texttt{span\_dur\_median} ($\rho = 0.936$) et
 \texttt{error\_rate\_http} $\leftrightarrow$ \texttt{abnormal\_span\_rate} ($\rho = 0.927$).
 À l'inverse, \texttt{retry\_rate}, \texttt{log\_warn\_rate} et \texttt{queue\_depth}
-présentent un $\Delta \approx 0$ en LOO — ces features sont candidates à la suppression
+présentent un $\Delta \approx 0$ en LOO --- ces features sont candidates à la suppression
 dans ewat\_v4, ce qui réduirait $S(t)$ de $\mathbb{R}^{N \times 17}$
 à $\mathbb{R}^{N \times 14}$.
 
@@ -176,7 +176,7 @@ inter-services sont informatives pour chaque type de panne, ce qui améliore la
 structuration sans nécessiter une topologie fixe.
 
 SimCLR présente le meilleur AUROC moyen ($0.964$) mais 4 types NaN (clusters trop
-petits en test, $n_\text{pos} < 2$) — conséquence d'un $K = 15$ plus élevé qui fragmente
+petits en test, $n_\text{pos} < 2$) --- conséquence d'un $K = 15$ plus élevé qui fragmente
 les scénarios rares. Le pré-entraînement NT-Xent améliore la séparabilité globale mais
 produit des clusters de taille inégale sur un dataset de 299 épisodes.
 
@@ -194,23 +194,23 @@ Cette coïncidence numérique masque une redistribution non triviale : l'encodeu
 La valeur du STGCN est donc géométrique (structuration pour le clustering siamois,
 H1 sil $= 0.519$) et redistributive, plutôt que globalement prédictive.
 
-\subsection{Ontologie — relations causales service-level}
+\subsection{Ontologie --- relations causales service-level}
 \label{sec:ontology_results}
 
 \paragraph{Protocole.}
 L'ontologie est construite en deux passes. La passe cluster-level agrège toutes les
-séries temporelles d'un cluster avant d'estimer la Transfer Entropy — ce qui introduit
+séries temporelles d'un cluster avant d'estimer la Transfer Entropy --- ce qui introduit
 un biais écologique (les effets intra-épisode sont confondus avec les effets inter-épisodes).
 La passe service-level estime la TE intra-épisode (estimateur KSG hiérarchique),
 puis agrège les p-values et les valeurs de TE par cluster. Seule la passe service-level
 est reportée comme résultat principal.
 
-\paragraph{Résultats — cluster-level.}
+\paragraph{Résultats --- cluster-level.}
 La passe cluster-level produit 22 relations temporelles et 0 relation causale avec
 100 permutations (les 2 relations observées lors d'un dry-run à 20 permutations étaient
 des faux positifs, confirmant la nécessité d'un nombre suffisant de permutations).
 
-\paragraph{Résultats — service-level.}
+\paragraph{Résultats --- service-level.}
 
 \begin{table}[h]
 \centering
@@ -220,16 +220,16 @@ des faux positifs, confirmant la nécessité d'un nombre suffisant de permutatio
 \toprule
 \textbf{Cluster} & \textbf{Scénario dominant} & \textbf{Relations} & \textbf{Relation caractéristique} \\
 \midrule
-C0 & fail\_slow\_cpu        & 23 & — \\
-C1 & drift\_traffic\_ramp   & 19 & — \\
+C0 & fail\_slow\_cpu        & 23 & --- \\
+C1 & drift\_traffic\_ramp   & 19 & --- \\
 C2 & resource\_leak         & 8  & $\text{load-gen} \to \text{frontend}$ (TE=0.187) \\
-C3 & noisy\_neighbor        & 10 & — \\
-C4 & crash                  & 20 & — \\
-C5 & drift\_rolling\_deploy & \textbf{0}  & — \\
-C6 & drift\_config\_change  & \textbf{0}  & — \\
-C7 & cpu\_starvation        & 15 & — \\
+C3 & noisy\_neighbor        & 10 & --- \\
+C4 & crash                  & 20 & --- \\
+C5 & drift\_rolling\_deploy & \textbf{0}  & --- \\
+C6 & drift\_config\_change  & \textbf{0}  & --- \\
+C7 & cpu\_starvation        & 15 & --- \\
 C8 & faulty\_deploy\_overlap & 20 & $\text{cart} \to \text{load-gen}$ (TE=0.031) \\
-C9 & drift\_scale\_up        & 9  & — \\
+C9 & drift\_scale\_up        & 9  & --- \\
 \midrule
 \textbf{Total} & & \textbf{124} & \\
 \bottomrule
@@ -240,24 +240,24 @@ C9 & drift\_scale\_up        & 9  & — \\
 Le résultat le plus significatif est l'absence totale de relations causales pour C5
 (\texttt{drift\_rolling\_deploy}) et C6 (\texttt{drift\_config\_change}) : les drifts
 bénins ne produisent pas de cascade causale mesurable entre services.
-Ce résultat est scientifiquement attendu — un déploiement progressif modifie la
-distribution du signal sans créer de couplage anormal entre services — et il valide
+Ce résultat est scientifiquement attendu --- un déploiement progressif modifie la
+distribution du signal sans créer de couplage anormal entre services --- et il valide
 rétrospectivement la partition drift/anomalie de la formalisation.
 
 La relation $\text{load-generator} \to \text{frontend}$ est ubiquitaire (présente dans
 8/10 clusters actifs), reflet du couplage structurel de trafic : le load-generator
 drive directement la charge frontend.
-Son amplitude varie de TE $= 0.047$ (C4, crash — effet masqué par l'interruption
-brutale du service) à TE $= 0.187$ (C2, resource\_leak — l'épuisement progressif
+Son amplitude varie de TE $= 0.047$ (C4, crash --- effet masqué par l'interruption
+brutale du service) à TE $= 0.187$ (C2, resource\_leak --- l'épuisement progressif
 des ressources amplifie les délais de propagation entre services).
 
 La relation $\text{cart} \to \text{load-generator}$ est unique à C8
-($\theta_{\text{drift} \cap \text{anomaly}}$). Ce sens de causalité — le service
-cart influençant le load-generator — est cohérent avec les dynamiques de retry/backoff
+($\theta_{\text{drift} \cap \text{anomaly}}$). Ce sens de causalité --- le service
+cart influençant le load-generator --- est cohérent avec les dynamiques de retry/backoff
 pendant un déploiement défectueux : les erreurs du cart déclenchent des retries
 qui augmentent la charge apparente mesurée par le load-generator.
 
-\subsection{Transfert — RCAEval RE2-OB}
+\subsection{Transfert --- RCAEval RE2-OB}
 \label{sec:rcaeval}
 
 \paragraph{Contexte.}
@@ -275,13 +275,13 @@ directement le pipeline ewat\_v3 (encodeur, scaler, centroides) sur les épisode
 
 \begin{table}[h]
 \centering
-\caption{Transfert zero-shot — RCAEval RE2-OB (4 stratégies de normalisation).}
+\caption{Transfert zero-shot --- RCAEval RE2-OB (4 stratégies de normalisation).}
 \label{tab:rcaeval_zeroshot}
 \begin{tabular}{llcc}
 \toprule
 \textbf{Stratégie} & \textbf{Features} & \textbf{sil H1} & \textbf{AUROC H3} \\
 \midrule
-ewat\_v3 scaler  & 17 & 0.778\,⚠ & 0.510 \\
+ewat\_v3 scaler  & 17 & 0.778\,* & 0.510 \\
 rcaeval scaler   & 17 & 0.234    & 0.497 \\
 instance norm    & 17 & 0.287    & 0.507 \\
 \textbf{instance norm} & \textbf{M(t) seul} & \textbf{0.684} & \textbf{0.495} \\
@@ -300,7 +300,7 @@ mais ne peut pas discriminer les types car les classifieurs precurseurs entraîn
 les fenêtres de 21 steps ewat\_v3 ne reconnaissent pas les signatures à horizon variable
 sur des épisodes de 48 steps.
 
-\subsubsection{Few-shot — Stratégie A}
+\subsubsection{Few-shot --- Stratégie A}
 \label{sec:rcaeval_fewshot}
 
 \paragraph{Protocole.}
@@ -312,7 +312,7 @@ aléatoires (IC 95\,\% bootstrap). Le hold-out test correspond aux épisodes res
 
 \begin{table}[h]
 \centering
-\caption{Transfert few-shot — Stratégie A (refit scaler, $n_\text{repeats}=5$).}
+\caption{Transfert few-shot --- Stratégie A (refit scaler, $n_\text{repeats}=5$).}
 \label{tab:rcaeval_fewshot}
 \begin{tabular}{ccc}
 \toprule
@@ -341,6 +341,6 @@ pré-injection relative à l'horizon $k^*$ appris sur ewat\_v3 ;
 (2) les types de pannes RCAEval ne correspondent pas aux 10 clusters ewat\_v3,
 donc les classifieurs one-vs-rest ne trouvent pas de signal positif.
 
-La Stratégie B — fine-tuning des classifieurs LR ou de la dernière couche de
-l'encodeur avec quelques épisodes labellisés RCAEval — est la prochaine étape
+La Stratégie B --- fine-tuning des classifieurs LR ou de la dernière couche de
+l'encodeur avec quelques épisodes labellisés RCAEval --- est la prochaine étape
 nécessaire pour atteindre H3 AUROC $> 0.7$ en transfert.

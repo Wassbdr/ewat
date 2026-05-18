@@ -1,13 +1,13 @@
 % ============================================================
-%  Section 3 — Dataset ewat_v3
+%  Section 3 --- Dataset ewat_v3
 % ============================================================
 
 \section{Dataset ewat\_v3}
 \label{sec:dataset}
 
 Le dataset ewat\_v3 est issu d'une collecte expérimentale sur infrastructure réelle.
-L'utilisation d'un cluster Kubernetes de production simulée — plutôt que d'un simulateur
-ou d'un dataset public — est un choix délibéré : les couplages inter-services réels,
+L'utilisation d'un cluster Kubernetes de production simulée --- plutôt que d'un simulateur
+ou d'un dataset public --- est un choix délibéré : les couplages inter-services réels,
 les bruits d'observabilité et les artefacts de timing (retards de scraping Prometheus,
 buffers OTel) sont indispensables pour que le pipeline soit évaluable dans des conditions
 représentatives du déploiement en production.
@@ -34,17 +34,17 @@ OpenTelemetry Collector recevant les traces et logs applicatifs en OTLP gRPC.
 La collecte suit un protocole en trois phases :
 
 \begin{enumerate}
-  \item \textbf{Phase 1 — Enregistrement} (\texttt{scripts/record\_episode.py}) :
+  \item \textbf{Phase 1 --- Enregistrement} (\texttt{scripts/record\_episode.py}) :
     injection d'un scénario Chaos Mesh, dump brut des métriques Prometheus
     et des spans OTel sur une fenêtre de $\approx 10$\,min
     ($T \approx 21$ steps à 30\,s/step).
 
-  \item \textbf{Phase 2 — Construction des features}
+  \item \textbf{Phase 2 --- Construction des features}
     (\texttt{scripts/build\_features.py}) :
     extraction du signal $S(t) \in \mathbb{R}^{N \times 17}$, du graphe $G(t)$
     et des labels de régime depuis les dumps bruts.
 
-  \item \textbf{Phase 3 — Assemblage} (\texttt{scripts/assemble\_dataset.py}) :
+  \item \textbf{Phase 3 --- Assemblage} (\texttt{scripts/assemble\_dataset.py}) :
     split stratifié $209 / 45 / 45$ (train / val / test)
     garantissant la représentation de chaque scénario dans les trois splits.
 \end{enumerate}
@@ -57,7 +57,7 @@ approximativement à un split 70/15/15, classique pour des datasets de taille li
 \label{sec:composition}
 
 Le dataset \texttt{ewat\_v3} comprend \textbf{299 épisodes}
-(300 collectés, 1 rejeté — \texttt{network\_loss\_018}, Loki 100\,\% NaN)
+(300 collectés, 1 rejeté --- \texttt{network\_loss\_018}, Loki 100\,\% NaN)
 répartis sur 15 scénarios :
 
 \begin{itemize}
@@ -108,10 +108,10 @@ déclenche simultanément un drift de distribution et une dégradation des SLOs.
 \toprule
 \textbf{Feature} & \textbf{NaN} & \textbf{Cause} \\
 \midrule
-cpu\_util, ram\_util, net\_sat, queue\_depth & 0\,\% & ✓ \\
+cpu\_util, ram\_util, net\_sat, queue\_depth & 0\,\% & \ding{51} \\
 latency\_p99, error\_rate\_http & 0\,\% & patchés depuis spans OTel \\
-Traces (7–12) & 0\,\% & ✓ \\
-Logs (13–16) & 0.4\,\% & résiduel irréductible \\
+Traces (7--12) & 0\,\% & \ding{51} \\
+Logs (13--16) & 0.4\,\% & résiduel irréductible \\
 \textbf{disk\_io} & \textbf{16.7\,\%} & nœud NotReady (\texttt{product-catalog}) \\
 \bottomrule
 \end{tabular}
@@ -123,24 +123,24 @@ le nœud \texttt{observit-cluster1-workers-58w74-mwxb2} est resté en état NotR
 pendant l'intégralité de la collecte ewat\_v3, rendant les métriques de disque
 indisponibles pour ce service. Les NaN sont imputés par zéro dans le pipeline
 (valeur par défaut de la métrique en l'absence de scraping), ce qui sous-estime
-l'importance réelle de \texttt{disk\_io} — confirmé par l'ablation LOO
+l'importance réelle de \texttt{disk\_io} --- confirmé par l'ablation LOO
 (Section~\ref{sec:ablation_h3}, $\Delta = -0.088$).
 
 \subsection{Limitations}
 \label{sec:dataset_limitations}
 
 \begin{description}
-  \item[\textbf{L1 — Épisodes trop courts} ($\approx 21$ steps, $\approx 10.5$\,min).]
+  \item[\textbf{L1 --- Épisodes trop courts} ($\approx 21$ steps, $\approx 10.5$\,min).]
     La durée a été optimisée pour maximiser le nombre d'épisodes
     (trade-off débit vs.\ profondeur temporelle).
     Impact : insuffisant pour le mécanisme look-through (warm-up $\approx 8$ steps,
-    confirmation $3$–$6$ steps), et lead time maximal observable limité à $\approx 5$\,min.
+    confirmation $3$--$6$ steps), et lead time maximal observable limité à $\approx 5$\,min.
     Résolu dans ewat\_v4 ($\geq 40$ steps, durée $\geq 20$\,min par épisode).
 
-  \item[\textbf{L2 — disk\_io 16.7\,\% NaN}.]
+  \item[\textbf{L2 --- disk\_io 16.7\,\% NaN}.]
     L'ablation H3 (Section~\ref{sec:ablation_h3}) montre que \texttt{disk\_io} est
     la feature la plus critique pour les précurseurs ($\Delta = -0.088$),
-    malgré ses valeurs manquantes — son importance réelle est probablement
+    malgré ses valeurs manquantes --- son importance réelle est probablement
     sous-estimée. Résolu dans ewat\_v4 par déploiement d'un OTel SDK applicatif
     permettant de collecter les métriques de disque indépendamment du nœud.
 \end{description}
