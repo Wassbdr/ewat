@@ -9,10 +9,14 @@ build/
 # Data artifacts — never commit large binary data
 data/raw/
 data/raw_new/
+data/raw_v4/
 data/features/
 data/datasets/
 data/processed/
 data/embeddings/
+
+# Split archives (raw_v4 parts)
+*.part_a*
 
 # Experiment outputs (results, figures, calibration artifacts)
 experiments/
@@ -49,3 +53,7 @@ graphify-out/
 
 # Project-specific (CLAUDE.md is tracked via git add -f if needed)
 CLAUDE.md
+
+# Docs non trackés
+docs/point_hebdo_*.md
+docs/rapport/section*.md

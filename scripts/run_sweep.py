@@ -109,6 +109,12 @@ def _build_cmd(
 def _run_single(args: tuple[list[str], Path]) -> dict:
     """Worker function: run a single pipeline command."""
     cmd, output_dir = args
+    summary_path = output_dir / "pipeline_summary.json"
+    if summary_path.exists():
+        print(f"[SWEEP] Skipping (already done): {output_dir.name}", flush=True)
+        summary = json.loads(summary_path.read_text())
+        summary["output_dir"] = str(output_dir)
+        return summary
     print(f"[SWEEP] Starting: {output_dir.name}", flush=True)
     result = subprocess.run(cmd, capture_output=False, check=False)
     summary_path = output_dir / "pipeline_summary.json"
