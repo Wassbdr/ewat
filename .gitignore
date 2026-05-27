@@ -69,6 +69,8 @@ docs/rapport/section*.md
 *.fdb_latexmk
 *.bbl
 *.blg
+*.bcf
+*.run.xml
 docs/rapport/*.aux
 docs/rapport/*.nav
 docs/rapport/*.out

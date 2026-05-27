@@ -1,6 +1,6 @@
 # EWAT — État courant du projet
 
-_Mis à jour : 2026-05-26 (Phase G — Retrain complet pipeline v4_strat avec 38 fixes audit appliqués)_
+_Mis à jour : 2026-05-26 (Phases H-K — Multi-seed validation v4_strat, 10 graines, chiffres consolidés)_
 
 > Résultats détaillés et interprétation scientifique → `docs/results.md`
 
@@ -16,6 +16,78 @@ _Mis à jour : 2026-05-26 (Phase G — Retrain complet pipeline v4_strat avec 38
 | **H3** — Prédictibilité des précurseurs | ⚠️ CIRCULAIRE | **AUROC moyen = 0.987 ± 0.011** (10 graines, 10/10 PASS) — **mais voir stress test A1** |
 | **H3 (honnête)** — vs labels Chaos Mesh (B3/B4) | ⚠️ FAIBLE | macro-AUROC=0.835 (Δ_STGCN=0.000) — encodeur n'aide pas en agrégé |
 | **H3 (précursion réelle)** — distant-window | ❌ FAIL | Δ(far−near)=−0.007 → **fuite signature scénario** (A1, 2026-05-22) |
+
+### Multi-seed validation (10 graines, ewat_v4_strat, Phase H+J, 2026-05-26)
+
+| Métrique | Valeur consolidée | Note |
+|---|---|---|
+| **H1 sil_test** | **0.691 ± 0.115** (10 graines) | range [0.521, 0.839] — variance large, K instable |
+| **H3 AUROC peak** | **0.990 ± 0.012** (circulaire) | by design — cible auto-référente, cf. L9 |
+| **B2 Chaos Mesh stratified** | **0.9201** déterministe | IC bootstrap [0.878, 0.956] — **headline défensif** |
+| **B2 LOSO macro** | **0.9298** déterministe | 15 folds × 10 seeds |
+| **A1 Δ(far−near)** | **−0.012 ± 0.022** | LEAK 9/10, GENUINE 1/10 (seed 42 outlier) |
+| **Latence E2E p95** | **13 ms** | sous budget 5 s (×375) |
+
+---
+
+## Phase H + J + K — Multi-seed validation (2026-05-26, 10 graines)
+
+Suite à Phase G (single seed 42 → résultats trop optimistes), un sweep multi-seed (10 graines) a été lancé pour mesurer la variance réelle. Verdict : **le retrain Phase G était un outlier** sur deux métriques clés (sil_test 0.84 et A1 Δ=−0.05).
+
+### Phase H — Pipeline retrain (cible labels EWAT, circulaire)
+
+10 graines × (encoder + siamois + précurseur + A1) — ~7h CPU total.
+
+| Métrique | Mean ± Std (10 graines) | Range | Verdict |
+|---|---|---|---|
+| **H1 silhouette test** | **0.691 ± 0.115** | [0.521, 0.839] | ✅ ≥ 0.6 (seuil) mais variance large |
+| **H3 AUROC peak test** | **0.990 ± 0.012** | [0.959, 1.000] | ⚠️ circulaire (cible auto-référente, cf. L9) |
+| **A1 Δ(far−near)** | **−0.012 ± 0.022** | [−0.050, +0.019] | ❌ LEAK_CONFIRMED 9/10, GENUINE 1/10 |
+| **K_optimal** | 11.8 ± 2.1 | [9, 15] | ❌ instable |
+| **best_epoch siamois** | ~3 | constant | ⚠️ surentraînement persistant |
+
+Détail per-seed : `experiments/multiseed/phase_h/results.md`.
+
+### Phase J — Headline défensif (cible Chaos Mesh, indépendante)
+
+10 graines × B2 (LR-OvR features brutes flatten + instance norm). Le LR avec solver lbfgs étant **déterministe**, toutes les graines donnent exactement le même chiffre (la variance est dans le bootstrap CI, pas dans le fit).
+
+| Métrique | Valeur (10 graines, identique) | IC 95% bootstrap | Verdict |
+|---|---|---|---|
+| **B2 stratified macro-AUROC** | **0.9201** | [0.878, 0.956] | ✅ headline défensif robuste par construction |
+| **B2 LOSO macro-AUROC** | **0.9298** | (15 folds × 10 seeds) | ✅ stable |
+
+**Le NaN-aware scaler (Step 2.3) ne bouge pas B2** car B2 utilise son propre scaler local sur flatten features. L'audit corrige des bugs réels mais ne déplace pas le headline indépendant. Cohérent avec A5 (paired Δ B4-B3 IC contient 0).
+
+### Phase K — Diagnostics
+
+**K.1 K-selection comparison** (`k_selection_comparison.md`) :
+
+| Stratégie | Mode (count) | Mean ± Std | Range | Agreement |
+|---|---|---|---|---|
+| silhouette (default) | K=14 (2/10) | 11.8 ± 2.1 | [9, 15] | — |
+| gap_tibshirani | K=12 (2/10) | 8.2 ± 2.8 | [4, 12] | 4/10 avec silhouette |
+
+Verdict : **K intrinsèquement instable** sur ce dataset (n=270 train). Ni silhouette ni Tibshirani ne stabilise. Recommandation v5 : fixer K=10 manuellement ou passer à HDBSCAN (density-based).
+
+**K.3 Variance per-seed** (`variance_analysis.md`, `distribution.png`) :
+- Métriques **stables** : H3 AUROC (circ), B2 stratified/LOSO (déterministe).
+- Métriques **instables** : H1 sil (range 0.32), K (range 6), A1 Δ (outlier seed 42).
+- **Seed 42 confirmé comme outlier** sur A1 — son Δ=−0.05 (initialement reporté Phase G) n'est pas reproductible.
+
+### Verdict consolidé (à reporter au maître de stage)
+
+1. **Headline défensif** : B2 = **0.9201** [0.878, 0.956] sur Chaos Mesh v4_strat — déterministe, IC bootstrap explicite, indépendant des labels EWAT.
+2. **Phase G était un outlier** : Phase H montre que sil=0.84 et A1=−0.05 ne sont pas reproductibles.
+3. **38 fixes audit corrigent des bugs réels** (NaN-aware scaler, class_weight, instance norm exclusive, etc.) mais ne déplacent pas le headline indépendant — c'est attendu et cohérent.
+4. **Limites intrinsèques** : K_optimal instable (n_train=270 trop petit), surentraînement siamois (best_epoch~3 quoi qu'il arrive), n_pos=3 par scénario test (C-5).
+5. **Documentation** : 17 limites L1-L17 documentées avec fixes futurs proposés.
+
+### Artefacts produits
+
+- `experiments/multiseed/phase_h/{aggregate.json,results.md,k_selection_comparison.md,variance_analysis.md,distribution.png}`
+- `experiments/multiseed/phase_j/{aggregate.json,results.md}`
+- `experiments/multiseed/{run_phase_h.py,run_phase_j.py,aggregate_phase_h.py,phase_k_kselection.py,phase_k_variance.py}`
 
 ---
 

@@ -571,9 +571,26 @@ Le dataset v4 est à la fois plus grand (262 vs 209 train) et plus diversifié (
 - Re-évaluer K (10 vs 15 vs auto-déterminé via gap statistic)
 - Sweep multi-graines (10) avec stratégie retenue → cible sil_test ≥ 0.60 sur les 10
 
-### État
+### État (mise à jour Phase H + K, 2026-05-26)
 
-Identifié, fix en cours d'implémentation. Voir `experiments/typing/sweep_v4_stability.py` (à créer).
+**Confirmation multi-seed (Phase H, 10 graines)** :
+- best_epoch siamois reste ≤ 7 sur **10/10 graines** malgré `mining=semi-hard` (Step 6 fix)
+- sil_test = 0.691 ± 0.115 (range [0.521, 0.839]) — variance plus large que sur v3 (0.78 ± 0.07)
+- K_optimal varie de **9 à 15** (Phase K.1) — ni silhouette ni Tibshirani gap statistic ne stabilise (agreement 4/10 seeds)
+
+**Le surentraînement est donc structurel, pas un bug de mining**. Causes probables (à valider en future itération) :
+1. n_train = 270 trop petit pour un siamois profond
+2. Diversité des durées (47-51 steps) → paires contrastives faciles
+3. Embeddings STGCN trop bruyants pour produire une géométrie stable
+
+**Recommandations v5** :
+- Hard-negative mining strict (`--mining hard`, pas semi-hard)
+- Data augmentation (permutation aléatoire de nœuds, jitter temporel)
+- Régularisation renforcée (weight_decay 1e-3, dropout 0.3)
+- Fixer K=10 manuellement OU passer à HDBSCAN density-based clustering
+- Cible : sil_test ≥ 0.6 stable sur 10 graines + best_epoch ≥ 15
+
+Voir `experiments/multiseed/phase_h/{k_selection_comparison.md,variance_analysis.md}` pour les diagnostics complets.
 
 ---
 

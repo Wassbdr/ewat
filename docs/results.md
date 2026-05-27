@@ -475,10 +475,51 @@ Le gain H3 affiché (+0.014) est **trompeur car circulaire**. Sur cible indépen
 ### Rapport de stage (reframe)
 
 La contribution se reframe ainsi :
-1. **Pipeline atomique 3-phases** end-to-end, 425+ tests, reproductible
-2. **H1 validée géométriquement** : silhouette = 0.782 ± 0.065 (10 graines) — contribution principale et défendable
+1. **Pipeline atomique 3-phases** end-to-end, 672+ tests, reproductible
+2. **H1 validée géométriquement** : silhouette = 0.782 ± 0.065 sur ewat_v3 (10 graines, contribution principale)
 3. **H3 validée prédictivement sur cible indépendante** : macro-AUROC = 0.920 sur Chaos Mesh v4_strat, IC [0.878, 0.956] — métrique défensive face à la critique de circularité
 4. **Précursion temporelle confirmée** : Δ(far − near) = −0.12 sur STGCN+Chaos Mesh — le modèle exploite la dynamique pré-injection (et pas seulement la signature statique du scénario)
 5. **H2 négatif robuste** : double confirmation (ewat_v3 et ewat_v4_strat) — résultat scientifique honnête
 6. **Stress tests (Phase A)** : 5 tests documentés (A1 distant-window, A2 LOSO, A3 permutation, A4 n_pos≥5, A5 paired Δ) qui transforment la critique de circularité en transparence méthodologique
-7. **Open-set (Phase C3)** : OpenMax/EVT pour répondre à la généralisation imparfaite à un type inédit
+7. **Open-set (Phase C3)** : OpenMax/EVT + Mahalanobis-OOD pour répondre à la généralisation imparfaite à un type inédit
+
+---
+
+## 11. Validation multi-seed finale (Phase H + J + K, 2026-05-26)
+
+Suite à la critique de Phase G (single seed 42 → résultats trop optimistes), un sweep multi-seed (10 graines) a été lancé sur ewat_v4_strat. **Verdict : le retrain Phase G était un outlier** sur deux métriques clés (sil_test 0.84 et A1 Δ=−0.05).
+
+### Phase H — Pipeline retrain (cible labels EWAT, circulaire)
+
+| Métrique | Mean ± Std (10 graines) | Range | Note |
+|---|---|---|---|
+| **H1 sil_test** | **0.691 ± 0.115** | [0.521, 0.839] | ✅ ≥ 0.6 (seuil littérature) mais variance large |
+| **H3 AUROC peak** | **0.990 ± 0.012** | [0.959, 1.000] | ⚠️ circulaire (cible auto-référente, cf. L9) |
+| **A1 Δ(far−near)** | **−0.012 ± 0.022** | [−0.050, +0.019] | ❌ LEAK_CONFIRMED 9/10, GENUINE 1/10 (seed 42 outlier) |
+| **K_optimal** | 11.8 ± 2.1 | [9, 15] | ❌ instable (cf. K.1) |
+
+### Phase J — Headline défensif (cible Chaos Mesh, indépendante)
+
+LR-OvR avec solver lbfgs est **déterministe** → toutes les graines donnent exactement le même chiffre. Le bootstrap CI est calculé séparément.
+
+| Métrique | Valeur (déterministe) | IC 95% bootstrap |
+|---|---|---|
+| **B2 stratified macro-AUROC** | **0.9201** | [0.878, 0.956] — **headline défensif final** |
+| **B2 LOSO macro-AUROC** | **0.9298** | (15 folds) |
+
+Le NaN-aware scaler (Step 2.3) ne déplace pas B2 — B2 utilise son propre scaler local sur flatten features. Les 38 fixes audit corrigent des bugs réels mais ne bougent pas le headline indépendant (cohérent avec A5).
+
+### Phase K — Diagnostics K-selection et variance
+
+**K.1 — K instable** : silhouette (range 9-15, mode K=14 2/10) vs Tibshirani gap (range 4-12, mode K=12 2/10), agreement seulement 4/10 seeds. Aucune méthode ne stabilise K sur n=270 train. Recommandation v5 : fixer K manuellement (=10) ou HDBSCAN.
+
+**K.3 — Variance per-seed** : `experiments/multiseed/phase_h/distribution.png`. Métriques stables (AUROC circulaire, B2 déterministe) vs instables (sil_test range 0.32, K range 6, A1 outlier seed 42).
+
+### Verdict scientifique honnête
+
+- **Headline défensif final** : B2 = **0.9201** [0.878, 0.956] sur Chaos Mesh v4_strat — déterministe, IC bootstrap explicite, indépendant.
+- Phase G était un outlier — Phase H montre que sil=0.84 et A1=−0.05 ne sont pas reproductibles.
+- Les 38 fixes audit corrigent des bugs réels (NaN-aware scaler, class_weight balanced, instance norm exclusive, etc.) mais ne déplacent pas le headline indépendant.
+- Limites intrinsèques documentées L10/C-5/L13 : K_optimal instable (n_train=270), surentraînement siamois (best_epoch~3), n_pos=3 par scénario test.
+
+Détails complets : `experiments/multiseed/phase_h/{results.md,k_selection_comparison.md,variance_analysis.md}` et `experiments/multiseed/phase_j/results.md`.

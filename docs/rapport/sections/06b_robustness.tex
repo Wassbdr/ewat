@@ -230,3 +230,78 @@ huit limites résiduelles que nous reconnaissons et orientons en travaux futurs 
 \end{description}
 
 Voir \texttt{docs/limitations.md} sections L10--L17 pour le détail diagnostique.
+
+\subsection{Validation multi-seed finale (Phase~H + J + K, 2026-05-26)}
+\label{sec:multiseed}
+
+Suite à la critique de Phase~G (single seed $42$ donnant sil\_test $= 0.84$ et
+$\Delta(\text{far}-\text{near}) = -0.05$), un sweep multi-seed sur 10 graines a
+été mené sur \texttt{ewat\_v4\_strat}. \textbf{Verdict : Phase~G était un
+outlier.}
+
+\begin{table}[h]
+\centering
+\caption{Phase H — Multi-seed validation sur 10 graines (cible labels EWAT,
+circulaire). $\Delta$(far--near) GENUINE\_PRECURSION sur 1/10 graines
+uniquement — la graine 42 utilisée en Phase~G est un outlier.}
+\label{tab:phase_h_multiseed}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Métrique} & \textbf{Mean $\pm$ Std} & \textbf{Range} \\
+\midrule
+H1 silhouette test         & $0.691 \pm 0.115$  & $[0.521, 0.839]$ \\
+H3 AUROC peak (circulaire) & $0.990 \pm 0.012$  & $[0.959, 1.000]$ \\
+A1 $\Delta$(far$-$near)    & $-0.012 \pm 0.022$ & $[-0.050, +0.019]$ \\
+K\_optimal (silhouette)    & $11.8 \pm 2.1$     & $[9, 15]$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Phase J — Headline défensif sur cible Chaos Mesh indépendante.
+Le LR-OvR est déterministe (solver lbfgs) → toutes les graines donnent
+exactement le même chiffre. IC bootstrap est calculé séparément.}
+\label{tab:phase_j_multiseed}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Métrique} & \textbf{Valeur déterministe} & \textbf{IC 95\,\% bootstrap} \\
+\midrule
+B2 stratified macro-AUROC & $\mathbf{0.9201}$ & $[0.878, 0.956]$ \\
+B2 LOSO macro-AUROC       & $0.9298$          & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Phase K --- diagnostics.}
+\begin{itemize}
+  \item \textbf{K.1 K-selection comparison} : silhouette vs Tibshirani gap
+    statistic (Step~6 fix~6.4). Aucune méthode ne stabilise K — distribution
+    [9, 15] vs [4, 12], agreement seulement 4/10 graines. K\_optimal est
+    intrinsèquement instable sur n\_train $= 270$ (recommandation v5 :
+    fixer $K = 10$ manuellement ou HDBSCAN).
+  \item \textbf{K.3 Variance per-seed} : métriques stables (AUROC circulaire,
+    B2 déterministe) vs métriques instables (sil\_test range $0.32$,
+    K range $6$, A1 outlier seed~42). Diagramme :
+    \texttt{experiments/multiseed/phase\_h/distribution.png}.
+\end{itemize}
+
+\paragraph{Verdict scientifique consolidé.}
+\begin{enumerate}
+  \item Le \textbf{headline défensif final} reste $\mathbf{B_2 = 0.9201}$
+    [0.878, 0.956] sur Chaos Mesh \texttt{ewat\_v4\_strat} (déterministe,
+    indépendant des labels EWAT).
+  \item Le retrain Phase~G était un outlier (graine 42) --- Phase~H montre
+    que $\text{sil} = 0.84$ et $\Delta = -0.05$ ne sont pas reproductibles.
+  \item Les \textbf{38 fixes audit} (10-step plan) corrigent des bugs réels
+    (NaN-aware \texttt{fit\_scaler}, \texttt{class\_weight='balanced'},
+    instance norm exclusive, etc.) mais \emph{ne déplacent pas le headline
+    défensif} ($B_2$ utilise un scaler local, pas l'encoder).
+  \item Limites intrinsèques (L10, C-5, L13) : K\_optimal instable
+    ($n_{\text{train}} = 270$ trop petit), surentraînement siamois
+    (best\_epoch $\sim 3$ malgré semi-hard mining), $n_{\text{pos}} = 3$
+    par scénario test (statistiquement faible).
+\end{enumerate}
+
+Détails complets dans \texttt{experiments/multiseed/phase\_h/} et
+\texttt{experiments/multiseed/phase\_j/}.

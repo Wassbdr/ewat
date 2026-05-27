@@ -79,19 +79,19 @@
     (vérité terrain indépendante du pipeline).
   \end{block}
 
-  \begin{block}{Headline défensif final}
+  \begin{block}{Headline défensif final (multi-seed, 10 graines, v4\_strat)}
     \centering
     \begin{tabular}{lcl}
       \toprule
-      \textbf{Évaluation} & \textbf{macro-AUROC} & \textbf{IC 95\,\% bootstrap} \\
+      \textbf{Évaluation} & \textbf{macro-AUROC} & \textbf{IC 95\,\% / std} \\
       \midrule
-      H3 circulaire (labels EWAT, à reframer)   & 0.987 ± 0.011 & --- \\
+      H3 EWAT-labels (\textbf{circulaire})    & $0.990 \pm 0.012$ & 10 graines \\
       \rowcolor{black!8}
-      \textbf{B2 LR-OvR sur Chaos Mesh, v4\_strat} & $\mathbf{0.920}$  & \textbf{[0.878, 0.956]} \\
+      \textbf{B2 LR-OvR Chaos Mesh stratified} & $\mathbf{0.9201}$ & \textbf{[0.878, 0.956]} \\
       \rowcolor{black!8}
-      \textbf{B1 best (instance norm + last)}      & $\mathbf{0.941}$  & \textbf{[0.909, 0.970]} \\
-      LOSO macro-AUROC (15 folds, retrain par fold) & 0.930 ± 0.007 & --- \\
-      C1 STGCN end-to-end sur Chaos Mesh         & 0.863 & [0.823, 0.905] \\
+      \textbf{B2 LOSO macro-AUROC}             & $\mathbf{0.9298}$ & 15 folds \\
+      H1 silhouette test (10 graines)          & $0.691 \pm 0.115$ & range $[0.52, 0.84]$ \\
+      A1 $\Delta$(far$-$near) EWAT             & $-0.012 \pm 0.022$ & LEAK 9/10 \\
       \bottomrule
     \end{tabular}
   \end{block}
