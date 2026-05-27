@@ -209,6 +209,20 @@ def build_features(
 
     # ------ Jaeger → spans --------------------------------------------
     jaeger_cfg = bundle.jaeger_dump or {}
+    # Step 2 fix 2.2 (audit 2026-05-26): if Jaeger is expected but empty,
+    # log explicit warning so downstream NaN in error_rate_http / latency_p99
+    # fallback is not silently propagated. Previously: jaeger_cfg empty →
+    # span_err_idx is None → fallback never runs → silent NaN.
+    if bundle.jaeger_dump is None:
+        logger.info("  [%s] no Jaeger dump available — fallback for error_rate_http "
+                    "and latency_p99 disabled. Expect NaN from Prometheus only.",
+                    bundle.episode_id)
+    elif not jaeger_cfg:
+        logger.warning(
+            "  [%s] Jaeger dump bundled but EMPTY — error_rate_http and "
+            "latency_p99 fallback will not fire. This is a silent data quality "
+            "issue; check raw episode dir.", bundle.episode_id,
+        )
     spans = parse_jaeger_dump(jaeger_cfg) if jaeger_cfg else []
     apply_span_aliases(spans, aliases)
     span_backend = InMemorySpanBackend(spans)
@@ -287,6 +301,24 @@ def build_features(
     chaos_resource = bundle.scenario.get("file", "")
     targets = list(bundle.scenario.get("targets", []) or [])
 
+    # Step 2 fix 2.4 (audit 2026-05-26): track empty-graph ratio.
+    # If too many timesteps yield empty graphs (likely early window before
+    # injection), warn — early-window graph statistics are biased low.
+    n_empty_graphs = 0
+
+    # Step 2 fix 2.1 (audit 2026-05-26): assert window alignment between
+    # modalities M/T/L. The metric_window_s parameter was unused (line 171
+    # comment "unused at the moment"). We now use it to validate that, for
+    # each grid timestep, the Prometheus / Jaeger / Loki windows are aligned
+    # within ``grid_step_s`` tolerance. Misaligned windows introduce noise in
+    # cross-modality correlations (e.g., latency_p99 ↔ span_dur_p99).
+    if metric_window_s <= 0:
+        logger.warning(
+            "  [%s] metric_window_s=%.1f; alignment check skipped. Set metric_window_s "
+            "to enable cross-modality temporal validation.",
+            episode_id, metric_window_s,
+        )
+
     t_loop_start = time.time()
     for i, ts in enumerate(grid):
         M_t, _ = prom_collector.collect(timestamp=float(ts), service_index=service_index)
@@ -322,6 +354,9 @@ def build_features(
         window_spans = span_backend.fetch_spans(float(ts) - trace_window_s, float(ts))
         graph = gbuilder.build(window_spans, services=svc, timestamp=float(ts))
         graphs.append(graph)
+        # Step 2 fix 2.4 (audit 2026-05-26): track empty graphs
+        if graph.n_edges == 0:
+            n_empty_graphs += 1
 
         regime = _regime_for(float(ts), bundle.boundaries)
         # Four-regime encoding (EWAT §2, formalisation.md):
@@ -348,13 +383,25 @@ def build_features(
             )
         )
 
+    # Step 2 fix 2.4: report sparsity ratio
+    empty_ratio = n_empty_graphs / max(grid.size, 1)
+    if empty_ratio > 0.20:
+        logger.warning(
+            "  [%s] %d/%d (%.1f%%) timesteps have empty graphs (n_edges=0). "
+            "Early-window graph statistics are biased; consider increasing "
+            "trace_window_s or filtering early steps in assemble_dataset.",
+            episode_id, n_empty_graphs, grid.size, empty_ratio * 100,
+        )
+
     logger.info(
-        "  [%s] built %d timesteps in %.1fs (services=%d, dim=%d)",
+        "  [%s] built %d timesteps in %.1fs (services=%d, dim=%d, "
+        "empty_graphs=%d/%d=%.1f%%)",
         episode_id,
         grid.size,
         time.time() - t_loop_start,
         n,
         SIGNAL_DIM,
+        n_empty_graphs, grid.size, empty_ratio * 100,
     )
     return signal, graphs, labels
 
@@ -463,16 +510,24 @@ def _process_episode_worker(task: dict) -> dict:
         graph_stats=graph_stats,
         services=task["canonical_services"],
     )
-    _write_feature_provenance(
-        out_dir,
-        bundle=bundle,
-        grid_step_s=task["grid_step_s"],
-        trace_window_s=task["trace_window_s"],
-        log_window_s=task["log_window_s"],
-        feature_set=task["feature_set"],
-        base_cfg_path=Path(task["base_config"]),
-        collection_cfg_path=Path(task["collection_config"]),
-    )
+    # Provenance is metadata-only; a failure here does not corrupt the episode
+    # (save_run_dataset already committed atomically above). Log and continue.
+    try:
+        _write_feature_provenance(
+            out_dir,
+            bundle=bundle,
+            grid_step_s=task["grid_step_s"],
+            trace_window_s=task["trace_window_s"],
+            log_window_s=task["log_window_s"],
+            feature_set=task["feature_set"],
+            base_cfg_path=Path(task["base_config"]),
+            collection_cfg_path=Path(task["collection_config"]),
+        )
+    except Exception:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "Could not write feature_provenance.json for %s", ep_dir.name, exc_info=True
+        )
 
     nan_total = float(np.isnan(signal).mean())
     nan_M = float(np.isnan(signal[:, :, :7]).mean())

@@ -1,0 +1,261 @@
+% EWAT — Slides minimales défensives (Phase E du plan)
+% À utiliser en complément du rapport principal. Compile avec :
+%   pdflatex defense_slides.tex (2 passes pour TOC + références)
+
+\documentclass[10pt,aspectratio=169]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{booktabs}
+\usepackage[table]{xcolor}
+\usepackage{colortbl}
+\usepackage{tabularx}
+\usepackage{amsmath,amssymb}
+
+\definecolor{ewatred}{RGB}{200,40,40}
+\definecolor{ewatblue}{RGB}{30,80,140}
+\definecolor{ewatgreen}{RGB}{40,140,60}
+
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+\setbeamertemplate{footline}[frame number]
+\setbeamertemplate{navigation symbols}{}
+
+\title[EWAT — Défense]{EWAT : réponses anticipées aux critiques}
+\subtitle{3 slides défensives pour la soutenance}
+\author{Wassim Badraoui}
+\institute{Devoteam --- EPITA}
+\date{Mai 2026}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% =============================================================================
+% SLIDE 1 — Verdict synthétique des stress tests
+% =============================================================================
+\begin{frame}{Slide 1 --- Verdict synthétique : stress tests H3}
+  \framesubtitle{Pourquoi l'AUROC=0.987 n'est pas la métrique défensive}
+
+  \begin{block}{La critique soulevée}
+    \emph{« L'AUROC=0.987 est trop bon et suspect. »}
+  \end{block}
+
+  \begin{block}{La réponse en 5 stress tests}
+    \scriptsize
+    \begin{tabularx}{\linewidth}{l X l}
+      \toprule
+      \textbf{Test} & \textbf{Question} & \textbf{Verdict} \\
+      \midrule
+      \textbf{A1} distant-window     & Précursion temporelle sur labels EWAT ?   & \textcolor{ewatred}{$\Delta = -0.007$ → fuite} \\
+      \textbf{A2} LOSO precursor     & Généralisation à un type inédit ?         & \textcolor{ewatred}{top-1 = 0.51 polarisé} \\
+      \textbf{A3} permutation        & Signal réel ou bruit ?                    & \textcolor{ewatgreen}{$p < 0.01$ → signal réel} \\
+      \textbf{A4} filtre $n_\text{pos} \geq 5$ & Clusters statistiquement reportables ?   & 5/10 (AUROC moyen = 0.975) \\
+      \textbf{A5} paired $\Delta(B_4 - B_3)$ & STGCN apporte-t-il du gain ?               & \textcolor{ewatred}{IC=[$-0.03$, $+0.04$] contient 0} \\
+      \bottomrule
+    \end{tabularx}
+  \end{block}
+
+  \begin{block}{Conclusion}
+    L'AUROC=0.987 mesure la \textbf{cohérence interne} du clustering EWAT (cible
+    auto-référente), pas la précursion temporelle. Cette critique est
+    \textbf{reconnue et adressée} par les Phases B et C ci-après.
+    \\[0.3em]
+    Scripts : \texttt{experiments/h3\_robustness/}.
+  \end{block}
+\end{frame}
+
+% =============================================================================
+% SLIDE 2 — Headline honnête
+% =============================================================================
+\begin{frame}{Slide 2 --- Headline honnête : 0.92 sur cible Chaos Mesh}
+  \framesubtitle{Évaluation indépendante avec IC bootstrap explicites}
+
+  \begin{block}{Pivot méthodologique (Phase B + C)}
+    Remplacer la cible (cluster EWAT) par les \textbf{15 scénarios Chaos Mesh}
+    (vérité terrain indépendante du pipeline).
+  \end{block}
+
+  \begin{block}{Headline défensif final}
+    \centering
+    \begin{tabular}{lcl}
+      \toprule
+      \textbf{Évaluation} & \textbf{macro-AUROC} & \textbf{IC 95\,\% bootstrap} \\
+      \midrule
+      H3 circulaire (labels EWAT, à reframer)   & 0.987 ± 0.011 & --- \\
+      \rowcolor{black!8}
+      \textbf{B2 LR-OvR sur Chaos Mesh, v4\_strat} & $\mathbf{0.920}$  & \textbf{[0.878, 0.956]} \\
+      \rowcolor{black!8}
+      \textbf{B1 best (instance norm + last)}      & $\mathbf{0.941}$  & \textbf{[0.909, 0.970]} \\
+      LOSO macro-AUROC (15 folds, retrain par fold) & 0.930 ± 0.007 & --- \\
+      C1 STGCN end-to-end sur Chaos Mesh         & 0.863 & [0.823, 0.905] \\
+      \bottomrule
+    \end{tabular}
+  \end{block}
+
+  \begin{block}{Précursion temporelle confirmée (C2-A1)}
+    Sur le modèle STGCN entraîné directement sur Chaos Mesh, \textbf{$\Delta($far\,$-$\,near$) = -0.116$}
+    --- la dynamique pré-injection compte pour 12\,pp d'AUROC. La fuite vue par A1
+    était un artefact de la circularité, pas du signal.
+  \end{block}
+\end{frame}
+
+% =============================================================================
+% SLIDE 3 — Reframe des contributions
+% =============================================================================
+\begin{frame}{Slide 3 --- Reframe des contributions}
+  \framesubtitle{Quatre axes défendables (et un résultat négatif honnête)}
+
+  \begin{enumerate}
+    \item \textbf{Géométrique} (contribution principale et défendable)
+      \begin{itemize}
+        \item H1 silhouette = $0.782 \pm 0.065$ (10 graines, min $0.62$)
+        \item Mismatch corrigé : average+cosine vs ward+euclidean → $+51\%$
+      \end{itemize}
+
+    \item \textbf{Ontologique} (Phase 8, OWL/RDF formelle)
+      \begin{itemize}
+        \item 29 classes ancrées littérature (Soldani \& Brogi, Fu et al., Gregg, Aniello)
+        \item 143 individus ABox, 11 object properties, raisonneur HermiT cohérent en 0.61s
+        \item 3 causales (BH-FDR), 19 co-occurrences, 46 edges propagation
+      \end{itemize}
+
+    \item \textbf{Méthodologique} (stress tests + open-set)
+      \begin{itemize}
+        \item 5 stress tests (A1--A5) qui transforment la critique en transparence
+        \item OpenMax/EVT pour la détection de scénarios inédits (Bendale \& Boult 2016)
+      \end{itemize}
+
+    \item \textbf{Prédictive honnête} (Phase B/C)
+      \begin{itemize}
+        \item macro-AUROC $= \mathbf{0.920}$ sur Chaos Mesh v4\_strat, IC [0.878, 0.956]
+        \item Précursion temporelle confirmée ($\Delta(\text{far}-\text{near})=-0.116$)
+      \end{itemize}
+  \end{enumerate}
+
+  \vspace{0.4em}
+  \begin{block}{Résultat négatif assumé}
+    \scriptsize H2a look-through MMD$^2$ \textbf{définitivement falsifié}
+    (v3 : $p = 0.27$, v4\_strat : $p = 0.37$). Mécanisme falsifié, pas juste la
+    durée d'épisode. Résultat scientifique honnête.
+  \end{block}
+\end{frame}
+
+% =============================================================================
+% Anticipation des questions
+% =============================================================================
+\begin{frame}{Bonus --- Anticipation des questions}
+
+  \begin{block}{« Votre AUROC=0.987 est suspect »}
+    Oui, et c'est pourquoi nous reportons \textbf{0.920 sur Chaos Mesh indépendant
+    (slide~2)}. Le 0.987 est explicitement étiqueté comme cohérence interne du clustering.
+  \end{block}
+
+  \begin{block}{« L'encodeur STGCN n'aide pas »}
+    Vrai en agrégé (A5 paired $\Delta$ IC contient 0). Sa valeur est \textbf{géométrique}
+    (H1 sil = 0.78) et \textbf{ontologique} (Phase 8). En prédiction agrégée, un
+    LR sur features brutes instance-normalisées suffit (B2 = 0.920).
+  \end{block}
+
+  \begin{block}{« Vous évaluez sur les scénarios d'entraînement »}
+    Oui pour H3, et c'est pourquoi nous ajoutons :
+    \begin{itemize}
+      \item LOSO macro-AUROC = 0.930 ± 0.007 (15 folds, retrain par fold)
+      \item OpenMax/EVT pour les scénarios totalement inédits (Phase C3)
+      \item LOSO top-1 = 0 reconnu comme limitation tautologique d'un classifieur fermé
+    \end{itemize}
+  \end{block}
+
+  \begin{block}{« Pourquoi ewat\_v4\_strat et pas ewat\_v4 ? »}
+    Le split temporel original ewat\_v4 avait 4 scénarios entièrement absents du
+    training → AUROC=0.500 trivial. Le split stratifié-temporel v4\_strat (270/60/45)
+    rétablit une évaluation honnête.
+  \end{block}
+
+\end{frame}
+
+% =============================================================================
+% SLIDE 5 — Validation opérationnelle : latence + power
+% =============================================================================
+\begin{frame}{Slide 5 --- Validation opérationnelle}
+  \framesubtitle{Latence end-to-end (C-3) + power statistique (C-5)}
+
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \begin{block}{Latence E2E (200 itérations CPU)}
+        \scriptsize
+        \begin{tabular}{lrrr}
+          \toprule
+          \textbf{Étape} & \textbf{médiane} & \textbf{p95} & \textbf{budget} \\
+          \midrule
+          Drift (0) & 0.01 & 0.01 & 1000 ms \\
+          Encoder+Siamois (1+2) & 0.96 & 1.97 & 2000 ms \\
+          Précurseurs (3) & 1.85 & 3.91 & 1000 ms \\
+          \rowcolor{black!8}
+          \textbf{TOTAL} & $\mathbf{9.3}$ & $\mathbf{13.3}$ & $\mathbf{5000}$ \\
+          \bottomrule
+        \end{tabular}
+        \vspace{0.3em}
+        Verdict : \textcolor{ewatgreen}{\textbf{\textbullet{} 375$\times$ sous budget}}
+      \end{block}
+    \end{column}
+
+    \begin{column}{0.45\textwidth}
+      \begin{block}{Power statistique (Hanley-McNeil)}
+        \scriptsize
+        \begin{itemize}
+          \item 5/10 clusters reportables ($n_\text{pos} \geq 5$)
+          \item Power moyenne sur reportables : $1.0$
+          \item C6, C9 ($n_\text{pos} = 1$) marqués \emph{non concluant}
+        \end{itemize}
+        \vspace{0.3em}
+        \textbf{Cible future} : $n_\text{pos} \geq 17$ pour détecter AUROC $= 0.7$ avec power $> 0.8$.
+      \end{block}
+    \end{column}
+  \end{columns}
+
+  \begin{block}{Conclusion}
+    Le pipeline est \textbf{opérationnellement viable} (SLA $< 5$\,s largement
+    respecté) et statistiquement défensable sur les 5 clusters reportables.
+    Les 5 autres clusters sont explicitement marqués comme non concluants par
+    manque d'effectif.
+  \end{block}
+\end{frame}
+
+% =============================================================================
+% SLIDE 6 — Limites résiduelles et travaux futurs
+% =============================================================================
+\begin{frame}{Slide 6 --- Limites résiduelles + travaux futurs}
+  \framesubtitle{8 limites identifiées par audit méthodologique post-Phase C}
+
+  \begin{block}{Limites résiduelles (\texttt{docs/limitations.md} L10--L17)}
+    \scriptsize
+    \begin{tabular}{lll}
+      \toprule
+      \textbf{ID} & \textbf{Limite} & \textbf{Travail futur} \\
+      \midrule
+      L10 & H1 sil = 0.467 sur v4 (surentraînement siamois) & Hard-negative mining + curriculum \\
+      L11 & Latence end-to-end & \textcolor{ewatgreen}{\checkmark{} Résolu (C-3, p95 = 13 ms)} \\
+      L12 & OpenMax Unknown AUROC = 0.55 < 0.7 & Mahalanobis-OOD / Energy / ODIN \\
+      L13 & Service graph $N = 6$ vs production $100+$ & Benchmark $N \geq 20$ \\
+      L14 & Cross-cluster non validé & Stratégie B fine-tuning RCAEval (C-2) \\
+      L15 & Pas de retraining cycle opérationnel & Drift d'embeddings → trigger retrain \\
+      L16 & 17 features hardcodées & mRMR / SHAP-based pruning \\
+      L17 & Ontologie sans audit SRE & 1 séance audit + intégration runbook \\
+      \bottomrule
+    \end{tabular}
+  \end{block}
+
+  \begin{block}{Stratégie globale}
+    Chaque limite est documentée transparente \emph{et} accompagnée d'une
+    proposition de fix technique. \textbf{Aucune limite cachée}, aucun fix
+    suspect. Le rapport positionne EWAT comme une \textbf{contribution mature
+    avec un programme de recherche clair} pour la suite (L13--L17 : 6+ mois
+    de travaux futurs identifiés).
+  \end{block}
+\end{frame}
+
+\end{document}

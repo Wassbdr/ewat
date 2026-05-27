@@ -77,6 +77,11 @@ class FeaturedEpisode:
     baseline_start: float
     recovery_end: float
     metadata: dict = field(default_factory=dict)
+    # Step 3 fix 3.4 (audit 2026-05-26): expose target_services + chaos_resource
+    # in the assembled index, allowing downstream code to filter test set by
+    # target service or chaos resource without loading individual labels.parquet.
+    target_services: list[str] = field(default_factory=list)
+    chaos_resource: str = ""
 
 
 def _load_featured_episodes(root: Path) -> list[FeaturedEpisode]:
@@ -96,12 +101,13 @@ def _load_featured_episodes(root: Path) -> list[FeaturedEpisode]:
             signal = z["signal"]
         quality = meta.get("quality_snapshot", {})
         bounds = meta.get("boundaries", {}) or {}
+        scenario_meta = meta.get("scenario") or {}
         episodes.append(
             FeaturedEpisode(
                 path=ep_dir,
                 episode_id=meta.get("episode_id", ep_dir.name),
-                scenario=(meta.get("scenario") or {}).get("name", ""),
-                category=(meta.get("scenario") or {}).get("category", ""),
+                scenario=scenario_meta.get("name", ""),
+                category=scenario_meta.get("category", ""),
                 n_timesteps=int(signal.shape[0]),
                 services=list(services),
                 nan_ratio_total=float(quality.get("signal_nan_ratio", float("nan"))),
@@ -111,6 +117,9 @@ def _load_featured_episodes(root: Path) -> list[FeaturedEpisode]:
                 baseline_start=float(bounds.get("baseline_start", 0.0)),
                 recovery_end=float(bounds.get("recovery_end", 0.0)),
                 metadata=meta,
+                # Step 3 fix 3.4 (audit 2026-05-26)
+                target_services=list(scenario_meta.get("targets") or []),
+                chaos_resource=str(scenario_meta.get("file", "")),
             )
         )
     return episodes
@@ -314,6 +323,9 @@ def _build_index(
             "nan_ratio_metrics": ep.nan_ratio_metrics,
             "nan_ratio_traces": ep.nan_ratio_traces,
             "nan_ratio_logs": ep.nan_ratio_logs,
+            # Step 3 fix 3.4 (audit 2026-05-26): expose target+chaos at index level
+            "target_services": json.dumps(ep.target_services),
+            "chaos_resource": ep.chaos_resource,
         })
     return pd.DataFrame(rows).sort_values(["split", "baseline_start"]).reset_index(drop=True)
 
@@ -403,7 +415,13 @@ def main() -> None:
             len(set(grouping.values())), manifest_path,
         )
 
-    if args.stratified or grouping is not None:
+    # Step 3 fix 3.1 (audit 2026-05-26): warn loudly when a user opts into the
+    # plain temporal split. The plain split can leave entire scenarios out of
+    # train/test (cf. ewat_v4 case where 4 scenarios were absent from training,
+    # producing macro-AUROC = 0.500 trivial). Stratified is now the recommended
+    # default; users must pass --no-stratified explicitly to opt out.
+    use_stratified = (args.stratified or grouping is not None) and not args.no_stratified
+    if use_stratified:
         split = _stratified_temporal_split(
             kept, args.train_ratio, args.val_ratio,
             grouping=grouping,
@@ -416,59 +434,92 @@ def main() -> None:
             len(split["train"]), len(split["val"]), len(split["test"]),
             args.min_test_per_cluster, args.min_val_per_cluster,
         )
+        # Sanity assert: every scenario must appear in the test split
+        from collections import Counter
+        test_scenarios = Counter(ep.scenario for ep in kept
+                                 if ep.episode_id in set(split["test"]))
+        all_scenarios = {ep.scenario for ep in kept}
+        missing = all_scenarios - set(test_scenarios.keys())
+        if missing:
+            logger.warning(
+                "stratified split: %d scenarios MISSING from test set: %s. "
+                "AUROC metrics on these will be NaN or unstable.",
+                len(missing), sorted(missing),
+            )
     else:
         split = _temporal_split(kept, args.train_ratio, args.val_ratio)
-        logger.info(
-            "temporal split: train=%d  val=%d  test=%d",
+        logger.warning(
+            "USING TEMPORAL SPLIT (not stratified). Entire scenarios may be "
+            "absent from train or test → trivially incorrect AUROC. "
+            "Pass --stratified for the recommended split. train=%d  val=%d  test=%d",
             len(split["train"]), len(split["val"]), len(split["test"]),
         )
 
     if output_root.exists():
         if not args.force:
             raise SystemExit(f"{output_root} already exists (use --force to overwrite)")
+
+    # Write to a temporary directory; rename atomically at the end so that a
+    # crash mid-write never leaves a partially-assembled dataset at output_root.
+    tmp_root = output_root.parent / (output_root.name + ".tmp")
+    if tmp_root.exists():
+        shutil.rmtree(tmp_root)
+    tmp_root.mkdir(parents=True)
+
+    try:
+        ep_dst_root = tmp_root / "episodes"
+        for ep in kept:
+            _link_or_copy(ep.path, ep_dst_root / ep.episode_id, copy=args.copy_episodes)
+
+        index_df = _build_index(kept, split)
+        _write_parquet(index_df, tmp_root / "index.parquet")
+
+        summary_df = _build_summary(kept)
+        summary_df.to_csv(tmp_root / "summary.csv", index=False)
+
+        (tmp_root / "services.json").write_text(json.dumps(services, indent=2), encoding="utf-8")
+        (tmp_root / "split.json").write_text(json.dumps(split, indent=2), encoding="utf-8")
+
+        dataset_manifest = {
+            "created_at": datetime.now(UTC).isoformat(),
+            "features_root": str(features_root),
+            "n_services": len(services),
+            "n_episodes_total": len(episodes),
+            "n_episodes_kept": len(kept),
+            "n_episodes_rejected": len(rejected),
+            "rejected": [{"episode_id": e, "reason": r} for e, r in rejected],
+            "quality_filters": {
+                "max_nan_total": args.max_nan_total,
+                "max_nan_metrics": args.max_nan_metrics,
+                "max_nan_traces": args.max_nan_traces,
+                "max_nan_logs": args.max_nan_logs,
+            },
+            "split": {k: len(v) for k, v in split.items()},
+            "ratios": {
+                "train": args.train_ratio,
+                "val": args.val_ratio,
+                "test": round(1.0 - args.train_ratio - args.val_ratio, 4),
+            },
+            # Step 3 fix 3.3 (audit 2026-05-26): record episode copy status so
+            # downstream loaders can detect (and warn on) symlink breakage.
+            "episodes_are_copies": bool(args.copy_episodes),
+            # Step 3 fix 3.1 (audit 2026-05-26): record split strategy explicit
+            "split_strategy": "stratified" if use_stratified else "temporal",
+            "index_sha256": _file_sha(tmp_root / "index.parquet") if
+                (tmp_root / "index.parquet").exists()
+                else _file_sha(tmp_root / "index.csv"),
+        }
+        (tmp_root / "dataset.json").write_text(
+            json.dumps(dataset_manifest, indent=2), encoding="utf-8"
+        )
+    except Exception:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+        raise
+
+    # Atomic promotion: remove existing output (if --force) then rename.
+    if output_root.exists():
         shutil.rmtree(output_root)
-    output_root.mkdir(parents=True)
-
-    ep_dst_root = output_root / "episodes"
-    for ep in kept:
-        _link_or_copy(ep.path, ep_dst_root / ep.episode_id, copy=args.copy_episodes)
-
-    index_df = _build_index(kept, split)
-    _write_parquet(index_df, output_root / "index.parquet")
-
-    summary_df = _build_summary(kept)
-    summary_df.to_csv(output_root / "summary.csv", index=False)
-
-    (output_root / "services.json").write_text(json.dumps(services, indent=2), encoding="utf-8")
-    (output_root / "split.json").write_text(json.dumps(split, indent=2), encoding="utf-8")
-
-    dataset_manifest = {
-        "created_at": datetime.now(UTC).isoformat(),
-        "features_root": str(features_root),
-        "n_services": len(services),
-        "n_episodes_total": len(episodes),
-        "n_episodes_kept": len(kept),
-        "n_episodes_rejected": len(rejected),
-        "rejected": [{"episode_id": e, "reason": r} for e, r in rejected],
-        "quality_filters": {
-            "max_nan_total": args.max_nan_total,
-            "max_nan_metrics": args.max_nan_metrics,
-            "max_nan_traces": args.max_nan_traces,
-            "max_nan_logs": args.max_nan_logs,
-        },
-        "split": {k: len(v) for k, v in split.items()},
-        "ratios": {
-            "train": args.train_ratio,
-            "val": args.val_ratio,
-            "test": round(1.0 - args.train_ratio - args.val_ratio, 4),
-        },
-        "index_sha256": _file_sha(output_root / "index.parquet") if
-            (output_root / "index.parquet").exists()
-            else _file_sha(output_root / "index.csv"),
-    }
-    (output_root / "dataset.json").write_text(
-        json.dumps(dataset_manifest, indent=2), encoding="utf-8"
-    )
+    tmp_root.rename(output_root)
 
     logger.info("wrote dataset manifest to %s", output_root)
 
@@ -483,12 +534,25 @@ def _cli() -> argparse.Namespace:
     p.add_argument("--max-nan-metrics", type=float, default=0.50)
     p.add_argument("--max-nan-traces", type=float, default=0.80)
     p.add_argument("--max-nan-logs", type=float, default=0.80)
-    p.add_argument("--copy-episodes", action="store_true",
-                   help="copy episode dirs instead of symlinking (needed when the dataset "
-                        "will be moved to another filesystem)")
+    # Step 3 fix 3.3 (audit 2026-05-26): default to copy (safe). Pass
+    # --symlink-episodes (or legacy --copy-episodes=False) for the previous
+    # space-efficient but fragile behaviour.
+    p.add_argument("--copy-episodes", dest="copy_episodes", action="store_true",
+                   default=True,
+                   help="copy episode dirs instead of symlinking (default: True, safe). "
+                        "Set --symlink-episodes for the previous behaviour.")
+    p.add_argument("--symlink-episodes", dest="copy_episodes", action="store_false",
+                   help="symlink (faster, but dataset breaks if source dir moves)")
+    # Step 3 fix 3.1: keep --stratified opt-in to avoid breaking existing
+    # scripts, but issue loud warning when unused (cf. main()). New --no-stratified
+    # is an explicit opt-out marker for users who want temporal anyway.
     p.add_argument("--stratified", action="store_true",
-                   help="use stratified temporal split (per-scenario 70/15/15) instead of "
-                        "global temporal split — required for H2 validation")
+                   help="use stratified temporal split (per-scenario 70/15/15) — "
+                        "recommended default since audit 2026-05-26")
+    p.add_argument("--no-stratified", action="store_true",
+                   help="force plain temporal split even when --stratified or "
+                        "--cluster-manifest is provided (NOT RECOMMENDED — may "
+                        "yield trivial AUROC=0.500 if scenarios are missing from test)")
     p.add_argument(
         "--cluster-manifest",
         type=str,

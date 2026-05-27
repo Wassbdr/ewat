@@ -660,9 +660,12 @@ class TraceCollector:
             # retry_rate
             T_t[row, _T_RETRY_RATE] = n_retry / max(n_spans, 1)
 
-            # latency_cv = std / mean
-            mean_dur = float(np.mean(durations))
-            std_dur = float(np.std(durations))
-            T_t[row, _T_LATENCY_CV] = (
-                std_dur / mean_dur if mean_dur > 0 else 0.0
-            )
+            # latency_cv = std / mean (nanmean/nanstd to avoid NaN silently becoming 0.0)
+            mean_dur = float(np.nanmean(durations))
+            std_dur = float(np.nanstd(durations))
+            if not np.isfinite(mean_dur) or not np.isfinite(std_dur):
+                T_t[row, _T_LATENCY_CV] = float("nan")
+            elif mean_dur > 0:
+                T_t[row, _T_LATENCY_CV] = std_dur / mean_dur
+            else:
+                T_t[row, _T_LATENCY_CV] = 0.0

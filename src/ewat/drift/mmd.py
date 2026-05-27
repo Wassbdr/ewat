@@ -70,7 +70,7 @@ class RFFKernel:
         upper = dists[np.triu_indices(len(sub), k=1)]
         with np.errstate(all="ignore"):
             median_dist = float(np.nanmedian(upper))
-        # Use np.maximum to safely handle NaN (falls back to 1e-8)
+        # np.nanmax ignores NaN: if median_dist is NaN (empty upper triangle), falls back to 1e-8
         self._sigma = float(np.nanmax([median_dist, 1e-8]))
         # Invalidate feature projections so they are re-drawn with new σ
         self._W = None
@@ -85,8 +85,9 @@ class RFFKernel:
         """
         if self._sigma is None:
             raise RuntimeError("sigma must be set before calling phi(); call fit_sigma() first")
-        if self._W is None:
-            d = X.shape[1]
+        d = X.shape[1]
+        if self._W is None or self._W.shape[0] != d:
+            # Reinitialise projections when d changes (e.g. valid_cols mask differs between calls)
             self._W = self._rng.standard_normal((d, self._rff_dim)) / self._sigma
             self._b = self._rng.uniform(0.0, 2.0 * np.pi, (self._rff_dim,))
         return np.sqrt(2.0 / self._rff_dim) * np.cos(X @ self._W + self._b)

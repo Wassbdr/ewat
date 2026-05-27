@@ -497,15 +497,10 @@ class PrometheusCollector:
                 if p in limit_map
             ]
             if utils:
-                # Preferred: normalised utilisation (usage / limit) in [0, 1]
+                # Normalised utilisation (usage / limit) ∈ [0, 1]
                 M_t[row, M_CPU_UTIL] = aggregate_max(np.array(utils, dtype=np.float32))
-            else:
-                # Fallback when no CPU limits are set (e.g. otel-demo pods):
-                # use raw CPU cores consumed. Not in [0,1] but still a valid
-                # ordinal signal for drift/anomaly detection.
-                M_t[row, M_CPU_UTIL] = aggregate_max(
-                    np.array(list(usage_map.values()), dtype=np.float32)
-                )
+            # Pods without CPU limits: leave M_t[row, M_CPU_UTIL] = NaN (initialised above).
+            # Using raw core counts as fallback would break the [0,1] assumption downstream.
 
     def _fill_ram(
         self,

@@ -57,3 +57,36 @@ CLAUDE.md
 # Docs non trackés
 docs/point_hebdo_*.md
 docs/rapport/section*.md
+
+# LaTeX build artefacts (keep .tex + .pdf, ignore intermediates)
+*.aux
+*.nav
+*.out
+*.snm
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+docs/rapport/*.aux
+docs/rapport/*.nav
+docs/rapport/*.out
+docs/rapport/*.snm
+docs/rapport/*.toc
+
+# Tmp files at repo root
+tmp_*.txt
+tmp_*.log
+
+# MLflow infrastructure — only the registry doc is tracked
+mlflow/*
+!mlflow/experiment_registry.md
+!mlflow/README.md
+
+# Notebooks Jupyter outputs (re-runnable from source)
+*.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Plan files (claude-managed, kept outside repo)
+*.plan.md

@@ -188,12 +188,18 @@ def _check_episode_quality(
     enable_prometheus: bool,
     enable_jaeger: bool,
     enable_loki: bool,
+    min_traces: int = 5,
 ) -> tuple[bool, list[str]]:
     """Post-dump sanity check on the episode manifest.
 
     Returns ``(ok, reasons)``. ``reasons`` is the list of modalities that
     failed their minimal expectation. An episode passes only if every
     enabled modality returned at least one non-empty result.
+
+    Step 1 fix 1.4 (audit 2026-05-26): ``min_traces`` (default 5) replaces the
+    previous ``<= 0`` check that allowed empty-trace episodes through. This
+    guarantees ``error_rate_http`` and ``span_dur_p99`` can be filled from
+    span data in Phase 2.
     """
     reasons: list[str] = []
     sources = manifest.get("sources", {}) or {}
@@ -209,8 +215,10 @@ def _check_episode_quality(
         jae = sources.get("jaeger", {}) or {}
         if jae.get("skipped"):
             reasons.append("jaeger-skipped")
-        elif int(jae.get("n_traces_total", 0)) <= 0:
-            reasons.append("jaeger-empty")
+        elif int(jae.get("n_traces_total", 0)) < min_traces:
+            reasons.append(
+                f"jaeger-too-few-traces (n={jae.get('n_traces_total', 0)} < {min_traces})"
+            )
 
     if enable_loki:
         loki = sources.get("loki", {}) or {}
@@ -534,6 +542,18 @@ def _run_episode(
         logger.error("[%s] chaos apply failed: %s", episode_id, exc)
         raise
 
+    # Step 1 fix 1.2 (audit 2026-05-26) — assert chaos was effectively applied.
+    # apply() can return without throwing even when kubectl reports success but
+    # the chaos resource is misconfigured / RBAC denied etc. A >1s elapsed time
+    # is a coarse sanity check (kubectl create + watch usually takes >1s).
+    apply_elapsed = apply_returned_at - injection_start
+    if not dry_run and apply_elapsed < 1.0:
+        raise RuntimeError(
+            f"[{episode_id}] chaos apply returned in {apply_elapsed:.2f}s — "
+            f"likely not executed. Aborting episode to avoid silent quality "
+            f"gate pass. (Set --dry-run to skip this check.)"
+        )
+
     try:
         _sleep_with_status(inject_s, "injection", episode_id)
     finally:
@@ -720,6 +740,9 @@ def _write_episode_json(
     collection_cfg: dict[str, Any],
     endpoint_mode: str,
     recorder_params: dict[str, Any],
+    traffic_pattern: str = "constant",
+    seed: int | None = None,
+    min_traces_quality_gate: int = 5,
 ) -> None:
     payload = {
         "episode_id": episode_id,
@@ -734,6 +757,10 @@ def _write_episode_json(
         "collection": collection_cfg,
         "endpoint_mode": endpoint_mode,
         "recorder_params": recorder_params,
+        # Step 1 fixes (audit 2026-05-26): track reproducibility + load context
+        "traffic_pattern": traffic_pattern,
+        "seed": seed,
+        "min_traces_quality_gate": min_traces_quality_gate,
     }
     with (episode_dir / "episode.json").open("w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
@@ -755,6 +782,40 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
     cfg = _load_yaml(Path(args.config))
     base_cfg = _load_yaml(Path(args.base_config))
     _apply_endpoint_mode(base_cfg, args.endpoint_mode, cfg.collection)
+
+    # Step 1 fix 1.3 (audit 2026-05-26) — global seeding for reproducibility.
+    # Propagated to numpy/random/python_hash_seed. Stochastic ops downstream
+    # (telemetry truncation, load profile generation, etc.) read this seed.
+    if args.seed is not None:
+        import random
+        import numpy as np
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        os.environ["PYTHONHASHSEED"] = str(args.seed)
+        logger.info("seed=%d set globally (numpy, random, PYTHONHASHSEED)", args.seed)
+    else:
+        logger.warning(
+            "no --seed provided — telemetry truncation and load-generator profile "
+            "will be non-reproducible. Pass --seed INT for bit-reproducible runs."
+        )
+
+    # Step 1 fix 1.1 (audit 2026-05-26) — traffic pattern logging.
+    # The load-generator (locust) currently runs in constant mode. Supporting
+    # other patterns requires modifying the loadgenerator deployment to read
+    # a runtime profile (locustfile.py shape class). This is tracked as a
+    # follow-up; for now we log the requested pattern explicitly so downstream
+    # analysis can correlate with the configuration intent.
+    if args.traffic_pattern != "constant":
+        logger.warning(
+            "--traffic-pattern=%s requested, but the load-generator deployment "
+            "currently runs in CONSTANT mode. Episodes will be recorded with "
+            "constant load — pattern label stored in episode.json for tracking. "
+            "To activate other patterns, update the loadgenerator deployment "
+            "(locust shape class) and persist the profile in collection.yaml.",
+            args.traffic_pattern,
+        )
+    else:
+        logger.info("traffic_pattern=constant (default, status quo)")
 
     _install_signal_handlers()
 
@@ -923,6 +984,9 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
                     collection_cfg=collection_cfg_out,
                     endpoint_mode=args.endpoint_mode,
                     recorder_params=recorder_params,
+                    traffic_pattern=args.traffic_pattern,
+                    seed=args.seed,
+                    min_traces_quality_gate=int(args.min_traces_quality_gate),
                 )
 
                 with (tmp_dir / "manifest.json").open("w", encoding="utf-8") as f:
@@ -941,6 +1005,7 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
                     enable_prometheus=enable_prometheus,
                     enable_jaeger=enable_jaeger,
                     enable_loki=enable_loki,
+                    min_traces=int(args.min_traces_quality_gate),
                 )
                 if ok:
                     consecutive_failures = 0
@@ -1006,6 +1071,32 @@ def _cli() -> argparse.Namespace:
         "Protects long campaigns from silently collecting garbage.",
     )
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Global seed for stochastic operations (telemetry tronquage, "
+        "load-generator profile, etc.). If unset, runs are not bit-reproducible. "
+        "Step 1 fix 1.3 (audit 2026-05-26).",
+    )
+    p.add_argument(
+        "--traffic-pattern",
+        choices=["constant", "ramp", "spike", "sinusoidal"],
+        default="constant",
+        help="Load-generator traffic profile during baseline+pre+injection. "
+        "Constant (default, status quo). Ramp = linear increase. "
+        "Spike = sudden bursts. Sinusoidal = periodic oscillation. "
+        "Step 1 fix 1.1 (audit 2026-05-26) — adds load variability to avoid "
+        "models learning 'anomaly' instead of 'degradation under varying load'.",
+    )
+    p.add_argument(
+        "--min-traces-quality-gate",
+        type=int,
+        default=5,
+        help="Minimum n_traces_total to consider an episode usable (vs. <=0 "
+        "previously, which allowed empty-trace episodes to pass). "
+        "Step 1 fix 1.4 (audit 2026-05-26).",
+    )
     return p.parse_args()
 
 

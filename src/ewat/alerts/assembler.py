@@ -271,7 +271,7 @@ class AlertAssembler:
         signal: np.ndarray,
         adjacency: np.ndarray,
         timestamp: float = 0.0,
-        episode_id: str | None = "",
+        episode_id: str | None = None,
         regime_mask: np.ndarray | None = None,
     ) -> list[Alert]:
         """Émet les alertes depuis le signal courant.
@@ -302,19 +302,29 @@ class AlertAssembler:
         if self.scaler is not None:
             t_len, n_nodes, d = signal.shape
             flat = signal.reshape(-1, d)
-            flat = np.where(np.isnan(flat), 0.0, flat)
+            nan_mask = np.isnan(flat)
+            flat = np.where(nan_mask, self.scaler.mean_, flat)  # impute → 0 in scaled space
             flat = self.scaler.transform(flat).astype(np.float32)
             signal = flat.reshape(t_len, n_nodes, d)
         else:
             signal = np.nan_to_num(signal, nan=0.0)
         adjacency = np.nan_to_num(adjacency.astype(np.float32), nan=0.0)
 
+        # Look-through: run precursors even during drift (θ_{drift∩anomaly} must be detected).
+        # Alerts emitted during drift carry drift_flag=True so the caller can filter if needed.
+        drift_flag = False
         if self.drift_detector is not None:
             drift_result = self.drift_detector.update(signal[-1].astype(np.float64))
-            if drift_result.flag:
-                return []
+            drift_flag = drift_result.flag
 
         if not self.classifiers:
+            # Step 9 fix 9.5 (audit 2026-05-26): log instead of silent no-op
+            # so misconfigured pipelines are immediately visible.
+            import logging
+            logging.getLogger(__name__).warning(
+                "AlertAssembler.predict called with no classifiers loaded — "
+                "returning empty alerts. Ensure precursor checkpoints exist."
+            )
             return []
 
         t_total = signal.shape[0]
@@ -329,7 +339,7 @@ class AlertAssembler:
             k = int(self.k_optimal.get(cluster_id, 2))
             groups[k].append(cluster_id)
 
-        ep_id_str = "" if episode_id is None else episode_id
+        ep_id_str = episode_id or ""
 
         if regime_mask is not None:
             regime_mask = np.asarray(regime_mask, dtype=bool).ravel()
@@ -391,6 +401,7 @@ class AlertAssembler:
                             fiche=self.fiches.get(cluster_id, {}),
                             timestamp=timestamp,
                             episode_id=ep_id_str,
+                            drift_flag=drift_flag,
                         )
                     )
 

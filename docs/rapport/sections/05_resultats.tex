@@ -7,6 +7,8 @@
 
 Les hypothèses sont évaluées sur le split test (45 épisodes, 15 scénarios) avec
 le split val (45 épisodes) réservé à la sélection des hyperparamètres.
+Le protocole détaillé (nearest centroid, $k^*$ sur val, bootstrap) est dans
+\texttt{docs/evaluation\_protocol.md}.
 La robustesse est estimée sur 5 graines aléatoires indépendantes (42, 123, 456, 789, 1337),
 chacune produisant un réentraînement complet de l'encodeur et du réseau siamois.
 Les intervalles de confiance à 95\,\% sur l'AUROC sont obtenus par bootstrap
@@ -65,6 +67,15 @@ clustering non supervisé sur 15 scénarios distincts.
   La diagonale dominante confirme la structure : la plupart des scénarios sont
   concentrés dans 1--2 clusters.}
 \label{fig:cluster_heatmap}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.62\linewidth]{figures/confusion_matrix.png}
+\caption{Matrice de confusion cluster prédit vs.\ cluster réel (épisodes anomalie avec
+  alerte avant injection, seuil 0.3). Les confusions hors diagonale quantifient les
+  erreurs de typage en conditions d'alerte réelle.}
+\label{fig:confusion_clusters}
 \end{figure}
 
 \subsection{H2a --- Séparabilité du drift par look-through}
@@ -212,6 +223,19 @@ procédure de rollback sur Kubernetes avant que la dégradation n'atteigne les S
 C3 présente l'IC le plus large ([0.636, 0.930], $n_\text{pos} = 3$),
 reflétant la faible représentation de \texttt{noisy\_neighbor} dans le test set
 (Figure~\ref{fig:auroc_h3}).
+
+\paragraph{Mise en garde --- circularité d'évaluation.}\footnote{L'AUROC $= 0.973$
+reporté ici mesure la prédiction des labels cluster produits par EWAT lui-même
+depuis l'embedding STGCN. C'est une évaluation \emph{auto-référente} : le pipeline
+retrouve son propre partitionnement. Sur cible Chaos Mesh indépendante (15 scénarios,
+vérité terrain), le pipeline atteint macro-AUROC $= 0.920$ [0.878, 0.956]
+sur ewat\_v4\_strat (LR-OvR sur features brutes flatten, sans STGCN) ---
+voir section~\ref{sec:robustness} (Stress tests et architecture v2) et
+section~\ref{sec:scenario_baseline} (B3/B4 baselines).}
+Le chiffre $0.973$ doit être interprété comme mesure de \emph{cohérence interne}
+du clustering EWAT, pas comme métrique prédictive indépendante. La section~\ref{sec:robustness}
+détaille les stress tests A1--A5 qui établissent ce diagnostic et l'architecture v2
+qui fournit la métrique défensive.
 
 \begin{figure}[h]
 \centering

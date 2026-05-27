@@ -1,0 +1,120 @@
+# =============================================================================
+# EWAT — Ontology configuration
+# =============================================================================
+# Hyperparameters and mappings for the OWL/RDF ontology pipeline
+# (src/ewat/ontology/* + experiments/ontology_v2/*).
+#
+# IRIs follow a single base: http://ewat.devoteam.com/ontology#
+# Reasoning: HermiT via owlready2.
+# =============================================================================
+
+iri:
+  base: "http://ewat.devoteam.com/ontology#"
+  ontology: "http://ewat.devoteam.com/ontology"
+  version: "0.1.0"
+
+paths:
+  taxonomy_ttl: "data/ontology/taxonomy.ttl"
+  ewat_instances_ttl: "data/ontology/ewat_instances.ttl"
+  full_ontology_owl: "data/ontology/full_ontology.owl"
+  synthetic_episodes: "data/features/v3_synthetic"
+  inferences_diff: "data/ontology/inferences_diff.json"
+
+# Mapping from Chaos Mesh scenario name to OWL class (literature-grounded).
+# Each scenario points to a single primary class; a Composite_Anomaly can
+# be inferred at the ABox level via hasComponent.
+#
+# References:
+#   - Soldani & Brogi 2022, "Anomalies, failures, and recovery plans for
+#     microservices: A survey", ACM CSUR
+#   - Fu et al. 2025, "RCA in microservices: a survey", IEEE TSC
+#   - Gregg 2013, "Systems Performance" (USE method)
+scenario_to_class:
+  # θ_drift (benign)
+  drift_scale_up: "Scaling_Drift"
+  drift_rolling_deploy: "Deployment_Drift"
+  drift_config_change: "Configuration_Drift"
+  drift_traffic_ramp: "Traffic_Drift"
+
+  # θ_anomaly — hard
+  crash: "Liveness_Anomaly"
+  oom: "HardExhaustion"
+  network_loss: "Network_Anomaly"
+
+  # θ_anomaly — gray
+  intermittent_error: "Functional_Anomaly"
+  fail_slow_latency: "Latency_Anomaly"
+  fail_slow_cpu: "CPU_Saturation"
+
+  # θ_anomaly — contention
+  cpu_starvation: "CPU_Saturation"
+  memory_pressure: "Memory_Saturation"
+  noisy_neighbor: "Network_Saturation"
+  resource_leak: "HardExhaustion"
+
+  # θ_{drift ∩ anomaly}
+  faulty_deploy_overlap: "Drift_With_Anomaly"
+
+# Canonical services for the Online Boutique deployment.
+services:
+  - frontend
+  - cart
+  - ad
+  - recommendation
+  - product-catalog
+  - load-generator
+
+# Synthesis hyperparameters (Phase 4)
+synthesis:
+  overlay:
+    # Empirically calibrated against the spearman_median >= 0.85 garde-fou:
+    # alpha=0.3 passes; alpha=0.5 is borderline; alpha=1.0 fails.
+    # See tests/unit/ontology/test_synthesis.py and the plan §Phase 4.
+    alphas: [0.3, 0.5]
+    # Pairs of scenarios with disjoint targets to avoid auto-correlation
+    # artifacts; computed dynamically from registry.yaml + scenarios.yaml.
+    require_disjoint_targets: true
+  cascade:
+    gap_steps_options: [2, 5, 10]
+    interpolation: "linear"
+    new_regime_label: "composite_transition"
+  realism:
+    # Garde-fous (cf. plan §Phase 4)
+    p99_clip_quantile: 0.99
+    spearman_min: 0.85
+    discriminator_auc_max: 0.75
+  sampling:
+    # Target ~75 composites per cluster pair (5 cascades × 5 overlays × 3 gaps)
+    cascades_per_pair: 5
+    overlays_per_pair: 5
+    # Pair selection: temporal-significant pairs from
+    # experiments/ontology/results.md (12 cross-cluster transitions
+    # with support >= 3, plus 10 self-loops excluded as trivial).
+    priority_pairs_source: "experiments/ontology/results.md"
+
+# Causal extraction parameters (Phase 5)
+causal:
+  te_method: "multivariate"
+  min_series_length: 40
+  k_knn: 4
+  n_permutations: 500
+  p_threshold: 0.05
+  correction: "bh_fdr"
+  feature_variance_floor: 1.0e-6  # drop near-degenerate features per episode
+
+# Reasoner parameters (Phase 5)
+reasoning:
+  engine: "hermit"
+  classification_timeout_s: 30
+  infer_property_values: true
+
+# Validation thresholds (Phase 6)
+validation:
+  literature_coverage_min: 0.80
+  cluster_coverage_min: 1.0
+  causal_relations_min: 15
+  cooccurrence_relations_min: 10
+  inferences_diff_min: 30
+  synthetic_realism_auc_max: 0.75
+  cascade_te_concordance_min: 0.70
+  additivity_recall_min: 0.60

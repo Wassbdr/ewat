@@ -123,3 +123,25 @@ class TestReconstructFromHistogram:
                 and "without an explicit rng" in str(warning.message)
                 for warning in w
             )
+
+
+class TestAllNaNEdgeCases:
+    """Edge cases: all-NaN inputs must return NaN, not raise."""
+
+    def test_aggregate_max_all_nan(self):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = aggregate_max(np.array([float("nan"), float("nan")]))
+        assert np.isnan(result)
+
+    def test_aggregate_p99_union_all_nan(self):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = aggregate_p99_union([np.array([float("nan")])])
+        assert np.isnan(result)
+
+    def test_aggregate_median_all_nan(self):
+        result = aggregate_median(np.array([float("nan"), float("nan")]))
+        assert np.isnan(result)

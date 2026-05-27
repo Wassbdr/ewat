@@ -47,19 +47,25 @@ class ClusterResult:
     Attributes
     ----------
     labels:            (N_ep,) cluster assignments ∈ [0, k_optimal-1].
-    k_optimal:         Number of clusters chosen by silhouette maximisation.
+    k_optimal:         Number of clusters chosen.
     silhouette_scores: {k → silhouette_score} for each k in k_range.
-    gap_stats:         {k → gap_value} for each k in k_range (validation only).
+    gap_stats:         {k → gap_value} for each k in k_range.
+    gap_se:            Step 6 fix 6.4 — {k → standard error of gap_value},
+                       needed for the Tibshirani K selection rule.
     linkage:           Linkage criterion used.
     metric:            Distance metric used.
+    k_selection_method: Method used to pick k_optimal
+                       ("silhouette" or "gap_tibshirani").
     """
 
     labels: np.ndarray
     k_optimal: int
     silhouette_scores: dict[int, float] = field(default_factory=dict)
     gap_stats: dict[int, float] = field(default_factory=dict)
+    gap_se: dict[int, float] = field(default_factory=dict)
     linkage: str = "ward"
     metric: str = "euclidean"
+    k_selection_method: str = "silhouette"
 
 
 _VALID_LINKAGES: tuple[str, ...] = ("ward", "average", "complete", "single")
@@ -109,6 +115,7 @@ def cluster_embeddings(
     random_state: int = 42,
     linkage: str = "ward",
     metric: str = "euclidean",
+    k_selection_method: str = "silhouette",
 ) -> ClusterResult:
     """Agglomerative clustering with automatic K selection.
 
@@ -122,6 +129,14 @@ def cluster_embeddings(
                   ``"complete"`` or ``"single"``.
     metric:       Distance metric. ``"euclidean"`` (default) or
                   ``"cosine"``. Ward only accepts Euclidean.
+    k_selection_method:
+        Step 6 fix 6.4 (audit 2026-05-26). One of:
+
+        - ``"silhouette"`` (default, backward compat): K = argmax silhouette
+          across ``k_range``. Fragile when the silhouette curve is flat.
+        - ``"gap_tibshirani"``: K = smallest K such that
+          ``gap(K) >= gap(K+1) - s(K+1)`` (Tibshirani et al. 2001). Falls back
+          to silhouette argmax if no K satisfies the criterion.
 
     Returns
     -------
@@ -133,6 +148,11 @@ def cluster_embeddings(
     If ``N_ep < max(k_range)``, k_range is automatically clipped to
     ``N_ep - 1``.
     """
+    if k_selection_method not in ("silhouette", "gap_tibshirani"):
+        raise ValueError(
+            f"k_selection_method must be 'silhouette' or 'gap_tibshirani', "
+            f"got {k_selection_method!r}"
+        )
     _validate_linkage_metric(linkage, metric)
     n = len(z)
     if n < 2:
@@ -160,20 +180,37 @@ def cluster_embeddings(
         else:
             silhouette_scores[k] = -1.0
 
-    k_optimal = max(silhouette_scores, key=silhouette_scores.__getitem__)
-    best_labels = all_labels[k_optimal]
-
-    gap_stats = _gap_statistic(
+    gap_stats, gap_se = _gap_statistic(
         z, valid_k, n_gap_refs, random_state, linkage=linkage, metric=metric,
     )
+
+    # Step 6 fix 6.4: K selection
+    if k_selection_method == "gap_tibshirani":
+        k_tib = _tibshirani_k_selection(gap_stats, gap_se)
+        if k_tib is not None:
+            k_optimal = k_tib
+        else:
+            # Fallback to silhouette argmax with a warning
+            import warnings
+            warnings.warn(
+                "Tibshirani gap rule found no K satisfying gap(K) >= "
+                "gap(K+1) - s(K+1); falling back to silhouette argmax.",
+                UserWarning, stacklevel=2,
+            )
+            k_optimal = max(silhouette_scores, key=silhouette_scores.__getitem__)
+    else:
+        k_optimal = max(silhouette_scores, key=silhouette_scores.__getitem__)
+    best_labels = all_labels[k_optimal]
 
     return ClusterResult(
         labels=best_labels,
         k_optimal=k_optimal,
         silhouette_scores=silhouette_scores,
         gap_stats=gap_stats,
+        gap_se=gap_se,
         linkage=linkage,
         metric=metric,
+        k_selection_method=k_selection_method,
     )
 
 
@@ -234,36 +271,68 @@ def _gap_statistic(
     random_state: int,
     linkage: str = "ward",
     metric: str = "euclidean",
-) -> dict[int, float]:
-    """Compute gap statistic for each K.
+) -> tuple[dict[int, float], dict[int, float]]:
+    """Compute gap statistic and its standard error for each K.
 
     gap(K) = E[log(W_ref(K))] − log(W(K))
+    s(K)   = std(log W_ref) × sqrt(1 + 1/n_refs)
 
-    A larger gap is better.  K at which gap first exceeds gap(K+1) - s(K+1)
-    is the Tibshirani et al. selection rule (not used here; stored for
-    inspection). The reference distribution is uniform over the bounding
-    box of ``z`` for both Euclidean and cosine pipelines.
+    Step 6 fix 6.4 (audit 2026-05-26): also returns ``s(K)`` (gap SE) so
+    callers can apply the Tibshirani rule:
+        K* = smallest K such that gap(K) ≥ gap(K+1) − s(K+1).
+
+    Previously only the gap point estimate was stored, making the rule
+    inapplicable downstream.
+
+    Returns
+    -------
+    (gap_stats, gap_se):
+        Both ``dict[int, float]`` keyed by K.
     """
     rng = np.random.default_rng(random_state)
     z_min = z.min(axis=0)
     z_max = z.max(axis=0)
 
     gap_stats: dict[int, float] = {}
+    gap_se: dict[int, float] = {}
     for k in valid_k:
         model = _build_clusterer(k, linkage=linkage, metric=metric)
         labels_obs = model.fit_predict(z)
         w_obs = _inertia(z, labels_obs)
 
-        w_refs = []
+        log_w_refs = []
         for _ in range(n_refs):
             z_ref = rng.uniform(z_min, z_max, size=z.shape)
             labels_ref = _build_clusterer(
                 k, linkage=linkage, metric=metric,
             ).fit_predict(z_ref)
-            w_refs.append(_inertia(z_ref, labels_ref))
+            log_w_refs.append(np.log(max(_inertia(z_ref, labels_ref), 1e-10)))
 
-        log_w_ref = float(np.mean(np.log(np.maximum(w_refs, 1e-10))))
+        log_w_refs_arr = np.array(log_w_refs, dtype=np.float64)
+        log_w_ref_mean = float(log_w_refs_arr.mean())
+        log_w_ref_std = float(log_w_refs_arr.std(ddof=0))
         log_w_obs = float(np.log(max(w_obs, 1e-10)))
-        gap_stats[k] = log_w_ref - log_w_obs
+        gap_stats[k] = log_w_ref_mean - log_w_obs
+        # Tibshirani s_k = sd_k × sqrt(1 + 1/B)
+        gap_se[k] = log_w_ref_std * float(np.sqrt(1.0 + 1.0 / max(n_refs, 1)))
 
-    return gap_stats
+    return gap_stats, gap_se
+
+
+def _tibshirani_k_selection(
+    gap_stats: dict[int, float],
+    gap_se: dict[int, float],
+) -> int | None:
+    """Smallest K such that gap(K) ≥ gap(K+1) − s(K+1).
+
+    Step 6 fix 6.4 (audit 2026-05-26): Tibshirani et al. 2001 selection rule.
+    Returns None if no K satisfies the criterion (caller falls back to
+    silhouette argmax).
+    """
+    ks = sorted(gap_stats.keys())
+    for i in range(len(ks) - 1):
+        k = ks[i]
+        k_next = ks[i + 1]
+        if gap_stats[k] >= gap_stats[k_next] - gap_se[k_next]:
+            return k
+    return None

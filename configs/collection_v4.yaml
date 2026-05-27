@@ -94,6 +94,7 @@ collection:
 
   repetitions: 25
 
+  # Canonical list: configs/scenarios.yaml (keep in sync)
   scenarios:
     # θ_drift (benign distribution shifts)
     - drift_scale_up

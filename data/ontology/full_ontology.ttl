@@ -1,0 +1,1116 @@
+@prefix : <http://ewat.devoteam.com/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://ewat.devoteam.com/ontology> a owl:Ontology .
+
+:CascadingFailure a owl:Class ;
+    rdfs:comment "Aniello et al. (2014), §3 — temporal cascade A → B → C"^^xsd:string ;
+    rdfs:subClassOf :Composite_Anomaly ;
+    owl:equivalentClass [ a owl:Class ;
+            owl:intersectionOf ( :Composite_Anomaly [ a owl:Restriction ;
+                        owl:onProperty :hasComponent ;
+                        owl:someValuesFrom [ a owl:Class ;
+                                owl:intersectionOf ( :Anomaly [ a owl:Restriction ;
+                                            owl:onProperty :precedes ;
+                                            owl:someValuesFrom :Anomaly ] ) ] ] ) ] .
+
+:Configuration_Anomaly a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §3.4 — misconfiguration (probes, resource limits, routing)"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:Deployment_Anomaly a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §3.4 — failed rollout, image pull error, faulty deploy"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:Disk_Saturation a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 9 — I/O queue length, await metric"^^xsd:string ;
+    rdfs:subClassOf :Saturation .
+
+:Functional_Anomaly a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §3.3 — application-level logical error (incorrect output)"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:Latency_Anomaly a owl:Class ;
+    rdfs:comment "Fu et al. (2025), §3.1 — slow response without explicit error (gray failure)"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:Network_Anomaly a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §3.1 — network partition / loss"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:RecoveryPattern a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §5 — recovery plan archetypes (restart, rollback, scale, isolate)"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:coOccursWith a owl:ObjectProperty,
+        owl:ReflexiveProperty,
+        owl:SymmetricProperty ;
+    rdfs:comment "Soldani & Brogi (2022), §4.2 — symmetric co-occurrence within an episode (χ² significant)"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Anomaly .
+
+:confidence a owl:DatatypeProperty ;
+    rdfs:range xsd:decimal .
+
+:featureName a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:domain :FeatureWeight ;
+    rdfs:range xsd:string .
+
+:hasFeatureWeight a owl:ObjectProperty ;
+    rdfs:comment "EWAT internal (2026), Étape 2b — signature → reified feature weight (permutation importance)"^^xsd:string ;
+    rdfs:domain :Signature ;
+    rdfs:range :FeatureWeight .
+
+:hasSignature a owl:ObjectProperty ;
+    rdfs:comment "Fu et al. (2025), §3.2 — anomaly → observable feature pattern"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Signature .
+
+:mitigatedBy a owl:ObjectProperty ;
+    rdfs:comment "Soldani & Brogi (2022), §5.2 — anomaly → applicable mitigation action"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Mitigation .
+
+:observedIn a owl:ObjectProperty ;
+    rdfs:comment "EWAT internal (2026), Étape 2b — anomaly concept → empirical cluster (traceability)"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :EmpiricalCluster .
+
+:propagatesThrough a owl:ObjectProperty ;
+    rdfs:comment "Fu et al. (2025), §5.1 — anomaly propagates along a service-to-service edge"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Service ;
+    rdfs:subPropertyOf :affects .
+
+:severity a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:domain :Anomaly ;
+    rdfs:range xsd:string .
+
+:temporalDuration a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:domain :Anomaly ;
+    rdfs:range xsd:decimal .
+
+:temporalLeadTime a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:domain :Anomaly ;
+    rdfs:range xsd:decimal .
+
+:weightValue a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:domain :FeatureWeight ;
+    rdfs:range xsd:decimal .
+
+:CPU_Saturation a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 6 — run-queue length, CPU contention"^^xsd:string,
+        "Soldani & Brogi (2022), §3.1 — CPU starvation pattern"^^xsd:string ;
+    rdfs:subClassOf :Saturation .
+
+:Configuration_Drift a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), drift_config_change — ConfigMap or Deployment patch (benign)"^^xsd:string ;
+    rdfs:subClassOf :Benign_Drift .
+
+:Deployment_Drift a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), drift_rolling_deploy — rolling deployment (successful)"^^xsd:string ;
+    rdfs:subClassOf :Benign_Drift .
+
+:Drift a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), §Régimes — distribution shift orthogonal to anomaly (benign by default)"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:Drift_With_Anomaly a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), θ_{drift∩anomaly} — regime where a benign drift co-occurs with a true anomaly"^^xsd:string ;
+    rdfs:subClassOf :Composite_Anomaly .
+
+:HardExhaustion a owl:Class ;
+    rdfs:comment "Kubernetes docs (2024), OOMKill — container terminated by kernel when cgroup memory limit hit"^^xsd:string,
+        "Soldani & Brogi (2022), §3.1 — resource leak archetype leading to exhaustion"^^xsd:string ;
+    rdfs:subClassOf :Saturation .
+
+:Liveness_Anomaly a owl:Class ;
+    rdfs:comment "Kubernetes docs (2024), Liveness probes — probe-based liveness failure (pod restart loop)"^^xsd:string,
+        "Soldani & Brogi (2022), §3.2 — crash failure family"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:Memory_Saturation a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 7 — page scanning, swap-in/out"^^xsd:string,
+        "Soldani & Brogi (2022), §3.1 — memory pressure pattern"^^xsd:string ;
+    rdfs:subClassOf :Saturation .
+
+:Mitigation a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §5.2 — concrete corrective action attached to a recovery pattern"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:Network_Saturation a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 10 — interface utilisation > 70%"^^xsd:string,
+        "Soldani & Brogi (2022), §3.1 — noisy-neighbour effect on shared network plane"^^xsd:string ;
+    rdfs:subClassOf :Saturation .
+
+:Resource_Anomaly a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 2 — USE method top-level family"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:Scaling_Drift a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), drift_scale_up — horizontal pod autoscaler scaling event"^^xsd:string ;
+    rdfs:subClassOf :Benign_Drift .
+
+:Traffic_Drift a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), drift_traffic_ramp — load-generator ramp-up (workload distribution shift)"^^xsd:string ;
+    rdfs:subClassOf :Benign_Drift .
+
+:affects a owl:ObjectProperty ;
+    rdfs:comment "Soldani & Brogi (2022), §4 — anomaly → impacted service"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Service .
+
+:causes a owl:AsymmetricProperty,
+        owl:IrreflexiveProperty,
+        owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:comment "Fu et al. (2025), §5 — directed causal link (Transfer Entropy KSG, BH-FDR p<0.05)"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Anomaly ;
+    owl:inverseOf :isCausedBy .
+
+:isCausedBy a owl:ObjectProperty ;
+    rdfs:comment "Fu et al. (2025), §5 — inverse of causes (auto-materialised by HermiT)"^^xsd:string ;
+    owl:inverseOf :causes .
+
+:precedes a owl:AsymmetricProperty,
+        owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:comment "Aniello et al. (2014), §3 — temporal precedence within an episode"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Anomaly .
+
+:cluster_0 a :EmpiricalCluster,
+        owl:NamedIndividual .
+
+:cluster_1 a :EmpiricalCluster,
+        owl:NamedIndividual .
+
+:cluster_2 a :EmpiricalCluster,
+        owl:NamedIndividual .
+
+:cluster_3 a :EmpiricalCluster,
+        owl:NamedIndividual .
+
+:cluster_4 a :EmpiricalCluster,
+        owl:NamedIndividual .
+
+:cluster_5 a :EmpiricalCluster,
+        owl:NamedIndividual .
+
+:cluster_6 a :EmpiricalCluster,
+        owl:NamedIndividual .
+
+:cluster_7 a :EmpiricalCluster,
+        owl:NamedIndividual .
+
+:cluster_8 a :EmpiricalCluster,
+        owl:NamedIndividual .
+
+:cluster_9 a :EmpiricalCluster,
+        owl:NamedIndividual .
+
+:fw_cluster_0_abnormal_span_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "abnormal_span_rate"^^xsd:string ;
+    :weightValue 0.00044767025974579155 .
+
+:fw_cluster_0_cpu_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "cpu_util"^^xsd:string ;
+    :weightValue 0.017889179289340973 .
+
+:fw_cluster_0_disk_io a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "disk_io"^^xsd:string ;
+    :weightValue 0.1556120663881302 .
+
+:fw_cluster_0_error_rate_http a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "error_rate_http"^^xsd:string ;
+    :weightValue 0.00027563137700781226 .
+
+:fw_cluster_0_fan_out a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "fan_out"^^xsd:string ;
+    :weightValue 0.0003579633485060185 .
+
+:fw_cluster_0_latency_cv a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_cv"^^xsd:string ;
+    :weightValue 0.11444148421287537 .
+
+:fw_cluster_0_latency_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_p99"^^xsd:string ;
+    :weightValue 0.26490318775177 .
+
+:fw_cluster_0_lexical_entropy a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "lexical_entropy"^^xsd:string ;
+    :weightValue 0.010091954842209816 .
+
+:fw_cluster_0_log_error_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "log_error_rate"^^xsd:string ;
+    :weightValue 0.04000815004110336 .
+
+:fw_cluster_0_net_sat a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "net_sat"^^xsd:string ;
+    :weightValue 0.33586323261260986 .
+
+:fw_cluster_0_ram_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "ram_util"^^xsd:string ;
+    :weightValue 0.015289020724594593 .
+
+:fw_cluster_0_semantic_anomaly a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "semantic_anomaly"^^xsd:string ;
+    :weightValue 0.002168691251426935 .
+
+:fw_cluster_0_span_dur_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "span_dur_p99"^^xsd:string ;
+    :weightValue 0.04218476638197899 .
+
+:fw_cluster_0_trace_depth a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "trace_depth"^^xsd:string ;
+    :weightValue 0.0004669578920584172 .
+
+:fw_cluster_1_cpu_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "cpu_util"^^xsd:string ;
+    :weightValue 0.017191873863339424 .
+
+:fw_cluster_1_disk_io a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "disk_io"^^xsd:string ;
+    :weightValue 0.21227431297302246 .
+
+:fw_cluster_1_error_rate_http a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "error_rate_http"^^xsd:string ;
+    :weightValue 0.010813341476023197 .
+
+:fw_cluster_1_fan_out a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "fan_out"^^xsd:string ;
+    :weightValue 0.001022612676024437 .
+
+:fw_cluster_1_latency_cv a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_cv"^^xsd:string ;
+    :weightValue 0.14984524250030518 .
+
+:fw_cluster_1_latency_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_p99"^^xsd:string ;
+    :weightValue 0.29012516140937805 .
+
+:fw_cluster_1_lexical_entropy a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "lexical_entropy"^^xsd:string ;
+    :weightValue 0.017016006633639336 .
+
+:fw_cluster_1_log_error_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "log_error_rate"^^xsd:string ;
+    :weightValue 0.031435757875442505 .
+
+:fw_cluster_1_net_sat a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "net_sat"^^xsd:string ;
+    :weightValue 0.20338000357151031 .
+
+:fw_cluster_1_span_dur_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "span_dur_p99"^^xsd:string ;
+    :weightValue 0.06177917867898941 .
+
+:fw_cluster_1_trace_depth a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "trace_depth"^^xsd:string ;
+    :weightValue 0.005116472486406565 .
+
+:fw_cluster_2_abnormal_span_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "abnormal_span_rate"^^xsd:string ;
+    :weightValue 0.02638694830238819 .
+
+:fw_cluster_2_cpu_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "cpu_util"^^xsd:string ;
+    :weightValue 0.058860331773757935 .
+
+:fw_cluster_2_disk_io a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "disk_io"^^xsd:string ;
+    :weightValue 0.4190499782562256 .
+
+:fw_cluster_2_latency_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_p99"^^xsd:string ;
+    :weightValue 0.32744935154914856 .
+
+:fw_cluster_2_log_error_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "log_error_rate"^^xsd:string ;
+    :weightValue 0.015371713787317276 .
+
+:fw_cluster_2_queue_depth a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "queue_depth"^^xsd:string ;
+    :weightValue 0.0001610667386557907 .
+
+:fw_cluster_2_ram_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "ram_util"^^xsd:string ;
+    :weightValue 0.08733613044023514 .
+
+:fw_cluster_2_semantic_anomaly a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "semantic_anomaly"^^xsd:string ;
+    :weightValue 0.06538449972867966 .
+
+:fw_cluster_3_cpu_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "cpu_util"^^xsd:string ;
+    :weightValue 0.7863646745681763 .
+
+:fw_cluster_3_ram_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "ram_util"^^xsd:string ;
+    :weightValue 0.2130771279335022 .
+
+:fw_cluster_3_trace_depth a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "trace_depth"^^xsd:string ;
+    :weightValue 0.0005581352161243558 .
+
+:fw_cluster_4_abnormal_span_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "abnormal_span_rate"^^xsd:string ;
+    :weightValue 0.004348468035459518 .
+
+:fw_cluster_4_cpu_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "cpu_util"^^xsd:string ;
+    :weightValue 0.03015710785984993 .
+
+:fw_cluster_4_disk_io a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "disk_io"^^xsd:string ;
+    :weightValue 0.1949222981929779 .
+
+:fw_cluster_4_error_rate_http a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "error_rate_http"^^xsd:string ;
+    :weightValue 0.007745826151221991 .
+
+:fw_cluster_4_latency_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_p99"^^xsd:string ;
+    :weightValue 0.25253093242645264 .
+
+:fw_cluster_4_lexical_entropy a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "lexical_entropy"^^xsd:string ;
+    :weightValue 0.004667256027460098 .
+
+:fw_cluster_4_net_sat a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "net_sat"^^xsd:string ;
+    :weightValue 0.44771406054496765 .
+
+:fw_cluster_4_queue_depth a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "queue_depth"^^xsd:string ;
+    :weightValue 0.0019006526563316584 .
+
+:fw_cluster_4_ram_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "ram_util"^^xsd:string ;
+    :weightValue 0.02377946488559246 .
+
+:fw_cluster_4_semantic_anomaly a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "semantic_anomaly"^^xsd:string ;
+    :weightValue 0.012454049661755562 .
+
+:fw_cluster_4_span_dur_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "span_dur_p99"^^xsd:string ;
+    :weightValue 0.01977984607219696 .
+
+:fw_cluster_5_cpu_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "cpu_util"^^xsd:string ;
+    :weightValue 0.054479461163282394 .
+
+:fw_cluster_5_disk_io a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "disk_io"^^xsd:string ;
+    :weightValue 0.34452635049819946 .
+
+:fw_cluster_5_fan_out a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "fan_out"^^xsd:string ;
+    :weightValue 0.0017357327742502093 .
+
+:fw_cluster_5_latency_cv a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_cv"^^xsd:string ;
+    :weightValue 0.036654796451330185 .
+
+:fw_cluster_5_latency_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_p99"^^xsd:string ;
+    :weightValue 0.0004138676740694791 .
+
+:fw_cluster_5_lexical_entropy a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "lexical_entropy"^^xsd:string ;
+    :weightValue 0.1427098512649536 .
+
+:fw_cluster_5_log_error_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "log_error_rate"^^xsd:string ;
+    :weightValue 0.011228547431528568 .
+
+:fw_cluster_5_net_sat a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "net_sat"^^xsd:string ;
+    :weightValue 0.2993958592414856 .
+
+:fw_cluster_5_queue_depth a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "queue_depth"^^xsd:string ;
+    :weightValue 0.000637394783552736 .
+
+:fw_cluster_5_span_dur_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "span_dur_p99"^^xsd:string ;
+    :weightValue 0.10526447743177414 .
+
+:fw_cluster_5_trace_depth a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "trace_depth"^^xsd:string ;
+    :weightValue 0.0029535931535065174 .
+
+:fw_cluster_6_cpu_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "cpu_util"^^xsd:string ;
+    :weightValue 0.019364263862371445 .
+
+:fw_cluster_6_disk_io a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "disk_io"^^xsd:string ;
+    :weightValue 0.21325843036174774 .
+
+:fw_cluster_6_error_rate_http a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "error_rate_http"^^xsd:string ;
+    :weightValue 0.008928720839321613 .
+
+:fw_cluster_6_fan_out a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "fan_out"^^xsd:string ;
+    :weightValue 0.0008383397944271564 .
+
+:fw_cluster_6_latency_cv a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_cv"^^xsd:string ;
+    :weightValue 0.04967422038316727 .
+
+:fw_cluster_6_latency_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_p99"^^xsd:string ;
+    :weightValue 0.2488602250814438 .
+
+:fw_cluster_6_lexical_entropy a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "lexical_entropy"^^xsd:string ;
+    :weightValue 0.007211187854409218 .
+
+:fw_cluster_6_log_error_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "log_error_rate"^^xsd:string ;
+    :weightValue 0.03593693673610687 .
+
+:fw_cluster_6_net_sat a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "net_sat"^^xsd:string ;
+    :weightValue 0.366353303194046 .
+
+:fw_cluster_6_ram_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "ram_util"^^xsd:string ;
+    :weightValue 0.001954285893589258 .
+
+:fw_cluster_6_semantic_anomaly a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "semantic_anomaly"^^xsd:string ;
+    :weightValue 0.002163092140108347 .
+
+:fw_cluster_6_span_dur_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "span_dur_p99"^^xsd:string ;
+    :weightValue 0.04545695707201958 .
+
+:fw_cluster_7_disk_io a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "disk_io"^^xsd:string ;
+    :weightValue 0.23344890773296356 .
+
+:fw_cluster_7_fan_out a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "fan_out"^^xsd:string ;
+    :weightValue 0.0035919779911637306 .
+
+:fw_cluster_7_latency_cv a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_cv"^^xsd:string ;
+    :weightValue 0.1571226865053177 .
+
+:fw_cluster_7_latency_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_p99"^^xsd:string ;
+    :weightValue 0.03815547376871109 .
+
+:fw_cluster_7_lexical_entropy a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "lexical_entropy"^^xsd:string ;
+    :weightValue 0.0032616714015603065 .
+
+:fw_cluster_7_log_error_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "log_error_rate"^^xsd:string ;
+    :weightValue 0.1001039370894432 .
+
+:fw_cluster_7_net_sat a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "net_sat"^^xsd:string ;
+    :weightValue 0.43414050340652466 .
+
+:fw_cluster_7_queue_depth a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "queue_depth"^^xsd:string ;
+    :weightValue 0.0001887596008600667 .
+
+:fw_cluster_7_semantic_anomaly a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "semantic_anomaly"^^xsd:string ;
+    :weightValue 0.005838500801473856 .
+
+:fw_cluster_7_span_dur_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "span_dur_p99"^^xsd:string ;
+    :weightValue 0.02414766699075699 .
+
+:fw_cluster_8_abnormal_span_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "abnormal_span_rate"^^xsd:string ;
+    :weightValue 0.007902835495769978 .
+
+:fw_cluster_8_cpu_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "cpu_util"^^xsd:string ;
+    :weightValue 0.014605756849050522 .
+
+:fw_cluster_8_disk_io a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "disk_io"^^xsd:string ;
+    :weightValue 0.13908962905406952 .
+
+:fw_cluster_8_error_rate_http a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "error_rate_http"^^xsd:string ;
+    :weightValue 0.004646189045161009 .
+
+:fw_cluster_8_fan_out a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "fan_out"^^xsd:string ;
+    :weightValue 0.0004159327654633671 .
+
+:fw_cluster_8_latency_cv a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_cv"^^xsd:string ;
+    :weightValue 0.056819066405296326 .
+
+:fw_cluster_8_latency_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_p99"^^xsd:string ;
+    :weightValue 0.2957870662212372 .
+
+:fw_cluster_8_lexical_entropy a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "lexical_entropy"^^xsd:string ;
+    :weightValue 0.019294055178761482 .
+
+:fw_cluster_8_log_error_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "log_error_rate"^^xsd:string ;
+    :weightValue 0.032910093665122986 .
+
+:fw_cluster_8_net_sat a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "net_sat"^^xsd:string ;
+    :weightValue 0.37614545226097107 .
+
+:fw_cluster_8_span_dur_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "span_dur_p99"^^xsd:string ;
+    :weightValue 0.05185224488377571 .
+
+:fw_cluster_8_trace_depth a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "trace_depth"^^xsd:string ;
+    :weightValue 0.0005317314062267542 .
+
+:fw_cluster_9_abnormal_span_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "abnormal_span_rate"^^xsd:string ;
+    :weightValue 0.03436674177646637 .
+
+:fw_cluster_9_cpu_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "cpu_util"^^xsd:string ;
+    :weightValue 0.05430331826210022 .
+
+:fw_cluster_9_disk_io a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "disk_io"^^xsd:string ;
+    :weightValue 0.11100536584854126 .
+
+:fw_cluster_9_error_rate_http a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "error_rate_http"^^xsd:string ;
+    :weightValue 0.017774417996406555 .
+
+:fw_cluster_9_fan_out a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "fan_out"^^xsd:string ;
+    :weightValue 0.00004444786100066267 .
+
+:fw_cluster_9_latency_cv a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_cv"^^xsd:string ;
+    :weightValue 0.0908302515745163 .
+
+:fw_cluster_9_latency_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "latency_p99"^^xsd:string ;
+    :weightValue 0.15814431011676788 .
+
+:fw_cluster_9_lexical_entropy a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "lexical_entropy"^^xsd:string ;
+    :weightValue 0.030918512493371964 .
+
+:fw_cluster_9_log_error_rate a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "log_error_rate"^^xsd:string ;
+    :weightValue 0.021685659885406494 .
+
+:fw_cluster_9_net_sat a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "net_sat"^^xsd:string ;
+    :weightValue 0.2605326175689697 .
+
+:fw_cluster_9_queue_depth a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "queue_depth"^^xsd:string ;
+    :weightValue 0.00003040076080651488 .
+
+:fw_cluster_9_ram_util a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "ram_util"^^xsd:string ;
+    :weightValue 0.12823386490345 .
+
+:fw_cluster_9_semantic_anomaly a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "semantic_anomaly"^^xsd:string ;
+    :weightValue 0.006094135344028473 .
+
+:fw_cluster_9_span_dur_p99 a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "span_dur_p99"^^xsd:string ;
+    :weightValue 0.07851668447256088 .
+
+:fw_cluster_9_trace_depth a :FeatureWeight,
+        owl:NamedIndividual ;
+    :featureName "trace_depth"^^xsd:string ;
+    :weightValue 0.007519332692027092 .
+
+:hasComponent a owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:comment "Aniello et al. (2014), §3 — composite anomaly is made of two or more sub-anomalies"^^xsd:string ;
+    rdfs:domain :Composite_Anomaly ;
+    rdfs:range :Anomaly .
+
+:signature_cluster_0 a :Signature,
+        owl:NamedIndividual ;
+    :hasFeatureWeight :fw_cluster_0_abnormal_span_rate,
+        :fw_cluster_0_cpu_util,
+        :fw_cluster_0_disk_io,
+        :fw_cluster_0_error_rate_http,
+        :fw_cluster_0_fan_out,
+        :fw_cluster_0_latency_cv,
+        :fw_cluster_0_latency_p99,
+        :fw_cluster_0_lexical_entropy,
+        :fw_cluster_0_log_error_rate,
+        :fw_cluster_0_net_sat,
+        :fw_cluster_0_ram_util,
+        :fw_cluster_0_semantic_anomaly,
+        :fw_cluster_0_span_dur_p99,
+        :fw_cluster_0_trace_depth .
+
+:signature_cluster_1 a :Signature,
+        owl:NamedIndividual ;
+    :hasFeatureWeight :fw_cluster_1_cpu_util,
+        :fw_cluster_1_disk_io,
+        :fw_cluster_1_error_rate_http,
+        :fw_cluster_1_fan_out,
+        :fw_cluster_1_latency_cv,
+        :fw_cluster_1_latency_p99,
+        :fw_cluster_1_lexical_entropy,
+        :fw_cluster_1_log_error_rate,
+        :fw_cluster_1_net_sat,
+        :fw_cluster_1_span_dur_p99,
+        :fw_cluster_1_trace_depth .
+
+:signature_cluster_2 a :Signature,
+        owl:NamedIndividual ;
+    :hasFeatureWeight :fw_cluster_2_abnormal_span_rate,
+        :fw_cluster_2_cpu_util,
+        :fw_cluster_2_disk_io,
+        :fw_cluster_2_latency_p99,
+        :fw_cluster_2_log_error_rate,
+        :fw_cluster_2_queue_depth,
+        :fw_cluster_2_ram_util,
+        :fw_cluster_2_semantic_anomaly .
+
+:signature_cluster_3 a :Signature,
+        owl:NamedIndividual ;
+    :hasFeatureWeight :fw_cluster_3_cpu_util,
+        :fw_cluster_3_ram_util,
+        :fw_cluster_3_trace_depth .
+
+:signature_cluster_4 a :Signature,
+        owl:NamedIndividual ;
+    :hasFeatureWeight :fw_cluster_4_abnormal_span_rate,
+        :fw_cluster_4_cpu_util,
+        :fw_cluster_4_disk_io,
+        :fw_cluster_4_error_rate_http,
+        :fw_cluster_4_latency_p99,
+        :fw_cluster_4_lexical_entropy,
+        :fw_cluster_4_net_sat,
+        :fw_cluster_4_queue_depth,
+        :fw_cluster_4_ram_util,
+        :fw_cluster_4_semantic_anomaly,
+        :fw_cluster_4_span_dur_p99 .
+
+:signature_cluster_5 a :Signature,
+        owl:NamedIndividual ;
+    :hasFeatureWeight :fw_cluster_5_cpu_util,
+        :fw_cluster_5_disk_io,
+        :fw_cluster_5_fan_out,
+        :fw_cluster_5_latency_cv,
+        :fw_cluster_5_latency_p99,
+        :fw_cluster_5_lexical_entropy,
+        :fw_cluster_5_log_error_rate,
+        :fw_cluster_5_net_sat,
+        :fw_cluster_5_queue_depth,
+        :fw_cluster_5_span_dur_p99,
+        :fw_cluster_5_trace_depth .
+
+:signature_cluster_6 a :Signature,
+        owl:NamedIndividual ;
+    :hasFeatureWeight :fw_cluster_6_cpu_util,
+        :fw_cluster_6_disk_io,
+        :fw_cluster_6_error_rate_http,
+        :fw_cluster_6_fan_out,
+        :fw_cluster_6_latency_cv,
+        :fw_cluster_6_latency_p99,
+        :fw_cluster_6_lexical_entropy,
+        :fw_cluster_6_log_error_rate,
+        :fw_cluster_6_net_sat,
+        :fw_cluster_6_ram_util,
+        :fw_cluster_6_semantic_anomaly,
+        :fw_cluster_6_span_dur_p99 .
+
+:signature_cluster_7 a :Signature,
+        owl:NamedIndividual ;
+    :hasFeatureWeight :fw_cluster_7_disk_io,
+        :fw_cluster_7_fan_out,
+        :fw_cluster_7_latency_cv,
+        :fw_cluster_7_latency_p99,
+        :fw_cluster_7_lexical_entropy,
+        :fw_cluster_7_log_error_rate,
+        :fw_cluster_7_net_sat,
+        :fw_cluster_7_queue_depth,
+        :fw_cluster_7_semantic_anomaly,
+        :fw_cluster_7_span_dur_p99 .
+
+:signature_cluster_8 a :Signature,
+        owl:NamedIndividual ;
+    :hasFeatureWeight :fw_cluster_8_abnormal_span_rate,
+        :fw_cluster_8_cpu_util,
+        :fw_cluster_8_disk_io,
+        :fw_cluster_8_error_rate_http,
+        :fw_cluster_8_fan_out,
+        :fw_cluster_8_latency_cv,
+        :fw_cluster_8_latency_p99,
+        :fw_cluster_8_lexical_entropy,
+        :fw_cluster_8_log_error_rate,
+        :fw_cluster_8_net_sat,
+        :fw_cluster_8_span_dur_p99,
+        :fw_cluster_8_trace_depth .
+
+:signature_cluster_9 a :Signature,
+        owl:NamedIndividual ;
+    :hasFeatureWeight :fw_cluster_9_abnormal_span_rate,
+        :fw_cluster_9_cpu_util,
+        :fw_cluster_9_disk_io,
+        :fw_cluster_9_error_rate_http,
+        :fw_cluster_9_fan_out,
+        :fw_cluster_9_latency_cv,
+        :fw_cluster_9_latency_p99,
+        :fw_cluster_9_lexical_entropy,
+        :fw_cluster_9_log_error_rate,
+        :fw_cluster_9_net_sat,
+        :fw_cluster_9_queue_depth,
+        :fw_cluster_9_ram_util,
+        :fw_cluster_9_semantic_anomaly,
+        :fw_cluster_9_span_dur_p99,
+        :fw_cluster_9_trace_depth .
+
+:anomaly_cluster_0 a :Memory_Saturation,
+        owl:NamedIndividual ;
+    :affects :service_frontend,
+        :service_product_catalog,
+        :service_recommendation ;
+    :coOccursWith :anomaly_cluster_3,
+        :anomaly_cluster_5,
+        :anomaly_cluster_7,
+        :anomaly_cluster_8,
+        :anomaly_cluster_9 ;
+    :hasSignature :signature_cluster_0 ;
+    :observedIn :cluster_0 ;
+    :precedes :anomaly_cluster_3,
+        :anomaly_cluster_7 ;
+    :propagatesThrough :service_ad,
+        :service_cart,
+        :service_frontend,
+        :service_load_generator,
+        :service_product_catalog,
+        :service_recommendation ;
+    :temporalDuration 724.1882359451718 ;
+    :temporalLeadTime 180.0 .
+
+:anomaly_cluster_1 a :Traffic_Drift,
+        owl:NamedIndividual ;
+    :affects :service_frontend,
+        :service_load_generator,
+        :service_recommendation ;
+    :coOccursWith :anomaly_cluster_2,
+        :anomaly_cluster_4,
+        :anomaly_cluster_5,
+        :anomaly_cluster_6 ;
+    :hasSignature :signature_cluster_1 ;
+    :observedIn :cluster_1 ;
+    :precedes :anomaly_cluster_2,
+        :anomaly_cluster_4 ;
+    :propagatesThrough :service_ad,
+        :service_cart,
+        :service_load_generator,
+        :service_product_catalog,
+        :service_recommendation ;
+    :temporalDuration 713.9788117706776 ;
+    :temporalLeadTime 180.0 .
+
+:anomaly_cluster_2 a :HardExhaustion,
+        owl:NamedIndividual ;
+    :affects :service_cart,
+        :service_frontend,
+        :service_recommendation ;
+    :coOccursWith :anomaly_cluster_4,
+        :anomaly_cluster_6 ;
+    :hasSignature :signature_cluster_2 ;
+    :observedIn :cluster_2 ;
+    :precedes :anomaly_cluster_6 ;
+    :propagatesThrough :service_ad,
+        :service_cart ;
+    :temporalDuration 794.5220032171769 ;
+    :temporalLeadTime 180.0 .
+
+:anomaly_cluster_3 a :Network_Saturation,
+        owl:NamedIndividual ;
+    :affects :service_cart,
+        :service_product_catalog ;
+    :coOccursWith :anomaly_cluster_7 ;
+    :hasSignature :signature_cluster_3 ;
+    :observedIn :cluster_3 ;
+    :precedes :anomaly_cluster_0 ;
+    :propagatesThrough :service_recommendation ;
+    :temporalDuration 740.718178556079 ;
+    :temporalLeadTime 60.0 .
+
+:Benign_Drift a owl:Class ;
+    rdfs:comment "Hinder et al. (2024), §2 — concept drift in unsupervised data streams (no failure attached)"^^xsd:string ;
+    rdfs:subClassOf :Drift .
+
+:Composite_Anomaly a owl:Class ;
+    rdfs:comment "Aniello et al. (2014), §3 — cascading or co-occurring failures across services"^^xsd:string,
+        "Fu et al. (2025), §5 — fault propagation graphs"^^xsd:string ;
+    rdfs:subClassOf :Anomaly ;
+    owl:equivalentClass [ a owl:Class ;
+            owl:intersectionOf ( :Anomaly [ a owl:Restriction ;
+                        owl:minQualifiedCardinality "2"^^xsd:nonNegativeInteger ;
+                        owl:onClass :Anomaly ;
+                        owl:onProperty :hasComponent ] ) ] .
+
+:anomaly_cluster_4 a :Liveness_Anomaly,
+        owl:NamedIndividual ;
+    :affects :service_frontend,
+        :service_recommendation ;
+    :causes :anomaly_cluster_1,
+        :anomaly_cluster_8 ;
+    :coOccursWith :anomaly_cluster_8 ;
+    :hasSignature :signature_cluster_4 ;
+    :observedIn :cluster_4 ;
+    :precedes :anomaly_cluster_1,
+        :anomaly_cluster_8 ;
+    :propagatesThrough :service_ad,
+        :service_cart,
+        :service_frontend,
+        :service_load_generator,
+        :service_product_catalog,
+        :service_recommendation ;
+    :temporalDuration 619.6455071972263 ;
+    :temporalLeadTime 60.0 .
+
+:anomaly_cluster_9 a :Scaling_Drift,
+        owl:NamedIndividual ;
+    :affects :service_frontend,
+        :service_recommendation ;
+    :hasSignature :signature_cluster_9 ;
+    :observedIn :cluster_9 ;
+    :propagatesThrough :service_cart,
+        :service_product_catalog ;
+    :temporalDuration 660.5645664691925 ;
+    :temporalLeadTime 60.0 .
+
+:Saturation a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 2 — queueing or rejection because demand exceeds capacity"^^xsd:string ;
+    rdfs:subClassOf :Resource_Anomaly .
+
+:anomaly_cluster_5 a :Deployment_Drift,
+        owl:NamedIndividual ;
+    :affects :service_frontend,
+        :service_recommendation ;
+    :coOccursWith :anomaly_cluster_6,
+        :anomaly_cluster_7,
+        :anomaly_cluster_8 ;
+    :hasSignature :signature_cluster_5 ;
+    :observedIn :cluster_5 ;
+    :precedes :anomaly_cluster_7 ;
+    :temporalDuration 686.205019637158 ;
+    :temporalLeadTime 180.0 .
+
+:anomaly_cluster_6 a :Configuration_Drift,
+        owl:NamedIndividual ;
+    :affects :service_cart ;
+    :causes :anomaly_cluster_5 ;
+    :hasSignature :signature_cluster_6 ;
+    :observedIn :cluster_6 ;
+    :temporalDuration 717.250770231088 ;
+    :temporalLeadTime 60.0 .
+
+:anomaly_cluster_7 a :CPU_Saturation,
+        owl:NamedIndividual ;
+    :affects :service_frontend,
+        :service_product_catalog,
+        :service_recommendation ;
+    :coOccursWith :anomaly_cluster_8,
+        :anomaly_cluster_9 ;
+    :hasSignature :signature_cluster_7 ;
+    :observedIn :cluster_7 ;
+    :precedes :anomaly_cluster_0,
+        :anomaly_cluster_8 ;
+    :propagatesThrough :service_ad,
+        :service_cart,
+        :service_product_catalog ;
+    :temporalDuration 733.220193714931 ;
+    :temporalLeadTime 180.0 .
+
+:service_ad a :Service,
+        owl:NamedIndividual .
+
+:service_load_generator a :Service,
+        owl:NamedIndividual .
+
+:Service a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §1 — Kubernetes Deployment/Service abstraction"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:anomaly_cluster_8 a :Drift_With_Anomaly,
+        owl:NamedIndividual ;
+    :affects :service_cart,
+        :service_frontend,
+        :service_load_generator,
+        :service_recommendation ;
+    :coOccursWith :anomaly_cluster_9 ;
+    :hasSignature :signature_cluster_8 ;
+    :observedIn :cluster_8 ;
+    :precedes :anomaly_cluster_5 ;
+    :propagatesThrough :service_ad,
+        :service_frontend,
+        :service_load_generator,
+        :service_product_catalog,
+        :service_recommendation ;
+    :temporalDuration 692.1830752160814 ;
+    :temporalLeadTime 300.0 .
+
+:service_product_catalog a :Service,
+        owl:NamedIndividual .
+
+:EmpiricalCluster a owl:Class ;
+    rdfs:comment "EWAT internal (2026), Étape 2 — siamois + agglomerative clustering output (K=10 on ewat_v3)"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:service_cart a :Service,
+        owl:NamedIndividual .
+
+:Signature a owl:Class ;
+    rdfs:comment "Fu et al. (2025), §3.2 — observable feature pattern that characterises an anomaly type"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:service_frontend a :Service,
+        owl:NamedIndividual .
+
+:service_recommendation a :Service,
+        owl:NamedIndividual .
+
+:Anomaly a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §2 — umbrella concept for any observable deviation from nominal regime"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:FeatureWeight a owl:Class ;
+    rdfs:comment "Fu et al. (2025), §4.1 — reified pair (feature_name, weight) — permutation importance"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+[] a owl:AllDifferent ;
+    owl:distinctMembers ( :service_frontend :service_cart :service_ad :service_recommendation :service_product_catalog :service_load_generator :cluster_0 :anomaly_cluster_0 :signature_cluster_0 :fw_cluster_0_net_sat :fw_cluster_0_latency_p99 :fw_cluster_0_disk_io :fw_cluster_0_latency_cv :fw_cluster_0_span_dur_p99 :fw_cluster_0_log_error_rate :fw_cluster_0_cpu_util :fw_cluster_0_ram_util :fw_cluster_0_lexical_entropy :fw_cluster_0_semantic_anomaly :fw_cluster_0_trace_depth :fw_cluster_0_abnormal_span_rate :fw_cluster_0_fan_out :fw_cluster_0_error_rate_http :cluster_1 :anomaly_cluster_1 :signature_cluster_1 :fw_cluster_1_latency_p99 :fw_cluster_1_disk_io :fw_cluster_1_net_sat :fw_cluster_1_latency_cv :fw_cluster_1_span_dur_p99 :fw_cluster_1_log_error_rate :fw_cluster_1_cpu_util :fw_cluster_1_lexical_entropy :fw_cluster_1_error_rate_http :fw_cluster_1_trace_depth :fw_cluster_1_fan_out :cluster_2 :anomaly_cluster_2 :signature_cluster_2 :fw_cluster_2_disk_io :fw_cluster_2_latency_p99 :fw_cluster_2_ram_util :fw_cluster_2_semantic_anomaly :fw_cluster_2_cpu_util :fw_cluster_2_abnormal_span_rate :fw_cluster_2_log_error_rate :fw_cluster_2_queue_depth :cluster_3 :anomaly_cluster_3 :signature_cluster_3 :fw_cluster_3_cpu_util :fw_cluster_3_ram_util :fw_cluster_3_trace_depth :cluster_4 :anomaly_cluster_4 :signature_cluster_4 :fw_cluster_4_net_sat :fw_cluster_4_latency_p99 :fw_cluster_4_disk_io :fw_cluster_4_cpu_util :fw_cluster_4_ram_util :fw_cluster_4_span_dur_p99 :fw_cluster_4_semantic_anomaly :fw_cluster_4_error_rate_http :fw_cluster_4_lexical_entropy :fw_cluster_4_abnormal_span_rate :fw_cluster_4_queue_depth :cluster_5 :anomaly_cluster_5 :signature_cluster_5 :fw_cluster_5_disk_io :fw_cluster_5_net_sat :fw_cluster_5_lexical_entropy :fw_cluster_5_span_dur_p99 :fw_cluster_5_cpu_util :fw_cluster_5_latency_cv :fw_cluster_5_log_error_rate :fw_cluster_5_trace_depth :fw_cluster_5_fan_out :fw_cluster_5_queue_depth :fw_cluster_5_latency_p99 :cluster_6 :anomaly_cluster_6 :signature_cluster_6 :fw_cluster_6_net_sat :fw_cluster_6_latency_p99 :fw_cluster_6_disk_io :fw_cluster_6_latency_cv :fw_cluster_6_span_dur_p99 :fw_cluster_6_log_error_rate :fw_cluster_6_cpu_util :fw_cluster_6_error_rate_http :fw_cluster_6_lexical_entropy :fw_cluster_6_semantic_anomaly :fw_cluster_6_ram_util :fw_cluster_6_fan_out :cluster_7 :anomaly_cluster_7 :signature_cluster_7 :fw_cluster_7_net_sat :fw_cluster_7_disk_io :fw_cluster_7_latency_cv :fw_cluster_7_log_error_rate :fw_cluster_7_latency_p99 :fw_cluster_7_span_dur_p99 :fw_cluster_7_semantic_anomaly :fw_cluster_7_fan_out :fw_cluster_7_lexical_entropy :fw_cluster_7_queue_depth :cluster_8 :anomaly_cluster_8 :signature_cluster_8 :fw_cluster_8_net_sat :fw_cluster_8_latency_p99 :fw_cluster_8_disk_io :fw_cluster_8_latency_cv :fw_cluster_8_span_dur_p99 :fw_cluster_8_log_error_rate :fw_cluster_8_lexical_entropy :fw_cluster_8_cpu_util :fw_cluster_8_abnormal_span_rate :fw_cluster_8_error_rate_http :fw_cluster_8_trace_depth :fw_cluster_8_fan_out :cluster_9 :anomaly_cluster_9 :signature_cluster_9 :fw_cluster_9_net_sat :fw_cluster_9_latency_p99 :fw_cluster_9_ram_util :fw_cluster_9_disk_io :fw_cluster_9_latency_cv :fw_cluster_9_span_dur_p99 :fw_cluster_9_cpu_util :fw_cluster_9_abnormal_span_rate :fw_cluster_9_lexical_entropy :fw_cluster_9_log_error_rate :fw_cluster_9_error_rate_http :fw_cluster_9_trace_depth :fw_cluster_9_semantic_anomaly :fw_cluster_9_fan_out :fw_cluster_9_queue_depth ) .
+

@@ -1,0 +1,234 @@
+@prefix : <http://ewat.devoteam.com/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://ewat.devoteam.com/ontology> a owl:Ontology .
+
+:CPU_Saturation a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 6 — run-queue length, CPU contention"^^xsd:string,
+        "Soldani & Brogi (2022), §3.1 — CPU starvation pattern"^^xsd:string ;
+    rdfs:subClassOf :Saturation .
+
+:CascadingFailure a owl:Class ;
+    rdfs:comment "Aniello et al. (2014), §3 — temporal cascade A → B → C"^^xsd:string ;
+    rdfs:subClassOf :Composite_Anomaly ;
+    owl:equivalentClass [ a owl:Class ;
+            owl:intersectionOf ( :Composite_Anomaly [ a owl:Restriction ;
+                        owl:onProperty :hasComponent ;
+                        owl:someValuesFrom [ a owl:Class ;
+                                owl:intersectionOf ( :Anomaly [ a owl:Restriction ;
+                                            owl:onProperty :precedes ;
+                                            owl:someValuesFrom :Anomaly ] ) ] ] ) ] .
+
+:Configuration_Anomaly a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §3.4 — misconfiguration (probes, resource limits, routing)"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:Configuration_Drift a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), drift_config_change — ConfigMap or Deployment patch (benign)"^^xsd:string ;
+    rdfs:subClassOf :Benign_Drift .
+
+:Deployment_Anomaly a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §3.4 — failed rollout, image pull error, faulty deploy"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:Deployment_Drift a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), drift_rolling_deploy — rolling deployment (successful)"^^xsd:string ;
+    rdfs:subClassOf :Benign_Drift .
+
+:Disk_Saturation a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 9 — I/O queue length, await metric"^^xsd:string ;
+    rdfs:subClassOf :Saturation .
+
+:Drift_With_Anomaly a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), θ_{drift∩anomaly} — regime where a benign drift co-occurs with a true anomaly"^^xsd:string ;
+    rdfs:subClassOf :Composite_Anomaly .
+
+:Functional_Anomaly a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §3.3 — application-level logical error (incorrect output)"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:HardExhaustion a owl:Class ;
+    rdfs:comment "Kubernetes docs (2024), OOMKill — container terminated by kernel when cgroup memory limit hit"^^xsd:string,
+        "Soldani & Brogi (2022), §3.1 — resource leak archetype leading to exhaustion"^^xsd:string ;
+    rdfs:subClassOf :Saturation .
+
+:Latency_Anomaly a owl:Class ;
+    rdfs:comment "Fu et al. (2025), §3.1 — slow response without explicit error (gray failure)"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:Liveness_Anomaly a owl:Class ;
+    rdfs:comment "Kubernetes docs (2024), Liveness probes — probe-based liveness failure (pod restart loop)"^^xsd:string,
+        "Soldani & Brogi (2022), §3.2 — crash failure family"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:Memory_Saturation a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 7 — page scanning, swap-in/out"^^xsd:string,
+        "Soldani & Brogi (2022), §3.1 — memory pressure pattern"^^xsd:string ;
+    rdfs:subClassOf :Saturation .
+
+:Network_Anomaly a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §3.1 — network partition / loss"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:Network_Saturation a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 10 — interface utilisation > 70%"^^xsd:string,
+        "Soldani & Brogi (2022), §3.1 — noisy-neighbour effect on shared network plane"^^xsd:string ;
+    rdfs:subClassOf :Saturation .
+
+:RecoveryPattern a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §5 — recovery plan archetypes (restart, rollback, scale, isolate)"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:Scaling_Drift a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), drift_scale_up — horizontal pod autoscaler scaling event"^^xsd:string ;
+    rdfs:subClassOf :Benign_Drift .
+
+:Traffic_Drift a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), drift_traffic_ramp — load-generator ramp-up (workload distribution shift)"^^xsd:string ;
+    rdfs:subClassOf :Benign_Drift .
+
+:coOccursWith a owl:ObjectProperty,
+        owl:ReflexiveProperty,
+        owl:SymmetricProperty ;
+    rdfs:comment "Soldani & Brogi (2022), §4.2 — symmetric co-occurrence within an episode (χ² significant)"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Anomaly .
+
+:confidence a owl:DatatypeProperty ;
+    rdfs:range xsd:decimal .
+
+:featureName a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:domain :FeatureWeight ;
+    rdfs:range xsd:string .
+
+:hasFeatureWeight a owl:ObjectProperty ;
+    rdfs:comment "EWAT internal (2026), Étape 2b — signature → reified feature weight (permutation importance)"^^xsd:string ;
+    rdfs:domain :Signature ;
+    rdfs:range :FeatureWeight .
+
+:hasSignature a owl:ObjectProperty ;
+    rdfs:comment "Fu et al. (2025), §3.2 — anomaly → observable feature pattern"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Signature .
+
+:mitigatedBy a owl:ObjectProperty ;
+    rdfs:comment "Soldani & Brogi (2022), §5.2 — anomaly → applicable mitigation action"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Mitigation .
+
+:observedIn a owl:ObjectProperty ;
+    rdfs:comment "EWAT internal (2026), Étape 2b — anomaly concept → empirical cluster (traceability)"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :EmpiricalCluster .
+
+:propagatesThrough a owl:ObjectProperty ;
+    rdfs:comment "Fu et al. (2025), §5.1 — anomaly propagates along a service-to-service edge"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Service ;
+    rdfs:subPropertyOf :affects .
+
+:severity a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:domain :Anomaly ;
+    rdfs:range xsd:string .
+
+:temporalDuration a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:domain :Anomaly ;
+    rdfs:range xsd:decimal .
+
+:temporalLeadTime a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:domain :Anomaly ;
+    rdfs:range xsd:decimal .
+
+:weightValue a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:domain :FeatureWeight ;
+    rdfs:range xsd:decimal .
+
+:Drift a owl:Class ;
+    rdfs:comment "EWAT formalisation (2026), §Régimes — distribution shift orthogonal to anomaly (benign by default)"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:EmpiricalCluster a owl:Class ;
+    rdfs:comment "EWAT internal (2026), Étape 2 — siamois + agglomerative clustering output (K=10 on ewat_v3)"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:Mitigation a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §5.2 — concrete corrective action attached to a recovery pattern"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:Resource_Anomaly a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 2 — USE method top-level family"^^xsd:string ;
+    rdfs:subClassOf :Anomaly .
+
+:affects a owl:ObjectProperty ;
+    rdfs:comment "Soldani & Brogi (2022), §4 — anomaly → impacted service"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Service .
+
+:causes a owl:AsymmetricProperty,
+        owl:IrreflexiveProperty,
+        owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:comment "Fu et al. (2025), §5 — directed causal link (Transfer Entropy KSG, BH-FDR p<0.05)"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Anomaly ;
+    owl:inverseOf :isCausedBy .
+
+:isCausedBy a owl:ObjectProperty ;
+    rdfs:comment "Fu et al. (2025), §5 — inverse of causes (auto-materialised by HermiT)"^^xsd:string ;
+    owl:inverseOf :causes .
+
+:precedes a owl:AsymmetricProperty,
+        owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:comment "Aniello et al. (2014), §3 — temporal precedence within an episode"^^xsd:string ;
+    rdfs:domain :Anomaly ;
+    rdfs:range :Anomaly .
+
+:Service a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §1 — Kubernetes Deployment/Service abstraction"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:Signature a owl:Class ;
+    rdfs:comment "Fu et al. (2025), §3.2 — observable feature pattern that characterises an anomaly type"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:hasComponent a owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:comment "Aniello et al. (2014), §3 — composite anomaly is made of two or more sub-anomalies"^^xsd:string ;
+    rdfs:domain :Composite_Anomaly ;
+    rdfs:range :Anomaly .
+
+:FeatureWeight a owl:Class ;
+    rdfs:comment "Fu et al. (2025), §4.1 — reified pair (feature_name, weight) — permutation importance"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+
+:Benign_Drift a owl:Class ;
+    rdfs:comment "Hinder et al. (2024), §2 — concept drift in unsupervised data streams (no failure attached)"^^xsd:string ;
+    rdfs:subClassOf :Drift .
+
+:Composite_Anomaly a owl:Class ;
+    rdfs:comment "Aniello et al. (2014), §3 — cascading or co-occurring failures across services"^^xsd:string,
+        "Fu et al. (2025), §5 — fault propagation graphs"^^xsd:string ;
+    rdfs:subClassOf :Anomaly ;
+    owl:equivalentClass [ a owl:Class ;
+            owl:intersectionOf ( :Anomaly [ a owl:Restriction ;
+                        owl:minQualifiedCardinality "2"^^xsd:nonNegativeInteger ;
+                        owl:onClass :Anomaly ;
+                        owl:onProperty :hasComponent ] ) ] .
+
+:Saturation a owl:Class ;
+    rdfs:comment "Gregg (2013), ch. 2 — queueing or rejection because demand exceeds capacity"^^xsd:string ;
+    rdfs:subClassOf :Resource_Anomaly .
+
+:Anomaly a owl:Class ;
+    rdfs:comment "Soldani & Brogi (2022), §2 — umbrella concept for any observable deviation from nominal regime"^^xsd:string ;
+    rdfs:subClassOf owl:Thing .
+

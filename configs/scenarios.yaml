@@ -1,0 +1,29 @@
+# Source de vérité — scénarios EWAT (Chaos Mesh + drifts bash)
+# Référencé par configs/collection.yaml et configs/collection_v4.yaml.
+# Ne pas dupliquer ailleurs sans pointer vers ce fichier.
+
+scenarios:
+  # θ_drift (benign)
+  - drift_scale_up
+  - drift_rolling_deploy
+  - drift_config_change
+  - drift_traffic_ramp
+
+  # θ_anomaly — hard
+  - crash
+  - oom
+  - network_loss
+
+  # θ_anomaly — gray
+  - intermittent_error
+  - fail_slow_latency
+  - fail_slow_cpu
+
+  # θ_anomaly — contention
+  - cpu_starvation
+  - memory_pressure
+  - noisy_neighbor
+  - resource_leak
+
+  # θ_{drift ∩ anomaly}
+  - faulty_deploy_overlap

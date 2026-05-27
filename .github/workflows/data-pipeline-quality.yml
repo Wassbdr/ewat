@@ -30,3 +30,7 @@ jobs:
       - name: Unit tests
         run: |
           python -m pytest tests/unit -q
+
+      - name: Integration tests (determinism)
+        run: |
+          python -m pytest tests/integration -q

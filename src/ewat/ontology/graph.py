@@ -21,10 +21,20 @@ class OntologyRelation:
     target: int           # target cluster id
     relation_type: str    # "temporal" | "causal" | "cooccurrence"
     strength: float       # TE value / χ² statistic / transition count
-    p_value: float | None = None
+    p_value: float | None = None       # Adjusted p-value (BH-FDR / Holm)
     delta_t_mean: float | None = None  # seconds (temporal only)
     delta_t_std: float | None = None   # seconds (temporal only)
     support: int = 0                   # number of observations
+    # Step 7 fix 7.4 (audit 2026-05-26): separate raw vs adjusted p-values.
+    # ``p_value`` is the BH/Holm-adjusted q-value (what users compare to α=0.05).
+    # ``p_raw`` is the per-test permutation p-value before correction. Both are
+    # needed for transparent reporting (some readers want to see the family
+    # before correction).
+    p_raw: float | None = None
+    # Step 7 fix 7.3: mark relations that were estimated using synthetic
+    # composite episodes (synthesis.py) so downstream consumers can either
+    # filter them out or weight them differently against real-data relations.
+    is_from_synthetic: bool = False
 
 
 @dataclass

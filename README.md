@@ -170,3 +170,49 @@ servent à calibrer ε_drift (étape 0 MMD-RFF) et à falsifier H2.
 
 Voir `docs/notes/synthese_collecte_dataset.md` pour le détail des évolutions
 et des décisions de conception.
+
+## Reproduction soutenance (ewat_v3)
+
+Prérequis : dataset `data/datasets/ewat_v3`, features `data/features/v3`.
+
+### Pipeline complet (une commande)
+
+```bash
+python scripts/run_pipeline.py \
+  --dataset data/datasets/ewat_v3 \
+  --features-root data/features/v3 \
+  --output experiments/thesis_run \
+  --seed 42
+```
+
+Enchaîne encodeur → typage siamois → précurseurs → évaluation alertes (MLflow : `ewat_improvements`).
+
+### Figures et tables pour le rapport
+
+```bash
+python -m scripts.export_thesis_figures
+```
+
+Produit ROC/PR, matrice de confusion clusters, heatmap scénario×cluster, et `docs/cluster_semantics.md`.
+Figures LaTeX : `docs/rapport/figures/`.
+
+### Évaluations complémentaires (après entraînement)
+
+```bash
+python -m experiments.h2_lookthrough.eval \
+  --features-root data/features/v3 --typing-dir experiments/typing \
+  --output experiments/h2_lookthrough
+
+python -m experiments.verification.verify_h1_h3 \
+  --typing-dir experiments/typing --encoder-dir experiments/encoder \
+  --precursor-dir experiments/precursor --features-root data/features/v3 \
+  --output experiments/verification
+```
+
+Protocole détaillé : [`docs/evaluation_protocol.md`](docs/evaluation_protocol.md).
+
+### ewat_v4 (optionnel)
+
+Décision collecte : [`docs/ewat_v4_decision.md`](docs/ewat_v4_decision.md).  
+Runbook : [`docs/runbook_v4.md`](docs/runbook_v4.md).  
+Retest H2 post-collecte : `bash scripts/run_v4_retest.sh` (nécessite `data/datasets/ewat_v4`).

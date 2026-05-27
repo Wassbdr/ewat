@@ -1,0 +1,305 @@
+<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xml:base="http://ewat.devoteam.com/ontology"
+         xmlns="http://ewat.devoteam.com/ontology#">
+
+<owl:Ontology rdf:about="http://ewat.devoteam.com/ontology"/>
+
+<owl:ObjectProperty rdf:about="#hasSignature">
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Signature"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §3.2 — anomaly → observable feature pattern</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#affects">
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Service"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §4 — anomaly → impacted service</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#observedIn">
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#EmpiricalCluster"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT internal (2026), Étape 2b — anomaly concept → empirical cluster (traceability)</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#causes">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#TransitiveProperty"/>
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#IrreflexiveProperty"/>
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#AsymmetricProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Anomaly"/>
+  <owl:inverseOf rdf:resource="#isCausedBy"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §5 — directed causal link (Transfer Entropy KSG, BH-FDR p&lt;0.05)</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#isCausedBy">
+  <owl:inverseOf rdf:resource="#causes"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §5 — inverse of causes (auto-materialised by HermiT)</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#precedes">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#TransitiveProperty"/>
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#AsymmetricProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Aniello et al. (2014), §3 — temporal precedence within an episode</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#coOccursWith">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#SymmetricProperty"/>
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#ReflexiveProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §4.2 — symmetric co-occurrence within an episode (χ² significant)</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#propagatesThrough">
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Service"/>
+  <rdfs:subPropertyOf rdf:resource="#affects"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §5.1 — anomaly propagates along a service-to-service edge</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#hasComponent">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#TransitiveProperty"/>
+  <rdfs:domain rdf:resource="#Composite_Anomaly"/>
+  <rdfs:range rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Aniello et al. (2014), §3 — composite anomaly is made of two or more sub-anomalies</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#hasFeatureWeight">
+  <rdfs:domain rdf:resource="#Signature"/>
+  <rdfs:range rdf:resource="#FeatureWeight"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT internal (2026), Étape 2b — signature → reified feature weight (permutation importance)</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#mitigatedBy">
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Mitigation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §5.2 — anomaly → applicable mitigation action</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:DatatypeProperty rdf:about="#featureName">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
+  <rdfs:domain rdf:resource="#FeatureWeight"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+</owl:DatatypeProperty>
+
+<owl:DatatypeProperty rdf:about="#weightValue">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
+  <rdfs:domain rdf:resource="#FeatureWeight"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+</owl:DatatypeProperty>
+
+<owl:DatatypeProperty rdf:about="#temporalDuration">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+</owl:DatatypeProperty>
+
+<owl:DatatypeProperty rdf:about="#temporalLeadTime">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+</owl:DatatypeProperty>
+
+<owl:DatatypeProperty rdf:about="#severity">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+</owl:DatatypeProperty>
+
+<owl:DatatypeProperty rdf:about="#confidence">
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+</owl:DatatypeProperty>
+
+<owl:Class rdf:about="#Anomaly">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §2 — umbrella concept for any observable deviation from nominal regime</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Signature">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §3.2 — observable feature pattern that characterises an anomaly type</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Service">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §1 — Kubernetes Deployment/Service abstraction</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#EmpiricalCluster">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT internal (2026), Étape 2 — siamois + agglomerative clustering output (K=10 on ewat_v3)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#FeatureWeight">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §4.1 — reified pair (feature_name, weight) — permutation importance</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#RecoveryPattern">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §5 — recovery plan archetypes (restart, rollback, scale, isolate)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Mitigation">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §5.2 — concrete corrective action attached to a recovery pattern</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Resource_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 2 — USE method top-level family</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Saturation">
+  <rdfs:subClassOf rdf:resource="#Resource_Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 2 — queueing or rejection because demand exceeds capacity</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#CPU_Saturation">
+  <rdfs:subClassOf rdf:resource="#Saturation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.1 — CPU starvation pattern</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 6 — run-queue length, CPU contention</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Memory_Saturation">
+  <rdfs:subClassOf rdf:resource="#Saturation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.1 — memory pressure pattern</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 7 — page scanning, swap-in/out</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Network_Saturation">
+  <rdfs:subClassOf rdf:resource="#Saturation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.1 — noisy-neighbour effect on shared network plane</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 10 — interface utilisation &gt; 70%</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Disk_Saturation">
+  <rdfs:subClassOf rdf:resource="#Saturation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 9 — I/O queue length, await metric</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#HardExhaustion">
+  <rdfs:subClassOf rdf:resource="#Saturation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.1 — resource leak archetype leading to exhaustion</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Kubernetes docs (2024), OOMKill — container terminated by kernel when cgroup memory limit hit</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Liveness_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.2 — crash failure family</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Kubernetes docs (2024), Liveness probes — probe-based liveness failure (pod restart loop)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Functional_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.3 — application-level logical error (incorrect output)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Latency_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §3.1 — slow response without explicit error (gray failure)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Network_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.1 — network partition / loss</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Configuration_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.4 — misconfiguration (probes, resource limits, routing)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Deployment_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.4 — failed rollout, image pull error, faulty deploy</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Composite_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <owl:equivalentClass>
+    <owl:Class>
+      <owl:intersectionOf rdf:parseType="Collection">
+        <rdf:Description rdf:about="#Anomaly"/>
+        <owl:Restriction>
+          <owl:onProperty rdf:resource="#hasComponent"/>
+          <owl:onClass rdf:resource="#Anomaly"/>
+          <owl:minQualifiedCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">2</owl:minQualifiedCardinality>
+        </owl:Restriction>
+      </owl:intersectionOf>
+    </owl:Class>
+  </owl:equivalentClass>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §5 — fault propagation graphs</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Aniello et al. (2014), §3 — cascading or co-occurring failures across services</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Drift_With_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Composite_Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), θ_{drift∩anomaly} — regime where a benign drift co-occurs with a true anomaly</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#CascadingFailure">
+  <rdfs:subClassOf rdf:resource="#Composite_Anomaly"/>
+  <owl:equivalentClass>
+    <owl:Class>
+      <owl:intersectionOf rdf:parseType="Collection">
+        <rdf:Description rdf:about="#Composite_Anomaly"/>
+        <owl:Restriction>
+          <owl:onProperty rdf:resource="#hasComponent"/>
+          <owl:someValuesFrom>
+            <owl:Class>
+              <owl:intersectionOf rdf:parseType="Collection">
+                <rdf:Description rdf:about="#Anomaly"/>
+                <owl:Restriction>
+                  <owl:onProperty rdf:resource="#precedes"/>
+                  <owl:someValuesFrom rdf:resource="#Anomaly"/>
+                </owl:Restriction>
+              </owl:intersectionOf>
+            </owl:Class>
+          </owl:someValuesFrom>
+        </owl:Restriction>
+      </owl:intersectionOf>
+    </owl:Class>
+  </owl:equivalentClass>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Aniello et al. (2014), §3 — temporal cascade A → B → C</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Drift">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), §Régimes — distribution shift orthogonal to anomaly (benign by default)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Benign_Drift">
+  <rdfs:subClassOf rdf:resource="#Drift"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Hinder et al. (2024), §2 — concept drift in unsupervised data streams (no failure attached)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Scaling_Drift">
+  <rdfs:subClassOf rdf:resource="#Benign_Drift"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), drift_scale_up — horizontal pod autoscaler scaling event</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Deployment_Drift">
+  <rdfs:subClassOf rdf:resource="#Benign_Drift"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), drift_rolling_deploy — rolling deployment (successful)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Configuration_Drift">
+  <rdfs:subClassOf rdf:resource="#Benign_Drift"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), drift_config_change — ConfigMap or Deployment patch (benign)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Traffic_Drift">
+  <rdfs:subClassOf rdf:resource="#Benign_Drift"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), drift_traffic_ramp — load-generator ramp-up (workload distribution shift)</rdfs:comment>
+</owl:Class>
+
+
+</rdf:RDF>

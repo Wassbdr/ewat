@@ -5,11 +5,42 @@
 \section{Discussion}
 \label{sec:discussion}
 
-Deux hypothèses sont validées (H1 sil $= 0.519 \pm 0.092$, H3 AUROC $= 0.973 \pm 0.012$),
-une est réfutée (H2a $p = 0.27$) et une présente un PASS trivial (H2b Fisher $p = 0.35$).
+H1 est validée géométriquement (sil $= 0.519 \pm 0.092$, montée à $0.782 \pm 0.065$ en config
+optimisée). H3 est validée \emph{au sens d'une discriminabilité statistique} (AUROC $= 0.973$
+sur labels EWAT, $p < 0.01$ vs permutation A3, section~\ref{sec:robustness}). Cependant,
+les stress tests A1 et A2 (section~\ref{sec:stress_tests}) montrent que cette discriminabilité
+sur labels EWAT repose sur l'identification de scénarios connus depuis leur signature dans
+l'espace latent, sur une cible \emph{circulaire} (les labels viennent du pipeline lui-même).
+
+\textbf{L'évaluation indépendante sur cible Chaos Mesh} (section~\ref{sec:archv2}) donne
+un \textbf{headline défensif de macro-AUROC $\mathbf{= 0.920}$ [0.878, 0.956] sur ewat\_v4\_strat}
+avec LR-OvR sur features brutes flatten instance-normalisées (sans STGCN). Cette évaluation
+est le bon chiffre à comparer à l'état de l'art : elle utilise une vérité terrain indépendante,
+des IC bootstrap explicites, et un protocole stratifié-temporel.
+
+La précursion temporelle est par ailleurs \textbf{confirmée} : $\Delta($far\,$-$\,near$) = -0.116$
+sur le modèle STGCN+Chaos Mesh (Tableau~\ref{tab:c2_distant}) --- la dynamique pré-injection compte
+pour 12\,pp d'AUROC.
+
+H2a est réfutée définitivement, y compris sur les épisodes longs d'ewat\_v4\_strat (section~C5,
+$p = 0.37$). H2b reste un PASS trivial.
+
 Cette section discute ce que ces résultats apportent collectivement, comment ils se
 positionnent par rapport à la baseline z-score et à l'état de l'art, puis liste
 les limitations identifiées et les perspectives pour la prochaine itération.
+
+\subsection{Ablation H1 vs.\ H3 --- géométrie $\neq$ prédictibilité}
+\label{sec:ablation_h1_h3}
+
+L'ablation par modalité révèle un résultat \emph{inverse} selon l'hypothèse testée.
+Sur H1 (silhouette test, réentraînement complet), \texttt{M\_only} bat le modèle
+\texttt{full} ($+0.058$ en sil\_test) : les features traces et logs ajoutent du bruit
+à la géométrie siamoise sur $n=209$ épisodes train.
+Sur H3 (AUROC précurseur, masquage à l'inférence), le modèle \texttt{full}
+($0.954$) bat toutes les réductions ; \texttt{M\_only} tombe à $0.756$.
+Les modalités T et L sont donc utiles pour la \emph{prédictibilité} des signatures
+pré-injection, pas pour la structuration non supervisée des clusters.
+Ce découplage doit être explicité dans toute interprétation des ablations feature-wise.
 
 \subsection{Résultats négatifs comme contribution}
 \label{sec:negative_results}
@@ -179,3 +210,48 @@ de prédictibilité.
 La TE multivariée dans $\mathbb{R}^{17}$ (estimateur JIDT ou k-NN multivarié)
 remplacera la somme des TE univariés pour capturer les synergies entre features,
 corrigeant la limitation L5.
+
+\subsection{Perspectives --- au-delà d'ewat\_v4 (post-audit C-1 à C-5)}
+\label{sec:future_work}
+
+L'audit post-Phase~C (section~\ref{sec:residual_limits} et
+\texttt{docs/limitations.md} L10--L17) a identifié huit limites résiduelles qui
+orientent la suite du programme de recherche EWAT :
+
+\begin{enumerate}
+  \item \textbf{Stabilisation H1 sur datasets larges} (L10) : implémenter
+    le hard-negative mining renforcé pour réduire le surentraînement du siamois.
+    Cible : sil\_test $\geq 0.60$ sur 10 graines de ewat\_v4.
+  \item \textbf{Open-set state-of-the-art} (L12) : étendre
+    \texttt{src/ewat/openset/} avec Mahalanobis-OOD (Lee 2018), Energy-based
+    (Liu 2020), ODIN (Liang 2017). Cible : Unknown AUROC $\geq 0.7$ sur LOSO
+    v4\_strat (vs $0.55$ actuel avec OpenMax).
+  \item \textbf{Validation cross-cluster} (L14) : porter le pipeline sur un
+    second cluster Kubernetes (EKS, GKE, ou cluster Devoteam différent) avec
+    Stratégie B fine-tuning sur quelques épisodes du cluster cible.
+  \item \textbf{Scaling à $N \geq 20$ services} (L13) : collecter des épisodes
+    sur un benchmark microservices plus large (e.g., Train-Ticket, Hipster Shop
+    étendu, ou un déploiement production réel). Re-benchmarquer la latence.
+  \item \textbf{Audit ontologique SRE} (L17) : faire valider l'ontologie OWL/RDF
+    Phase 8 par un SRE staff. Intégrer l'export RDF avec un système de
+    runbook/alerting (PagerDuty rules, OpsGenie policies).
+  \item \textbf{Cycle de retraining opérationnel} (L15) : implémenter un
+    moniteur de drift d'embeddings (production vs entraînement) qui déclenche
+    automatiquement un retraining quand un seuil est dépassé.
+  \item \textbf{Auto-feature-engineering} (L16) : remplacer les 17 features
+    fixées par une sélection automatique (mRMR ou SHAP-based pruning) qui
+    s'adapte à chaque déploiement.
+  \item \textbf{Validation production} : déployer EWAT en mode shadow
+    (observation sans action) sur un cluster production réel pendant
+    plusieurs semaines pour observer les vrais incidents et comparer aux
+    chaos-injectés.
+\end{enumerate}
+
+L'élément critique pour la défense de cette itération reste néanmoins le
+\textbf{headline défensif honnête} (macro-AUROC $= 0.920$ [0.878, 0.956] sur
+cible Chaos Mesh indépendante, ewat\_v4\_strat, LR-OvR sur features brutes
+instance-normalisées) avec son benchmark de latence vérifié (TOTAL p95
+$= 13.28$ ms, 375$\times$ sous budget) et son audit power statistique
+(5/10 clusters reportables avec power $= 1.0$ sur les reportables). Ces trois
+résultats convergent vers une contribution prédictive crédible et opérationnellement
+viable, accompagnée d'une documentation transparente de ses limites.

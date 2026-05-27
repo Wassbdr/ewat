@@ -266,8 +266,20 @@ class STGCNEncoder(nn.Module):
         h = h_bn.reshape(B, N, -1, T).permute(0, 3, 1, 2)  # (B, T, N, d)
 
         # ---- Masked mean pool over T (and unmasked over N) ----
+        # Step 5 fix 5.2 (audit 2026-05-26, corrected): the clamp(min=1.0)
+        # is mathematically correct — for samples with length=0 (degenerate),
+        # the numerator is also 0, giving 0/1=0 (neutral). Replacing with a
+        # tiny epsilon (clamp(min=1e-10)) would produce 0/eps → numerical
+        # instability. Instead, we (a) assert lengths >= 1, (b) emit a single
+        # warning when lengths is None on batched (padded) input — silently
+        # averaging zeros from padded timesteps biases the embedding magnitude.
         if lengths is not None:
             lengths = lengths.to(device=h.device, dtype=torch.long)
+            if (lengths < 1).any():
+                raise ValueError(
+                    f"STGCNEncoder.forward: all lengths must be >= 1, got "
+                    f"{lengths.tolist()}. Filter out empty episodes upstream."
+                )
             max_T = h.shape[1]
             time_idx = torch.arange(max_T, device=h.device).unsqueeze(0)  # (1, T)
             mask = (time_idx < lengths.unsqueeze(1)).float()              # (B, T)
@@ -276,6 +288,18 @@ class STGCNEncoder(nn.Module):
             z_t = (h * mask).sum(dim=1) / denom                           # (B, N, d)
             z = z_t.mean(dim=1)                                           # (B, d)
         else:
+            # No lengths provided: assume every position is valid. CALLER must
+            # ensure this — for collated batches with heterogeneous T, lengths
+            # MUST be passed or padding zeros will dilute the mean.
+            if h.shape[0] > 1:
+                import warnings
+                warnings.warn(
+                    "STGCNEncoder.forward called with lengths=None on a "
+                    f"batch (B={h.shape[0]}). If episodes have heterogeneous "
+                    "T, padding will be averaged into the embedding and bias "
+                    "magnitude. Pass `lengths` from collate_episodes.",
+                    UserWarning, stacklevel=2,
+                )
             z = h.mean(dim=(1, 2))
 
         return self.head(z)

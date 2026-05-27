@@ -112,6 +112,7 @@ collection:
   # θ_drift       : 4 benign drifts — required by H2 (drift separability)
   # θ_anomaly     : 10 failures spanning hard / gray / contention
   # θ_{drift∩ano} : 1 faulty-deploy overlap — required by look-through
+  # Canonical list: configs/scenarios.yaml (keep in sync)
   scenarios:
     # θ_drift (benign distribution shifts)
     - drift_scale_up

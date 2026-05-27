@@ -131,26 +131,15 @@ latency_budget:
 chaos_mesh:
   namespace: "chaos-mesh"
   target_namespace: "ewat"
-  scenarios:
-    - name: "cpu_stress"
-      type: "StressChaos"
-    - name: "memory_pressure"
-      type: "StressChaos"
-    - name: "network_delay"
-      type: "NetworkChaos"
-    - name: "network_partition"
-      type: "NetworkChaos"
-    - name: "pod_kill"
-      type: "PodChaos"
-    - name: "disk_fill"
-      type: "IOChaos"
-    - name: "http_abort"
-      type: "HTTPChaos"
+  # Recording campaigns use configs/collection.yaml (or collection_v4.yaml).
+  # Canonical EWAT scenario names: configs/scenarios.yaml (15 scenarios).
+  # Legacy generic Chaos Mesh types below are NOT used by record_episode.
+  scenarios: []
   repetitions_per_scenario: 20
   cool_down_s: 300
 
 mlflow:
-  tracking_uri: "file:///home/wassimbadraoui/repos/ewat/mlruns"
+  tracking_uri: "${oc.env:MLFLOW_TRACKING_URI,mlruns}"
   experiment_name: "ewat_improvements"
 
 random:

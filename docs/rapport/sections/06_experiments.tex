@@ -186,13 +186,24 @@ et le compromis silhouette/AUROC est satisfaisant. Le GAT est le candidat nature
 ewat\_v4, où des épisodes plus longs devraient amplifier l'avantage de l'attention
 adaptative.
 
-Pour contextualiser la valeur ajoutée du STGCN, les baselines B3 et B4 mesurent
-l'AUROC macro sur les scénarios Chaos Mesh (vérité terrain indépendante, $k = 6$) :
+\subsection{Évaluation indépendante sur cible Chaos Mesh (B3/B4)}
+\label{sec:scenario_baseline}
+
+Pour contextualiser la valeur ajoutée du STGCN \emph{et} fournir une métrique indépendante
+des labels EWAT auto-référents (cf. section~\ref{sec:robustness} sur la circularité de
+l'évaluation H3), les baselines B3 et B4 mesurent l'AUROC macro sur les scénarios Chaos Mesh
+(vérité terrain indépendante, $k = 6$) :
 B3 (features brutes, sans STGCN) $= 0.835$, B4 (STGCN) $= 0.835$.
-Cette coïncidence numérique masque une redistribution non triviale : l'encodeur améliore
-\texttt{fail\_slow\_cpu} de $+0.270$ et dégrade \texttt{noisy\_neighbor} de $-0.246$.
+
+\textbf{Cette coïncidence numérique masque une redistribution non triviale} : l'encodeur
+améliore \texttt{fail\_slow\_cpu} de $+0.270$ et dégrade \texttt{noisy\_neighbor} de $-0.246$.
 La valeur du STGCN est donc géométrique (structuration pour le clustering siamois,
 H1 sil $= 0.519$) et redistributive, plutôt que globalement prédictive.
+
+Le paired bootstrap test (A5, section~\ref{sec:stress_tests}) confirme cette neutralité :
+$\Delta(B_4 - B_3) = +0.005$ avec IC 95\,\% $= [-0.031, +0.044]$ contenant zéro. La phase~B
+(section~\ref{sec:archv2}) étend cette évaluation à ewat\_v4\_strat avec instance normalisation
+et atteint $0.920$--$0.941$ macro-AUROC --- le headline défensif final.
 
 \subsection{Ontologie --- relations causales service-level}
 \label{sec:ontology_results}

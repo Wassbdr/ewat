@@ -1,6 +1,6 @@
 # EWAT — Limites, causes, conclusions et améliorations possibles
 
-_Document établi le 2026-05-11 — état post-audit complet et corrections P0–P2_
+_Document établi le 2026-05-11 — mis à jour 2026-05-21 (Phase 8 ontologie OWL)_
 
 ---
 
@@ -17,8 +17,8 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 | L3 | 5 graines seulement | CIs fragiles | Étendu à 10 (P1) |
 | L4 | Baselines B1/B2 > EWAT en AUROC | Valeur ajoutée STGCN = structuration, pas discrimination | Résultat assumé |
 | L5 | Ablation sans réentraînement | Conclusions = robustesse géométrique, pas importance | Corrigé (P2) |
-| L6 | TE-KSG = somme univariée | Sous-estime la synergie entre features | Corrigé + documenté (P0) |
-| L7 | 0 relations causales, 0 co-occurrence | Ontologie réduite aux transitions temporelles | Ouvert |
+| L6 | TE-KSG = somme univariée | Sous-estime la synergie entre features | Corrigé + activée multivariate sur cascades (Phase 8) |
+| L7 | 0 relations causales, 0 co-occurrence | Ontologie réduite aux transitions temporelles | ✅ Résolu Phase 8 — 3 causales + 19 co-occurrences (cf. L3.3) |
 | L8 | disk_io 16.7% NaN | 1 service sur 6 incomplet | Ouvert (ewat_v4) |
 
 ---
@@ -147,21 +147,27 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ---
 
-### L3.3 — Ontologie vide (0 causales, 0 co-occurrence)
+### L3.3 — Ontologie vide (0 causales, 0 co-occurrence) — ✅ Résolu (Phase 8)
 
-**Problème.** Après 100 permutations avec corrections de multiplicité, l'ontologie ne contient que 22 relations temporelles (transitions) et zéro relation causale ou de co-occurrence.
+**Problème.** L'ontologie initiale ne contenait que 22 relations temporelles (dont 10 self-loops triviaux) et zéro relation causale ou de co-occurrence.
 
-**Pourquoi.**
-- **Causalité** : chaque épisode injecte un seul scénario → pas de co-causalité entre types différents dans un même épisode. Les 2 relations du dry-run (20 perm.) étaient des faux positifs.
-- **Co-occurrence** : même raison — un épisode = un scénario, donc les clusters ne co-occurrent pas dans la même fenêtre temporelle.
-- La conception expérimentale (scénarios isolés) empêche structurellement d'observer des relations inter-types.
+**Pourquoi (3 causes racines).**
+- **Design mono-scénario** : chaque épisode injecte un seul scénario → ni co-occurrence ni causalité inter-types observables par construction.
+- **TE-KSG multivariate non activée** : la version `multivariate` existait dans `causal.py:145-163` mais le pipeline appelait silencieusement `univariate_sum` (somme des TE marginales, biais d'ignorer la synergie).
+- **T = 21 steps < 5·d = 85** pour KSG en d = 17 (règle empirique).
 
-**Conclusions.**
-- L'ontologie est fondamentalement limitée par le protocole de collecte mono-scénario.
-- Les relations temporelles (auto-transitions + 12 transitions cross-cluster) sont le seul apport exploitable.
-- Ce n'est pas un défaut du pipeline ontologique mais du design expérimental.
+**Amélioration ✅ Résolu (Phase 8, 2026-05-20/21).** Refonte complète en ontologie OWL/RDF formelle (cf. §5.2 de [`results.md`](results.md) et §Phase 8 de [`evolution.md`](evolution.md)) :
 
-**Amélioration.** Collecte ewat_v4 avec scénarios composés (ex. cascade : `memory_pressure` → `crash`) pour observer de vraies co-occurrences et causalités. Alternative : injection multi-scénario simultanée sur différents services.
+- **Synthèse composite** (`src/ewat/ontology/synthesis.py`) : overlay (co-occurrence) et cascade (causalité) à partir des épisodes mono-scénario, avec garde-fous (Spearman médian ≥ 0.85, AUC discriminateur < 0.75). **282 épisodes synthétiques** générés, AUC = 0.529 (indistinguable du réel).
+- **TE multivariate KSG-1 activée** sur les cascades (T ≈ 50 résout le blocage d = 17). **3 relations causales** significatives (BH-FDR p < 0.05) : C4→C1, C6→C5, C4→C8.
+- **19 co-occurrences** par construction sur overlays.
+- **46 edges de propagation services** après filtre de spécificité (drop de 13 paires ubiquitaires comme `load-generator → frontend`).
+- **Taxonomie OWL** : 29 classes ancrées littérature (Soldani 2022, Fu 2025, Gregg 2013, Aniello 2014), raisonneur HermiT cohérent en 0.61 s.
+- **Score validation chiffrée** : 8/10 critères atteints (`experiments/ontology_v2/results.md`).
+
+**Limites résiduelles** (acceptées) :
+- Seulement 3 causales (cible ≥ 15 du plan) — corpus synthétique petit (n_per_pair = 5). Scaling à n_per_pair ≥ 15 attendu pour passer le critère.
+- La synthèse reste synthétique : validation finale recommandée sur ewat_v4 avec collecte multi-scénario réelle (injection simultanée sur services différents).
 
 ---
 
@@ -502,9 +508,236 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ## 9. Tableau de synthèse — statut des corrections
 
+## L9 — Circularité d'évaluation H3 (P0, ajouté 2026-05-26)
+
+### Diagnostic
+
+L'AUROC=0.973 ± 0.012 (5 graines baseline) et 0.987 ± 0.011 (10 graines config optimisée) reportés pour H3 **mesurent la prédiction des labels cluster produits par EWAT lui-même** depuis l'embedding STGCN. La cible (cluster C_i) est dérivée du même pipeline (encodeur + siamois) qu'on évalue. C'est une évaluation **circulaire** : le pipeline retrouve son propre partitionnement.
+
+### Preuves de la circularité (Phase A — stress tests)
+
+| Test | Verdict |
+|---|---|
+| **B1 (raw features, labels EWAT)** | AUROC = 0.966 → les labels EWAT sont triviallement recoverables depuis le signal brut, sans encodeur |
+| **A1 distant-window** (Δ far−near sur labels EWAT) | −0.007 → pas de précursion, fenêtre déplacée donne le même AUROC → fuite signature scénario |
+| **A2 LOSO precursor-only** | top-1 sur scénario inédit = 0.51 ± 0.38 (polarisé : 4×100%, 4×0%) — pas de généralisation |
+| **A5 paired Δ(B4−B3)** | Δ = +0.005, IC 95% = [−0.031, +0.044] **contient 0** → l'encodeur STGCN n'apporte rien en prédiction agrégée vs LR sur features brutes |
+
+Voir `experiments/h3_robustness/results.md` pour les chiffres complets et `STATUS.md` section "Stress tests H3" pour les détails.
+
+### Solution adoptée (Phase B + C — 2026-05-26)
+
+Pivot de la cible d'évaluation : les **15 scénarios Chaos Mesh** (vérité terrain indépendante) remplacent les clusters EWAT auto-référents comme métrique principale.
+
+| Évaluation honnête | AUROC | IC 95% bootstrap |
+|---|---|---|
+| **B2 — LR-OvR (sans STGCN) sur v4_strat** | **0.920** | [0.878, 0.956] |
+| **B1 best (instance norm + last)** | **0.941** | [0.909, 0.970] |
+| LOSO macro-AUROC (15 folds, v4_strat) | 0.930 | ± 0.007 |
+| **C1 — STGCN end-to-end** | 0.863 | [0.823, 0.905] |
+| C2-A1 distant-window STGCN ChaosMesh | Δ(far−near) = **−0.116** ⇒ précursion réelle |
+
+### Limitation résiduelle
+
+L'évaluation indépendante Chaos Mesh résout la circularité mais expose une nouvelle limite : la généralisation **open-set** à un scénario totalement inédit reste imparfaite. Phase C3 (OpenMax/EVT) propose une réponse partielle :
+- Top-1 unknown sur scénario held-out = 1.0 (smoke test) → bonne détection de nouveauté
+- Unknown AUROC ≈ 0.6-0.7 (à finaliser sur le LOSO complet)
+- Closed-set AUROC après OpenMax dégrade de 1-2 pp seulement
+
+Voir `experiments/architecture_v2/openset/` pour les chiffres finaux.
+
+### Conséquences pour le rapport
+
+- Le rapport doit explicitement reconnaître la circularité (sections D5/D6/D8 de la refonte).
+- Le headline doit être **0.920 (B2) ou 0.941 (B1)** sur cible indépendante, pas 0.973 ni 0.987 sur labels EWAT.
+- La contribution prédictive se reframe en **typage anticipé de scénario actif** avec précursion temporelle confirmée (C2-A1), pas en "prédiction d'événement futur" au sens strict.
+
+---
+
+## L10 — Surentraînement siamois sur ewat_v4 (P1, ajouté 2026-05-26)
+
+### Diagnostic
+
+Sur ewat_v4 (262 train, 60 val, 57 test stratifié temporel ou 270/60/45 stratifié strict), le SiameseTyper converge en `best_epoch = 2–7` (vs ~47 sur ewat_v3 avec 209 train). H1 silhouette test = **0.467 ± 0.156** sur 6 graines (vs 0.782 ± 0.065 sur v3) — graine 789 = 0.216 FAIL.
+
+### Cause probable
+
+Le dataset v4 est à la fois plus grand (262 vs 209 train) et plus diversifié (durées 47-51 vs 21 steps). Les paires contrastives échantillonnées aléatoirement deviennent rapidement trop faciles à séparer → la loss tombe vite → arrêt précoce sur val.
+
+### Fix proposé (Phase C-4)
+
+- Hard-negative mining renforcé (top-k par batch au lieu de random)
+- Curriculum learning : warmup avec négatifs faciles puis progressive vers hard
+- Re-évaluer K (10 vs 15 vs auto-déterminé via gap statistic)
+- Sweep multi-graines (10) avec stratégie retenue → cible sil_test ≥ 0.60 sur les 10
+
+### État
+
+Identifié, fix en cours d'implémentation. Voir `experiments/typing/sweep_v4_stability.py` (à créer).
+
+---
+
+## L11 — Latence end-to-end (P1, ✅ résolu 2026-05-26)
+
+### Diagnostic et mesure
+
+Budget formel `formalisation.md` : Étape 0 < 1 s, Étape 1+2 < 2 s, Étape 3 < 1 s, total < 5 s. Aucun benchmark concret avant Phase C-3.
+
+### Résultat (`experiments/bench/latency_e2e.py`, 200 itérations, CPU)
+
+| Étape | médiane | p95 | budget | verdict |
+|---|---|---|---|---|
+| Étape 0 (drift) | 0.01 ms | 0.01 ms | 1000 ms | 🟢 |
+| Étape 1+2 (encoder + siamois) | 0.96 ms | 1.97 ms | 2000 ms | 🟢 |
+| Étape 3 (précurseurs) | 1.85 ms | 3.91 ms | 1000 ms | 🟢 |
+| **TOTAL** | **9.26 ms** | **13.28 ms** | **5000 ms** | **🟢** |
+
+Verdict : **GREEN** — 375× sous budget. SLA défendable en production CPU. À ré-évaluer sur GPU et à charge réelle (concurrence de requêtes).
+
+---
+
+## L12 — OpenMax mitigé (P1, ouvert)
+
+### Diagnostic
+
+Phase C-3 OpenMax LOSO (15 folds × 60 époques sur ewat_v4_strat) :
+- Unknown AUROC = **0.55 ± 0.24** (cible plan = 0.7 ❌)
+- Top-1 unknown rate = 0.40 ± 0.41 (vs 0 OvR fermé, gain réel mais incomplet)
+- Closed AUROC après OpenMax = 0.834 (dégradation ~3pp vs ~0.86 avant)
+
+### Cause
+
+OpenMax (Bendale & Boult 2016) suppose que les scénarios inédits sont "loin" des moyennes de classes connues dans l'espace d'activation. Pour des scénarios qui ressemblent fortement à un cluster connu, la Weibull du tail ne déclenche pas le mode "unknown".
+
+### Alternatives à évaluer en travail futur
+
+- **Mahalanobis-OOD** (Lee et al. 2018) : distance de Mahalanobis sur représentations gaussiennes — plus robuste sur features corrélées.
+- **Energy-based OOD** (Liu et al. 2020) : utiliser l'énergie négative du log-sum-exp des logits — meilleure séparation in/out.
+- **ODIN** (Liang et al. 2017) : temperature scaling + input perturbations.
+
+### État
+
+Documenté, OpenMax actuel = baseline. À étendre `src/ewat/openset/` avec ces 3 alternatives dans une itération future.
+
+---
+
+## L13 — Service graph N=6 (P2, ouvert — future work)
+
+### Diagnostic
+
+Tous les benchmarks EWAT utilisent Online Boutique (Google demo microservices, 6 services). En production, les architectures microservices comportent souvent 100+ services avec topologies complexes (mesh Istio, partition par tenants, etc.).
+
+### Implications
+
+- **Scalabilité** : la complexité de STGCNEncoder est O(N²) sur l'adjacence et O(N) sur les features. À N=100, le pipeline doit être re-benchmarqué (L11 fait pour N=6 seulement).
+- **Topologie variable** : ewat_v3/v4 ont une topologie statique. Production = ajout/retrait de services, scaling horizontal.
+- **Hétérogénéité** : les 6 services Online Boutique sont relativement homogènes. Production = batch jobs, streaming, frontends, etc.
+
+### Fix proposé
+
+Future work : valider sur un dataset plus large (RCAEval RE2 ou collecte sur un benchmark Kubernetes à N≥20).
+
+---
+
+## L14 — Validation cross-cluster nulle (P2, ouvert — future work)
+
+### Diagnostic
+
+Toutes les expériences EWAT sont sur `observit-cluster1` (RKE2, 9 nœuds). La portabilité vers d'autres clusters Kubernetes (EKS, GKE, on-prem) n'a pas été testée.
+
+### Cause
+
+Le pipeline dépend de :
+- Prometheus + OTel Collector existants (configuration spécifique)
+- Convention de noms de services Online Boutique (cartservice, frontend, etc.)
+- Stack Loki / Jaeger / Tempo pour traces et logs
+
+Sur un autre cluster avec autres conventions, le scaler ne transférerait pas (cf. RCAEval zero-shot : AUROC 0.495).
+
+### Fix proposé
+
+Stratégie B fine-tuning sur quelques épisodes du cluster cible (C-2 dans le plan, à implémenter). Pour une vraie portabilité, abstraire les noms de services et adopter OTel Semantic Conventions strict.
+
+---
+
+## L15 — Retraining cycle opérationnel non défini (P2, ouvert)
+
+### Diagnostic
+
+Quand re-entraîner EWAT en production ? Aucune spécification :
+- Périodiquement (chaque N jours) ?
+- Sur déclenchement (nouveau scénario, drift majeur) ?
+- Continuel (online learning) ?
+
+Le pipeline actuel suppose un entraînement batch one-shot, sans cycle de vie.
+
+### Fix proposé
+
+Future work : implémenter un détecteur de drift de distribution (différent du DriftDetector signal) qui surveille les embeddings de production vs entraînement, et déclenche un retraining quand un seuil est dépassé. Voir aussi MLflow Model Registry pour versioning.
+
+---
+
+## L16 — Hardcoded 17 features, pas d'auto-discovery (P2, ouvert)
+
+### Diagnostic
+
+Les 17 features S(t) sont fixées dans `EpisodeDataset.FEATURE_NAMES` ([src/ewat/encoder/dataset.py:38-44](src/ewat/encoder/dataset.py)). Choix éclairé par la littérature (Gregg 2013 méthodologie USE) mais non systématique.
+
+### Implications
+
+- Sur un autre cluster ou pipeline, certaines features peuvent manquer (ex. pas de Loki → log_error_rate impossible) ou nouvelles features pertinentes peuvent exister (saturation GPU, latence inter-zone, etc.).
+- L'ablation montre `disk_io` critique (Δ=-0.088 sur H3) malgré 16.7% NaN sur ewat_v3, mais `retry_rate` ≈ 0 contribution → certaines features pourraient être supprimées sans perte.
+
+### Fix proposé
+
+Future work : implémenter un sélecteur de features automatique (mRMR, SHAP-based feature pruning, ou auto-encoder régularisé L1) qui propose un sous-ensemble optimal par déploiement.
+
+---
+
+## L17 — Ontologie sans validation expert / RCA réelle (P1, ouvert)
+
+### Diagnostic
+
+Phase 8 a produit une ontologie OWL/RDF avec 29 classes ancrées littérature (Soldani & Brogi 2022, Fu et al. 2025, Gregg 2013, Aniello et al. 2014). HermiT confirme la cohérence formelle (0.61 s, 0 inconsistance). 3 causales (BH-FDR p<0.05) sur cascades synthétiques.
+
+### Limites résiduelles
+
+- **Pas d'audit SRE / RCA externe** : aucun ingénieur opérationnel n'a relu/validé que les 29 classes capturent les types de pannes qu'il rencontre vraiment.
+- **Pas d'intégration runbook / SOAR** : l'ontologie est un artefact de recherche, non connectée à un système d'incident response.
+- **Causales synthétiques** : les 3 relations causales (C4→C1, C6→C5, C4→C8) sont obtenues sur des épisodes synthétiques composites, pas sur des cascades production réelles.
+
+### Fix proposé
+
+- Future work 1 : présentation de l'ontologie à un SRE staff Devoteam pour audit (1 séance, 1 jour).
+- Future work 2 : intégration avec PagerDuty / OpsGenie via export RDF → règles d'alerte typées.
+- Future work 3 : collecte d'épisodes multi-scénario réels (incidents production) pour valider/raffiner les causales.
+
+---
+
+## Limitations mineures (m-1 à m-8)
+
+Brièvement documentées pour transparence méthodologique :
+
+- **m-1** Variance inter-graines large (±24% sur H1 baseline 5 graines). Mitigé en config optimisée (±0.065 sur 10 graines). Sur ewat_v4 (±0.156 sur 6 graines), c'est plus marqué — voir L10.
+- **m-2** Pas de pré-registration des stress tests A1–A5 ; ils ont été conçus *a posteriori* en réponse à la critique du maître de stage. Bonne pratique pour future itérations : pre-registration OSF / arXiv preprint.
+- **m-3** Pas de correction de multiplicité sur 15 scénarios (FWER non contrôlé). Bootstrap CIs sont marginaux, pas joints. Bonferroni-Holm appliqué seulement sur l'ablation feature-wise.
+- **m-4** Pas de power analysis a priori. Power post-hoc disponible via [experiments/bench/power_analysis.py](experiments/bench/power_analysis.py) : 5/10 clusters reportables (n_pos ≥ 5), power moyenne 1.0 sur ces 5.
+- **m-5** Pas de retraining cycle (voir L15).
+- **m-6** Lint ruff 52 warnings (N801 naming en OWL schema). User l'a explicitement écarté (mémoire `feedback_ruff.md`).
+- **m-7** Pas de versioning model artifacts hors checkpoints PT (MLflow Model Registry recommandé future work).
+- **m-8** SentenceBERT pour log semantic anomaly : modèle mono-lingue (anglais). À étendre vers multilingue (XLM-R, mBERT) pour logs production internationaux.
+
+---
+
+## 9. Tableau de synthèse — statut des corrections
+
 | Correction | Priorité | Statut | Impact |
 |---|---|---|---|
 | χ² co-occurrence 2×2 complet | P0 | ✅ | Résultats inchangés (0 relations) |
+| **Circularité H3** | **P0** | **✅ Phase B + C** | Headline 0.987 → 0.920 sur cible indépendante |
+| **ewat_v4 split temporal cassé → v4_strat** | **P0** | **✅** | 4 scénarios absents du train corrigés (270/60/45 stratifié) |
+| **Instance normalization (élimination baselines)** | **P0** | **✅** | +5pp sur cible Chaos Mesh |
+| **OpenMax open-set recognition** | **P1** | **✅ Phase C3** | Réponse à A2 LOSO top-1=0 |
 | TE-KSG p-value + BH-FDR | P0 | ✅ | Résultats inchangés (0 causales) |
 | Bootstrap reproductible + BCa | P0 | ✅ | CIs reproductibles |
 | Renommage SHAP → saliency | P0 | ✅ | Honnêteté terminologique |

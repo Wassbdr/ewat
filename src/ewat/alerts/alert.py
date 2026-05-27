@@ -40,6 +40,7 @@ class Alert:
     fiche: dict[str, Any] = field(default_factory=dict)
     timestamp: float = 0.0
     episode_id: str = ""
+    drift_flag: bool = False
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.probability <= 1.0:
@@ -56,6 +57,7 @@ class Alert:
             "fiche": self.fiche,
             "timestamp": self.timestamp,
             "episode_id": self.episode_id,
+            "drift_flag": self.drift_flag,
         }
 
     @classmethod
@@ -68,4 +70,5 @@ class Alert:
             fiche=dict(d.get("fiche", {})),
             timestamp=float(d.get("timestamp", 0.0)),
             episode_id=str(d.get("episode_id", "")),
+            drift_flag=bool(d.get("drift_flag", False)),
         )

@@ -202,22 +202,24 @@ def _make_mock_detector(flag: bool) -> DriftDetector:
     return detector
 
 
-def test_drift_flag_suppresses_alerts():
-    """When drift_detector.flag is True, predict() must return []."""
+def test_drift_flag_passes_through_with_drift_flag():
+    """Look-through: drift does NOT suppress alerts; they carry drift_flag=True."""
     assembler = _make_assembler(threshold=0.0)
     assembler.drift_detector = _make_mock_detector(flag=True)
     signal, adjacency = _make_signal()
     alerts = assembler.predict(signal, adjacency)
-    assert alerts == []
+    assert len(alerts) == N_CLUSTERS
+    assert all(a.drift_flag for a in alerts)
 
 
-def test_no_drift_flag_does_not_suppress():
-    """When drift_detector.flag is False, alerts are produced normally."""
+def test_no_drift_flag_produces_clean_alerts():
+    """When drift_detector.flag is False, alerts are produced with drift_flag=False."""
     assembler = _make_assembler(threshold=0.0)
     assembler.drift_detector = _make_mock_detector(flag=False)
     signal, adjacency = _make_signal()
     alerts = assembler.predict(signal, adjacency)
     assert len(alerts) == N_CLUSTERS
+    assert not any(a.drift_flag for a in alerts)
 
 
 def test_detector_reset_on_episode_change():

@@ -65,7 +65,7 @@ def test_to_dict_keys():
     d = a.to_dict()
     assert set(d.keys()) == {
         "cluster_id", "probability", "horizon_steps", "horizon_seconds",
-        "fiche", "timestamp", "episode_id",
+        "fiche", "timestamp", "episode_id", "drift_flag",
     }
 
 

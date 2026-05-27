@@ -1,0 +1,37 @@
+# Step 10 fix 10.1 (audit 2026-05-26): minimise Docker build context.
+
+# Large data + experiment artefacts (must be mounted at runtime, not baked in)
+data/
+mlruns/
+experiments/*/checkpoints/
+experiments/*/results/
+experiments/data_quality/
+docs/rapport/*.pdf
+docs/rapport/*.aux
+docs/rapport/*.log
+docs/rapport/*.snm
+docs/rapport/*.nav
+docs/rapport/*.toc
+docs/rapport/*.out
+
+# Caches + venvs
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+
+# Git + IDE
+.git/
+.github/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Notebooks output bloat
+*.ipynb_checkpoints/
+
+# Plan files outside repo
+.claude/

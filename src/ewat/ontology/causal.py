@@ -83,8 +83,10 @@ class ServiceCausalRelation:
     source_service: str
     target_service: str
     te_value: float
-    p_value: float
+    p_value: float                # Adjusted p-value (BH-FDR / Holm)
     support: int
+    # Step 7 fix 7.4 (audit 2026-05-26): expose raw permutation p-value
+    p_raw: float | None = None
 
 # ---------------------------------------------------------------------------
 # KSG-1 mutual information estimator
@@ -188,11 +190,27 @@ def _total_te(
 # Signal loading
 # ---------------------------------------------------------------------------
 
-def _load_mean_signal(features_root: Path, episode_id: str) -> np.ndarray:
-    """Load signal.npz and return spatial mean → (T, 17) float32."""
+def _load_mean_signal(
+    features_root: Path,
+    episode_id: str,
+    regime: str | None = None,
+) -> np.ndarray:
+    """Load signal.npz and return spatial mean → (T, 17) float32.
+
+    If *regime* is given, only the timesteps whose ``regime`` column matches
+    are kept — filtering must happen before averaging to avoid mixing regimes
+    (e.g. recovery steps blending into anomaly steps).  Returns an empty array
+    with shape (0, 17) if no matching timesteps are found.
+    """
     sig = np.load(features_root / episode_id / "signal.npz")["signal"].astype(np.float32)
     sig = np.nan_to_num(sig, nan=0.0)
-    return sig.mean(axis=1)
+    if regime is not None:
+        df = pd.read_parquet(
+            features_root / episode_id / "labels.parquet", columns=["regime"]
+        )
+        mask = (df["regime"] == regime).values
+        sig = sig[mask]
+    return sig.mean(axis=1) if len(sig) > 0 else np.empty((0, sig.shape[2] if sig.ndim == 3 else 17), dtype=np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -230,8 +248,9 @@ def compute_causal_relations(
     max_episodes_per_cluster: int = 20,
     min_series_length: int = 30,
     seed: int = 42,
-    te_method: Literal["univariate_sum", "multivariate"] = "univariate_sum",
+    te_method: Literal["univariate_sum", "multivariate"] = "multivariate",
     correction: Literal["holm", "bh", "none"] = "bh",
+    regime: str | None = None,
 ) -> list[OntologyRelation]:
     """Compute TE-KSG causal relations between cluster type pairs.
 
@@ -264,6 +283,10 @@ def compute_causal_relations(
     correction:
         Multiple-testing correction across the K(K−1) directed pair-tests.
         ``"bh"`` (default), ``"holm"``, or ``"none"``.
+    regime:
+        If given, only timesteps whose ``regime`` column equals this value are
+        used for TE estimation.  Filtering happens before spatial averaging to
+        avoid mixing recovery/normal steps into the anomaly signal.
 
     Returns
     -------
@@ -274,6 +297,27 @@ def compute_causal_relations(
         raise ValueError(f"unknown correction: {correction!r}")
     if te_method not in ("univariate_sum", "multivariate"):
         raise ValueError(f"unknown te_method: {te_method!r}")
+
+    # Step 7 fix 7.2 (audit 2026-05-26): in multivariate mode the KSG-1
+    # estimator requires T >= 5·d for numerical stability (Kraskov 2004 rule of
+    # thumb). With 17 features, that means T >= 85. The historical default
+    # min_series_length=30 produces unreliable TE estimates for the 17-D joint
+    # state. We log a warning when the caller passes the legacy default.
+    if te_method == "multivariate" and min_series_length < 85:
+        import logging
+        logging.getLogger(__name__).warning(
+            "compute_causal_relations: te_method='multivariate' with "
+            "min_series_length=%d < 5*17=85. Kraskov 2004 KSG-1 estimator may "
+            "be unreliable. Pass min_series_length>=85 for d=17 joint states "
+            "or expect noisy TE values.", min_series_length,
+        )
+    if k_knn < 3 or k_knn > 10:
+        import logging
+        logging.getLogger(__name__).warning(
+            "compute_causal_relations: k_knn=%d outside [3, 10] Kraskov "
+            "recommended range. Bias↓variance↑ tradeoff is uncalibrated.",
+            k_knn,
+        )
 
     features_root = Path(features_root)
     rng = np.random.default_rng(seed)
@@ -287,7 +331,8 @@ def compute_causal_relations(
     def get_signal(ep_id: str) -> np.ndarray | None:
         if ep_id not in signal_cache:
             try:
-                signal_cache[ep_id] = _load_mean_signal(features_root, ep_id)
+                sig = _load_mean_signal(features_root, ep_id, regime=regime)
+                signal_cache[ep_id] = sig if len(sig) > 0 else None
             except Exception:
                 signal_cache[ep_id] = None
         return signal_cache[ep_id]
@@ -364,7 +409,9 @@ def compute_causal_relations(
         adj_pvals = list(raw_pvals)
 
     relations: list[OntologyRelation] = []
-    for (src, tgt, te_val, support), p_adj in zip(candidates, adj_pvals):
+    for (src, tgt, te_val, support), p_adj, p_raw_for_relation in zip(
+        candidates, adj_pvals, raw_pvals,
+    ):
         if not np.isnan(p_adj) and p_adj < p_threshold:
             relations.append(
                 OntologyRelation(
@@ -373,6 +420,7 @@ def compute_causal_relations(
                     relation_type="causal",
                     strength=te_val,
                     p_value=float(p_adj),
+                    p_raw=float(p_raw_for_relation),    # Step 7 fix 7.4
                     support=support,
                 )
             )
@@ -564,7 +612,9 @@ def compute_service_causal_relations(
             adj_pvals = list(raw_pvals)
 
         cluster_rels: list[ServiceCausalRelation] = []
-        for (a, b, te_val, support), p_adj in zip(candidates, adj_pvals):
+        for (a, b, te_val, support), p_adj, p_raw_for_pair in zip(
+            candidates, adj_pvals, raw_pvals,
+        ):
             if not np.isnan(p_adj) and p_adj < p_threshold:
                 cluster_rels.append(ServiceCausalRelation(
                     cluster=cluster_id,
@@ -573,6 +623,7 @@ def compute_service_causal_relations(
                     te_value=round(float(te_val), 6),
                     p_value=round(float(p_adj), 6),
                     support=support,
+                    p_raw=round(float(p_raw_for_pair), 6),   # Step 7 fix 7.4
                 ))
 
         if cluster_rels:

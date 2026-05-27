@@ -139,3 +139,62 @@ def test_large_k_truncates_to_available():
         ds = PrecursorDataset(manifest, Path(tmpdir), k=k, split=None)
         item = ds[0]
     assert item["signal"].shape[0] == k
+
+
+def test_window_position_first_uses_beginning_of_normal():
+    """window_position='first' must use the FIRST k steps of normal regime."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manifest = _make_feature_store(Path(tmpdir), n_normal=13)
+        k = 4
+        ds_first = PrecursorDataset(
+            manifest, Path(tmpdir), k=k, split=None, window_position="first"
+        )
+        ds_last = PrecursorDataset(
+            manifest, Path(tmpdir), k=k, split=None, window_position="last"
+        )
+        item_first = ds_first[0]
+        item_last = ds_last[0]
+    # With k=4 and n_normal=13, the first 4 and last 4 windows must be DIFFERENT
+    assert item_first["signal"].shape == (k, 6, 17)
+    assert not (item_first["signal"] == item_last["signal"]).all().item()
+
+
+def test_window_position_middle_is_centered():
+    """window_position='middle' must produce a window distinct from first and last."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manifest = _make_feature_store(Path(tmpdir), n_normal=13)
+        k = 4
+        ds_first = PrecursorDataset(
+            manifest, Path(tmpdir), k=k, split=None, window_position="first"
+        )
+        ds_middle = PrecursorDataset(
+            manifest, Path(tmpdir), k=k, split=None, window_position="middle"
+        )
+        ds_last = PrecursorDataset(
+            manifest, Path(tmpdir), k=k, split=None, window_position="last"
+        )
+        m, f, l = ds_middle[0]["signal"], ds_first[0]["signal"], ds_last[0]["signal"]
+    assert m.shape == (k, 6, 17)
+    assert not (m == f).all().item()
+    assert not (m == l).all().item()
+
+
+def test_window_position_invalid_raises():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manifest = _make_feature_store(Path(tmpdir))
+        with pytest.raises(ValueError, match="window_position"):
+            PrecursorDataset(
+                manifest, Path(tmpdir), k=6, split=None, window_position="bogus"
+            )
+
+
+def test_window_position_default_is_last():
+    """Default behavior must remain identical to window_position='last'."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manifest = _make_feature_store(Path(tmpdir))
+        ds_default = PrecursorDataset(manifest, Path(tmpdir), k=6, split=None)
+        ds_last = PrecursorDataset(
+            manifest, Path(tmpdir), k=6, split=None, window_position="last"
+        )
+        for i in range(len(ds_default)):
+            assert (ds_default[i]["signal"] == ds_last[i]["signal"]).all().item()

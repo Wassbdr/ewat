@@ -1,0 +1,1411 @@
+<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xml:base="http://ewat.devoteam.com/ontology"
+         xmlns="http://ewat.devoteam.com/ontology#">
+
+<owl:Ontology rdf:about="http://ewat.devoteam.com/ontology"/>
+
+<owl:ObjectProperty rdf:about="#hasSignature">
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Signature"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §3.2 — anomaly → observable feature pattern</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#affects">
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Service"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §4 — anomaly → impacted service</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#observedIn">
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#EmpiricalCluster"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT internal (2026), Étape 2b — anomaly concept → empirical cluster (traceability)</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#causes">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#TransitiveProperty"/>
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#IrreflexiveProperty"/>
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#AsymmetricProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Anomaly"/>
+  <owl:inverseOf rdf:resource="#isCausedBy"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §5 — directed causal link (Transfer Entropy KSG, BH-FDR p&lt;0.05)</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#isCausedBy">
+  <owl:inverseOf rdf:resource="#causes"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §5 — inverse of causes (auto-materialised by HermiT)</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#precedes">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#TransitiveProperty"/>
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#AsymmetricProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Aniello et al. (2014), §3 — temporal precedence within an episode</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#coOccursWith">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#SymmetricProperty"/>
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#ReflexiveProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §4.2 — symmetric co-occurrence within an episode (χ² significant)</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#propagatesThrough">
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Service"/>
+  <rdfs:subPropertyOf rdf:resource="#affects"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §5.1 — anomaly propagates along a service-to-service edge</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#hasComponent">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#TransitiveProperty"/>
+  <rdfs:domain rdf:resource="#Composite_Anomaly"/>
+  <rdfs:range rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Aniello et al. (2014), §3 — composite anomaly is made of two or more sub-anomalies</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#hasFeatureWeight">
+  <rdfs:domain rdf:resource="#Signature"/>
+  <rdfs:range rdf:resource="#FeatureWeight"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT internal (2026), Étape 2b — signature → reified feature weight (permutation importance)</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#mitigatedBy">
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="#Mitigation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §5.2 — anomaly → applicable mitigation action</rdfs:comment>
+</owl:ObjectProperty>
+
+<owl:DatatypeProperty rdf:about="#featureName">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
+  <rdfs:domain rdf:resource="#FeatureWeight"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+</owl:DatatypeProperty>
+
+<owl:DatatypeProperty rdf:about="#weightValue">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
+  <rdfs:domain rdf:resource="#FeatureWeight"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+</owl:DatatypeProperty>
+
+<owl:DatatypeProperty rdf:about="#temporalDuration">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+</owl:DatatypeProperty>
+
+<owl:DatatypeProperty rdf:about="#temporalLeadTime">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+</owl:DatatypeProperty>
+
+<owl:DatatypeProperty rdf:about="#severity">
+  <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
+  <rdfs:domain rdf:resource="#Anomaly"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+</owl:DatatypeProperty>
+
+<owl:DatatypeProperty rdf:about="#confidence">
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+</owl:DatatypeProperty>
+
+<owl:Class rdf:about="#Anomaly">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §2 — umbrella concept for any observable deviation from nominal regime</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Signature">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §3.2 — observable feature pattern that characterises an anomaly type</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Service">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §1 — Kubernetes Deployment/Service abstraction</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#EmpiricalCluster">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT internal (2026), Étape 2 — siamois + agglomerative clustering output (K=10 on ewat_v3)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#FeatureWeight">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §4.1 — reified pair (feature_name, weight) — permutation importance</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#RecoveryPattern">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §5 — recovery plan archetypes (restart, rollback, scale, isolate)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Mitigation">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §5.2 — concrete corrective action attached to a recovery pattern</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Resource_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 2 — USE method top-level family</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Saturation">
+  <rdfs:subClassOf rdf:resource="#Resource_Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 2 — queueing or rejection because demand exceeds capacity</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#CPU_Saturation">
+  <rdfs:subClassOf rdf:resource="#Saturation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.1 — CPU starvation pattern</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 6 — run-queue length, CPU contention</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Memory_Saturation">
+  <rdfs:subClassOf rdf:resource="#Saturation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 7 — page scanning, swap-in/out</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.1 — memory pressure pattern</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Network_Saturation">
+  <rdfs:subClassOf rdf:resource="#Saturation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 10 — interface utilisation &gt; 70%</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.1 — noisy-neighbour effect on shared network plane</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Disk_Saturation">
+  <rdfs:subClassOf rdf:resource="#Saturation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Gregg (2013), ch. 9 — I/O queue length, await metric</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#HardExhaustion">
+  <rdfs:subClassOf rdf:resource="#Saturation"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.1 — resource leak archetype leading to exhaustion</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Kubernetes docs (2024), OOMKill — container terminated by kernel when cgroup memory limit hit</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Liveness_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Kubernetes docs (2024), Liveness probes — probe-based liveness failure (pod restart loop)</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.2 — crash failure family</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Functional_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.3 — application-level logical error (incorrect output)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Latency_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §3.1 — slow response without explicit error (gray failure)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Network_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.1 — network partition / loss</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Configuration_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.4 — misconfiguration (probes, resource limits, routing)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Deployment_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Soldani &amp; Brogi (2022), §3.4 — failed rollout, image pull error, faulty deploy</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Composite_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Anomaly"/>
+  <owl:equivalentClass>
+    <owl:Class>
+      <owl:intersectionOf rdf:parseType="Collection">
+        <rdf:Description rdf:about="#Anomaly"/>
+        <owl:Restriction>
+          <owl:onProperty rdf:resource="#hasComponent"/>
+          <owl:onClass rdf:resource="#Anomaly"/>
+          <owl:minQualifiedCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">2</owl:minQualifiedCardinality>
+        </owl:Restriction>
+      </owl:intersectionOf>
+    </owl:Class>
+  </owl:equivalentClass>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Aniello et al. (2014), §3 — cascading or co-occurring failures across services</rdfs:comment>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Fu et al. (2025), §5 — fault propagation graphs</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Drift_With_Anomaly">
+  <rdfs:subClassOf rdf:resource="#Composite_Anomaly"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), θ_{drift∩anomaly} — regime where a benign drift co-occurs with a true anomaly</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#CascadingFailure">
+  <rdfs:subClassOf rdf:resource="#Composite_Anomaly"/>
+  <owl:equivalentClass>
+    <owl:Class>
+      <owl:intersectionOf rdf:parseType="Collection">
+        <rdf:Description rdf:about="#Composite_Anomaly"/>
+        <owl:Restriction>
+          <owl:onProperty rdf:resource="#hasComponent"/>
+          <owl:someValuesFrom>
+            <owl:Class>
+              <owl:intersectionOf rdf:parseType="Collection">
+                <rdf:Description rdf:about="#Anomaly"/>
+                <owl:Restriction>
+                  <owl:onProperty rdf:resource="#precedes"/>
+                  <owl:someValuesFrom rdf:resource="#Anomaly"/>
+                </owl:Restriction>
+              </owl:intersectionOf>
+            </owl:Class>
+          </owl:someValuesFrom>
+        </owl:Restriction>
+      </owl:intersectionOf>
+    </owl:Class>
+  </owl:equivalentClass>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Aniello et al. (2014), §3 — temporal cascade A → B → C</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Drift">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), §Régimes — distribution shift orthogonal to anomaly (benign by default)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Benign_Drift">
+  <rdfs:subClassOf rdf:resource="#Drift"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Hinder et al. (2024), §2 — concept drift in unsupervised data streams (no failure attached)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Scaling_Drift">
+  <rdfs:subClassOf rdf:resource="#Benign_Drift"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), drift_scale_up — horizontal pod autoscaler scaling event</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Deployment_Drift">
+  <rdfs:subClassOf rdf:resource="#Benign_Drift"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), drift_rolling_deploy — rolling deployment (successful)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Configuration_Drift">
+  <rdfs:subClassOf rdf:resource="#Benign_Drift"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), drift_config_change — ConfigMap or Deployment patch (benign)</rdfs:comment>
+</owl:Class>
+
+<owl:Class rdf:about="#Traffic_Drift">
+  <rdfs:subClassOf rdf:resource="#Benign_Drift"/>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">EWAT formalisation (2026), drift_traffic_ramp — load-generator ramp-up (workload distribution shift)</rdfs:comment>
+</owl:Class>
+
+<owl:NamedIndividual rdf:about="#service_frontend">
+  <rdf:type rdf:resource="#Service"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#service_cart">
+  <rdf:type rdf:resource="#Service"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#service_ad">
+  <rdf:type rdf:resource="#Service"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#service_recommendation">
+  <rdf:type rdf:resource="#Service"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#service_product_catalog">
+  <rdf:type rdf:resource="#Service"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#service_load_generator">
+  <rdf:type rdf:resource="#Service"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cluster_0">
+  <rdf:type rdf:resource="#EmpiricalCluster"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#anomaly_cluster_0">
+  <rdf:type rdf:resource="#Memory_Saturation"/>
+  <observedIn rdf:resource="#cluster_0"/>
+  <hasSignature rdf:resource="#signature_cluster_0"/>
+  <affects rdf:resource="#service_product_catalog"/>
+  <affects rdf:resource="#service_frontend"/>
+  <affects rdf:resource="#service_recommendation"/>
+  <temporalDuration rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">724.1882359451718</temporalDuration>
+  <temporalLeadTime rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">180.0</temporalLeadTime>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#signature_cluster_0">
+  <rdf:type rdf:resource="#Signature"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_net_sat"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_latency_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_disk_io"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_latency_cv"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_span_dur_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_log_error_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_cpu_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_ram_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_lexical_entropy"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_semantic_anomaly"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_trace_depth"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_abnormal_span_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_fan_out"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_0_error_rate_http"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_net_sat">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">net_sat</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.33586323261260986</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_latency_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.26490318775177</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_disk_io">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">disk_io</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.1556120663881302</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_latency_cv">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_cv</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.11444148421287537</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_span_dur_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">span_dur_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.04218476638197899</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_log_error_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">log_error_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.04000815004110336</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_cpu_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">cpu_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.017889179289340973</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_ram_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">ram_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.015289020724594593</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_lexical_entropy">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">lexical_entropy</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.010091954842209816</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_semantic_anomaly">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">semantic_anomaly</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.002168691251426935</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_trace_depth">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">trace_depth</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0004669578920584172</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_abnormal_span_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">abnormal_span_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.00044767025974579155</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_fan_out">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">fan_out</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0003579633485060185</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_0_error_rate_http">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">error_rate_http</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.00027563137700781226</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cluster_1">
+  <rdf:type rdf:resource="#EmpiricalCluster"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#anomaly_cluster_1">
+  <rdf:type rdf:resource="#Traffic_Drift"/>
+  <observedIn rdf:resource="#cluster_1"/>
+  <hasSignature rdf:resource="#signature_cluster_1"/>
+  <affects rdf:resource="#service_frontend"/>
+  <affects rdf:resource="#service_recommendation"/>
+  <affects rdf:resource="#service_load_generator"/>
+  <temporalDuration rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">713.9788117706776</temporalDuration>
+  <temporalLeadTime rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">180.0</temporalLeadTime>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#signature_cluster_1">
+  <rdf:type rdf:resource="#Signature"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_1_latency_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_1_disk_io"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_1_net_sat"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_1_latency_cv"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_1_span_dur_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_1_log_error_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_1_cpu_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_1_lexical_entropy"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_1_error_rate_http"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_1_trace_depth"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_1_fan_out"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_1_latency_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.29012516140937805</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_1_disk_io">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">disk_io</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.21227431297302246</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_1_net_sat">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">net_sat</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.20338000357151031</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_1_latency_cv">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_cv</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.14984524250030518</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_1_span_dur_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">span_dur_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.06177917867898941</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_1_log_error_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">log_error_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.031435757875442505</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_1_cpu_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">cpu_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.017191873863339424</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_1_lexical_entropy">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">lexical_entropy</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.017016006633639336</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_1_error_rate_http">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">error_rate_http</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.010813341476023197</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_1_trace_depth">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">trace_depth</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.005116472486406565</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_1_fan_out">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">fan_out</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.001022612676024437</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cluster_2">
+  <rdf:type rdf:resource="#EmpiricalCluster"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#anomaly_cluster_2">
+  <rdf:type rdf:resource="#HardExhaustion"/>
+  <observedIn rdf:resource="#cluster_2"/>
+  <hasSignature rdf:resource="#signature_cluster_2"/>
+  <affects rdf:resource="#service_frontend"/>
+  <affects rdf:resource="#service_cart"/>
+  <affects rdf:resource="#service_recommendation"/>
+  <temporalDuration rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">794.5220032171769</temporalDuration>
+  <temporalLeadTime rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">180.0</temporalLeadTime>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#signature_cluster_2">
+  <rdf:type rdf:resource="#Signature"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_2_disk_io"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_2_latency_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_2_ram_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_2_semantic_anomaly"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_2_cpu_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_2_abnormal_span_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_2_log_error_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_2_queue_depth"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_2_disk_io">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">disk_io</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.4190499782562256</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_2_latency_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.32744935154914856</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_2_ram_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">ram_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.08733613044023514</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_2_semantic_anomaly">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">semantic_anomaly</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.06538449972867966</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_2_cpu_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">cpu_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.058860331773757935</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_2_abnormal_span_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">abnormal_span_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.02638694830238819</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_2_log_error_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">log_error_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.015371713787317276</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_2_queue_depth">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">queue_depth</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0001610667386557907</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cluster_3">
+  <rdf:type rdf:resource="#EmpiricalCluster"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#anomaly_cluster_3">
+  <rdf:type rdf:resource="#Network_Saturation"/>
+  <observedIn rdf:resource="#cluster_3"/>
+  <hasSignature rdf:resource="#signature_cluster_3"/>
+  <affects rdf:resource="#service_product_catalog"/>
+  <affects rdf:resource="#service_cart"/>
+  <temporalDuration rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">740.718178556079</temporalDuration>
+  <temporalLeadTime rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">60.0</temporalLeadTime>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#signature_cluster_3">
+  <rdf:type rdf:resource="#Signature"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_3_cpu_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_3_ram_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_3_trace_depth"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_3_cpu_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">cpu_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.7863646745681763</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_3_ram_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">ram_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.2130771279335022</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_3_trace_depth">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">trace_depth</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0005581352161243558</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cluster_4">
+  <rdf:type rdf:resource="#EmpiricalCluster"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#anomaly_cluster_4">
+  <rdf:type rdf:resource="#Liveness_Anomaly"/>
+  <observedIn rdf:resource="#cluster_4"/>
+  <hasSignature rdf:resource="#signature_cluster_4"/>
+  <affects rdf:resource="#service_frontend"/>
+  <affects rdf:resource="#service_recommendation"/>
+  <temporalDuration rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">619.6455071972263</temporalDuration>
+  <temporalLeadTime rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">60.0</temporalLeadTime>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#signature_cluster_4">
+  <rdf:type rdf:resource="#Signature"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_4_net_sat"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_4_latency_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_4_disk_io"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_4_cpu_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_4_ram_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_4_span_dur_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_4_semantic_anomaly"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_4_error_rate_http"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_4_lexical_entropy"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_4_abnormal_span_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_4_queue_depth"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_4_net_sat">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">net_sat</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.44771406054496765</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_4_latency_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.25253093242645264</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_4_disk_io">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">disk_io</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.1949222981929779</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_4_cpu_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">cpu_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.03015710785984993</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_4_ram_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">ram_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.02377946488559246</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_4_span_dur_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">span_dur_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.01977984607219696</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_4_semantic_anomaly">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">semantic_anomaly</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.012454049661755562</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_4_error_rate_http">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">error_rate_http</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.007745826151221991</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_4_lexical_entropy">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">lexical_entropy</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.004667256027460098</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_4_abnormal_span_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">abnormal_span_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.004348468035459518</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_4_queue_depth">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">queue_depth</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0019006526563316584</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cluster_5">
+  <rdf:type rdf:resource="#EmpiricalCluster"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#anomaly_cluster_5">
+  <rdf:type rdf:resource="#Deployment_Drift"/>
+  <observedIn rdf:resource="#cluster_5"/>
+  <hasSignature rdf:resource="#signature_cluster_5"/>
+  <affects rdf:resource="#service_frontend"/>
+  <affects rdf:resource="#service_recommendation"/>
+  <temporalDuration rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">686.205019637158</temporalDuration>
+  <temporalLeadTime rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">180.0</temporalLeadTime>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#signature_cluster_5">
+  <rdf:type rdf:resource="#Signature"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_5_disk_io"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_5_net_sat"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_5_lexical_entropy"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_5_span_dur_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_5_cpu_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_5_latency_cv"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_5_log_error_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_5_trace_depth"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_5_fan_out"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_5_queue_depth"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_5_latency_p99"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_5_disk_io">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">disk_io</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.34452635049819946</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_5_net_sat">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">net_sat</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.2993958592414856</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_5_lexical_entropy">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">lexical_entropy</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.1427098512649536</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_5_span_dur_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">span_dur_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.10526447743177414</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_5_cpu_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">cpu_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.054479461163282394</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_5_latency_cv">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_cv</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.036654796451330185</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_5_log_error_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">log_error_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.011228547431528568</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_5_trace_depth">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">trace_depth</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0029535931535065174</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_5_fan_out">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">fan_out</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0017357327742502093</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_5_queue_depth">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">queue_depth</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.000637394783552736</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_5_latency_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0004138676740694791</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cluster_6">
+  <rdf:type rdf:resource="#EmpiricalCluster"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#anomaly_cluster_6">
+  <rdf:type rdf:resource="#Configuration_Drift"/>
+  <observedIn rdf:resource="#cluster_6"/>
+  <hasSignature rdf:resource="#signature_cluster_6"/>
+  <affects rdf:resource="#service_cart"/>
+  <temporalDuration rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">717.250770231088</temporalDuration>
+  <temporalLeadTime rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">60.0</temporalLeadTime>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#signature_cluster_6">
+  <rdf:type rdf:resource="#Signature"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_net_sat"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_latency_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_disk_io"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_latency_cv"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_span_dur_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_log_error_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_cpu_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_error_rate_http"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_lexical_entropy"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_semantic_anomaly"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_ram_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_6_fan_out"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_net_sat">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">net_sat</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.366353303194046</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_latency_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.2488602250814438</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_disk_io">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">disk_io</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.21325843036174774</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_latency_cv">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_cv</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.04967422038316727</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_span_dur_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">span_dur_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.04545695707201958</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_log_error_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">log_error_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.03593693673610687</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_cpu_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">cpu_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.019364263862371445</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_error_rate_http">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">error_rate_http</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.008928720839321613</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_lexical_entropy">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">lexical_entropy</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.007211187854409218</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_semantic_anomaly">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">semantic_anomaly</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.002163092140108347</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_ram_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">ram_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.001954285893589258</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_6_fan_out">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">fan_out</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0008383397944271564</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cluster_7">
+  <rdf:type rdf:resource="#EmpiricalCluster"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#anomaly_cluster_7">
+  <rdf:type rdf:resource="#CPU_Saturation"/>
+  <observedIn rdf:resource="#cluster_7"/>
+  <hasSignature rdf:resource="#signature_cluster_7"/>
+  <affects rdf:resource="#service_product_catalog"/>
+  <affects rdf:resource="#service_frontend"/>
+  <affects rdf:resource="#service_recommendation"/>
+  <temporalDuration rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">733.220193714931</temporalDuration>
+  <temporalLeadTime rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">180.0</temporalLeadTime>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#signature_cluster_7">
+  <rdf:type rdf:resource="#Signature"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_7_net_sat"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_7_disk_io"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_7_latency_cv"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_7_log_error_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_7_latency_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_7_span_dur_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_7_semantic_anomaly"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_7_fan_out"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_7_lexical_entropy"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_7_queue_depth"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_7_net_sat">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">net_sat</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.43414050340652466</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_7_disk_io">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">disk_io</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.23344890773296356</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_7_latency_cv">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_cv</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.1571226865053177</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_7_log_error_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">log_error_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.1001039370894432</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_7_latency_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.03815547376871109</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_7_span_dur_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">span_dur_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.02414766699075699</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_7_semantic_anomaly">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">semantic_anomaly</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.005838500801473856</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_7_fan_out">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">fan_out</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0035919779911637306</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_7_lexical_entropy">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">lexical_entropy</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0032616714015603065</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_7_queue_depth">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">queue_depth</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0001887596008600667</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cluster_8">
+  <rdf:type rdf:resource="#EmpiricalCluster"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#anomaly_cluster_8">
+  <rdf:type rdf:resource="#Drift_With_Anomaly"/>
+  <observedIn rdf:resource="#cluster_8"/>
+  <hasSignature rdf:resource="#signature_cluster_8"/>
+  <affects rdf:resource="#service_frontend"/>
+  <affects rdf:resource="#service_cart"/>
+  <affects rdf:resource="#service_recommendation"/>
+  <affects rdf:resource="#service_load_generator"/>
+  <temporalDuration rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">692.1830752160814</temporalDuration>
+  <temporalLeadTime rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">300.0</temporalLeadTime>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#signature_cluster_8">
+  <rdf:type rdf:resource="#Signature"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_net_sat"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_latency_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_disk_io"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_latency_cv"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_span_dur_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_log_error_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_lexical_entropy"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_cpu_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_abnormal_span_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_error_rate_http"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_trace_depth"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_8_fan_out"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_net_sat">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">net_sat</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.37614545226097107</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_latency_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.2957870662212372</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_disk_io">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">disk_io</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.13908962905406952</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_latency_cv">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_cv</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.056819066405296326</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_span_dur_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">span_dur_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.05185224488377571</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_log_error_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">log_error_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.032910093665122986</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_lexical_entropy">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">lexical_entropy</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.019294055178761482</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_cpu_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">cpu_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.014605756849050522</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_abnormal_span_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">abnormal_span_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.007902835495769978</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_error_rate_http">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">error_rate_http</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.004646189045161009</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_trace_depth">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">trace_depth</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0005317314062267542</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_8_fan_out">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">fan_out</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0004159327654633671</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cluster_9">
+  <rdf:type rdf:resource="#EmpiricalCluster"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#anomaly_cluster_9">
+  <rdf:type rdf:resource="#Scaling_Drift"/>
+  <observedIn rdf:resource="#cluster_9"/>
+  <hasSignature rdf:resource="#signature_cluster_9"/>
+  <affects rdf:resource="#service_frontend"/>
+  <affects rdf:resource="#service_recommendation"/>
+  <temporalDuration rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">660.5645664691925</temporalDuration>
+  <temporalLeadTime rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">60.0</temporalLeadTime>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#signature_cluster_9">
+  <rdf:type rdf:resource="#Signature"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_net_sat"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_latency_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_ram_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_disk_io"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_latency_cv"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_span_dur_p99"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_cpu_util"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_abnormal_span_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_lexical_entropy"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_log_error_rate"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_error_rate_http"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_trace_depth"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_semantic_anomaly"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_fan_out"/>
+  <hasFeatureWeight rdf:resource="#fw_cluster_9_queue_depth"/>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_net_sat">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">net_sat</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.2605326175689697</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_latency_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.15814431011676788</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_ram_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">ram_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.12823386490345</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_disk_io">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">disk_io</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.11100536584854126</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_latency_cv">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">latency_cv</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.0908302515745163</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_span_dur_p99">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">span_dur_p99</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.07851668447256088</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_cpu_util">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">cpu_util</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.05430331826210022</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_abnormal_span_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">abnormal_span_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.03436674177646637</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_lexical_entropy">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">lexical_entropy</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.030918512493371964</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_log_error_rate">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">log_error_rate</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.021685659885406494</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_error_rate_http">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">error_rate_http</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.017774417996406555</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_trace_depth">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">trace_depth</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.007519332692027092</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_semantic_anomaly">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">semantic_anomaly</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">0.006094135344028473</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_fan_out">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">fan_out</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">4.444786100066267e-05</weightValue>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#fw_cluster_9_queue_depth">
+  <rdf:type rdf:resource="#FeatureWeight"/>
+  <featureName rdf:datatype="http://www.w3.org/2001/XMLSchema#string">queue_depth</featureName>
+  <weightValue rdf:datatype="http://www.w3.org/2001/XMLSchema#decimal">3.040076080651488e-05</weightValue>
+</owl:NamedIndividual>
+
+<owl:AllDifferent>
+  <owl:distinctMembers rdf:parseType="Collection">
+    <rdf:Description rdf:about="#service_frontend"/>
+    <rdf:Description rdf:about="#service_cart"/>
+    <rdf:Description rdf:about="#service_ad"/>
+    <rdf:Description rdf:about="#service_recommendation"/>
+    <rdf:Description rdf:about="#service_product_catalog"/>
+    <rdf:Description rdf:about="#service_load_generator"/>
+    <rdf:Description rdf:about="#cluster_0"/>
+    <rdf:Description rdf:about="#anomaly_cluster_0"/>
+    <rdf:Description rdf:about="#signature_cluster_0"/>
+    <rdf:Description rdf:about="#fw_cluster_0_net_sat"/>
+    <rdf:Description rdf:about="#fw_cluster_0_latency_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_0_disk_io"/>
+    <rdf:Description rdf:about="#fw_cluster_0_latency_cv"/>
+    <rdf:Description rdf:about="#fw_cluster_0_span_dur_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_0_log_error_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_0_cpu_util"/>
+    <rdf:Description rdf:about="#fw_cluster_0_ram_util"/>
+    <rdf:Description rdf:about="#fw_cluster_0_lexical_entropy"/>
+    <rdf:Description rdf:about="#fw_cluster_0_semantic_anomaly"/>
+    <rdf:Description rdf:about="#fw_cluster_0_trace_depth"/>
+    <rdf:Description rdf:about="#fw_cluster_0_abnormal_span_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_0_fan_out"/>
+    <rdf:Description rdf:about="#fw_cluster_0_error_rate_http"/>
+    <rdf:Description rdf:about="#cluster_1"/>
+    <rdf:Description rdf:about="#anomaly_cluster_1"/>
+    <rdf:Description rdf:about="#signature_cluster_1"/>
+    <rdf:Description rdf:about="#fw_cluster_1_latency_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_1_disk_io"/>
+    <rdf:Description rdf:about="#fw_cluster_1_net_sat"/>
+    <rdf:Description rdf:about="#fw_cluster_1_latency_cv"/>
+    <rdf:Description rdf:about="#fw_cluster_1_span_dur_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_1_log_error_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_1_cpu_util"/>
+    <rdf:Description rdf:about="#fw_cluster_1_lexical_entropy"/>
+    <rdf:Description rdf:about="#fw_cluster_1_error_rate_http"/>
+    <rdf:Description rdf:about="#fw_cluster_1_trace_depth"/>
+    <rdf:Description rdf:about="#fw_cluster_1_fan_out"/>
+    <rdf:Description rdf:about="#cluster_2"/>
+    <rdf:Description rdf:about="#anomaly_cluster_2"/>
+    <rdf:Description rdf:about="#signature_cluster_2"/>
+    <rdf:Description rdf:about="#fw_cluster_2_disk_io"/>
+    <rdf:Description rdf:about="#fw_cluster_2_latency_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_2_ram_util"/>
+    <rdf:Description rdf:about="#fw_cluster_2_semantic_anomaly"/>
+    <rdf:Description rdf:about="#fw_cluster_2_cpu_util"/>
+    <rdf:Description rdf:about="#fw_cluster_2_abnormal_span_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_2_log_error_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_2_queue_depth"/>
+    <rdf:Description rdf:about="#cluster_3"/>
+    <rdf:Description rdf:about="#anomaly_cluster_3"/>
+    <rdf:Description rdf:about="#signature_cluster_3"/>
+    <rdf:Description rdf:about="#fw_cluster_3_cpu_util"/>
+    <rdf:Description rdf:about="#fw_cluster_3_ram_util"/>
+    <rdf:Description rdf:about="#fw_cluster_3_trace_depth"/>
+    <rdf:Description rdf:about="#cluster_4"/>
+    <rdf:Description rdf:about="#anomaly_cluster_4"/>
+    <rdf:Description rdf:about="#signature_cluster_4"/>
+    <rdf:Description rdf:about="#fw_cluster_4_net_sat"/>
+    <rdf:Description rdf:about="#fw_cluster_4_latency_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_4_disk_io"/>
+    <rdf:Description rdf:about="#fw_cluster_4_cpu_util"/>
+    <rdf:Description rdf:about="#fw_cluster_4_ram_util"/>
+    <rdf:Description rdf:about="#fw_cluster_4_span_dur_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_4_semantic_anomaly"/>
+    <rdf:Description rdf:about="#fw_cluster_4_error_rate_http"/>
+    <rdf:Description rdf:about="#fw_cluster_4_lexical_entropy"/>
+    <rdf:Description rdf:about="#fw_cluster_4_abnormal_span_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_4_queue_depth"/>
+    <rdf:Description rdf:about="#cluster_5"/>
+    <rdf:Description rdf:about="#anomaly_cluster_5"/>
+    <rdf:Description rdf:about="#signature_cluster_5"/>
+    <rdf:Description rdf:about="#fw_cluster_5_disk_io"/>
+    <rdf:Description rdf:about="#fw_cluster_5_net_sat"/>
+    <rdf:Description rdf:about="#fw_cluster_5_lexical_entropy"/>
+    <rdf:Description rdf:about="#fw_cluster_5_span_dur_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_5_cpu_util"/>
+    <rdf:Description rdf:about="#fw_cluster_5_latency_cv"/>
+    <rdf:Description rdf:about="#fw_cluster_5_log_error_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_5_trace_depth"/>
+    <rdf:Description rdf:about="#fw_cluster_5_fan_out"/>
+    <rdf:Description rdf:about="#fw_cluster_5_queue_depth"/>
+    <rdf:Description rdf:about="#fw_cluster_5_latency_p99"/>
+    <rdf:Description rdf:about="#cluster_6"/>
+    <rdf:Description rdf:about="#anomaly_cluster_6"/>
+    <rdf:Description rdf:about="#signature_cluster_6"/>
+    <rdf:Description rdf:about="#fw_cluster_6_net_sat"/>
+    <rdf:Description rdf:about="#fw_cluster_6_latency_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_6_disk_io"/>
+    <rdf:Description rdf:about="#fw_cluster_6_latency_cv"/>
+    <rdf:Description rdf:about="#fw_cluster_6_span_dur_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_6_log_error_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_6_cpu_util"/>
+    <rdf:Description rdf:about="#fw_cluster_6_error_rate_http"/>
+    <rdf:Description rdf:about="#fw_cluster_6_lexical_entropy"/>
+    <rdf:Description rdf:about="#fw_cluster_6_semantic_anomaly"/>
+    <rdf:Description rdf:about="#fw_cluster_6_ram_util"/>
+    <rdf:Description rdf:about="#fw_cluster_6_fan_out"/>
+    <rdf:Description rdf:about="#cluster_7"/>
+    <rdf:Description rdf:about="#anomaly_cluster_7"/>
+    <rdf:Description rdf:about="#signature_cluster_7"/>
+    <rdf:Description rdf:about="#fw_cluster_7_net_sat"/>
+    <rdf:Description rdf:about="#fw_cluster_7_disk_io"/>
+    <rdf:Description rdf:about="#fw_cluster_7_latency_cv"/>
+    <rdf:Description rdf:about="#fw_cluster_7_log_error_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_7_latency_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_7_span_dur_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_7_semantic_anomaly"/>
+    <rdf:Description rdf:about="#fw_cluster_7_fan_out"/>
+    <rdf:Description rdf:about="#fw_cluster_7_lexical_entropy"/>
+    <rdf:Description rdf:about="#fw_cluster_7_queue_depth"/>
+    <rdf:Description rdf:about="#cluster_8"/>
+    <rdf:Description rdf:about="#anomaly_cluster_8"/>
+    <rdf:Description rdf:about="#signature_cluster_8"/>
+    <rdf:Description rdf:about="#fw_cluster_8_net_sat"/>
+    <rdf:Description rdf:about="#fw_cluster_8_latency_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_8_disk_io"/>
+    <rdf:Description rdf:about="#fw_cluster_8_latency_cv"/>
+    <rdf:Description rdf:about="#fw_cluster_8_span_dur_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_8_log_error_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_8_lexical_entropy"/>
+    <rdf:Description rdf:about="#fw_cluster_8_cpu_util"/>
+    <rdf:Description rdf:about="#fw_cluster_8_abnormal_span_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_8_error_rate_http"/>
+    <rdf:Description rdf:about="#fw_cluster_8_trace_depth"/>
+    <rdf:Description rdf:about="#fw_cluster_8_fan_out"/>
+    <rdf:Description rdf:about="#cluster_9"/>
+    <rdf:Description rdf:about="#anomaly_cluster_9"/>
+    <rdf:Description rdf:about="#signature_cluster_9"/>
+    <rdf:Description rdf:about="#fw_cluster_9_net_sat"/>
+    <rdf:Description rdf:about="#fw_cluster_9_latency_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_9_ram_util"/>
+    <rdf:Description rdf:about="#fw_cluster_9_disk_io"/>
+    <rdf:Description rdf:about="#fw_cluster_9_latency_cv"/>
+    <rdf:Description rdf:about="#fw_cluster_9_span_dur_p99"/>
+    <rdf:Description rdf:about="#fw_cluster_9_cpu_util"/>
+    <rdf:Description rdf:about="#fw_cluster_9_abnormal_span_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_9_lexical_entropy"/>
+    <rdf:Description rdf:about="#fw_cluster_9_log_error_rate"/>
+    <rdf:Description rdf:about="#fw_cluster_9_error_rate_http"/>
+    <rdf:Description rdf:about="#fw_cluster_9_trace_depth"/>
+    <rdf:Description rdf:about="#fw_cluster_9_semantic_anomaly"/>
+    <rdf:Description rdf:about="#fw_cluster_9_fan_out"/>
+    <rdf:Description rdf:about="#fw_cluster_9_queue_depth"/>
+  </owl:distinctMembers>
+</owl:AllDifferent>
+
+
+</rdf:RDF>

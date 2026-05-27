@@ -171,6 +171,42 @@ class TestTraceCollector:
 
         assert backend._service_allowlist == {"svc-a", "svc-b"}
 
+    def test_latency_cv_zero_durations(self):
+        """All-zero durations: mean=0 → CV must be 0.0, not NaN."""
+        spans = [
+            make_span("t1", "s1", "", "svc-z", duration_s=0.0),
+            make_span("t1", "s2", "s1", "svc-z", duration_s=0.0),
+        ]
+        svc_idx = {"svc-z": 0}
+        collector = TraceCollector(backend=InMemorySpanBackend(spans))
+        T_t, _ = collector.collect(service_index=svc_idx)
+        cv = T_t[0, 5]  # _T_LATENCY_CV
+        assert cv == pytest.approx(0.0)
+
+    def test_latency_cv_nan_durations_propagates_nan(self):
+        """NaN durations: CV must be NaN, not silently 0.0 (regression for M1)."""
+        spans = [
+            make_span("t1", "s1", "", "svc-n", duration_s=float("nan")),
+        ]
+        svc_idx = {"svc-n": 0}
+        collector = TraceCollector(backend=InMemorySpanBackend(spans))
+        T_t, _ = collector.collect(service_index=svc_idx)
+        cv = T_t[0, 5]  # _T_LATENCY_CV
+        assert np.isnan(cv)
+
+    def test_latency_cv_normal(self):
+        """Normal case: CV = std / mean."""
+        spans = [
+            make_span("t1", "s1", "", "svc-cv", duration_s=1.0),
+            make_span("t1", "s2", "s1", "svc-cv", duration_s=3.0),
+        ]
+        svc_idx = {"svc-cv": 0}
+        collector = TraceCollector(backend=InMemorySpanBackend(spans))
+        T_t, _ = collector.collect(service_index=svc_idx)
+        cv = T_t[0, 5]  # _T_LATENCY_CV
+        expected_cv = float(np.std([1.0, 3.0]) / np.mean([1.0, 3.0]))
+        assert cv == pytest.approx(expected_cv, rel=1e-4)
+
 
 # ---------------------------------------------------------------------------
 # classify_level tests
