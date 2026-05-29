@@ -57,6 +57,12 @@ CLAUDE.md
 # Docs non trackés
 docs/point_hebdo_*.md
 docs/rapport/section*.md
+docs/defense_*.md
+docs/point_semaine_*.md
+docs/relaunch_plan.md
+docs/dataset_v5_plan.md
+docs/*.tex
+ROADMAP.md
 
 # LaTeX build artefacts (keep .tex + .pdf, ignore intermediates)
 *.aux

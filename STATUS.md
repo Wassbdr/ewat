@@ -1,8 +1,10 @@
 # EWAT — État courant du projet
 
-_Mis à jour : 2026-05-26 (Phases H-K — Multi-seed validation v4_strat, 10 graines, chiffres consolidés)_
+_Mis à jour : 2026-05-27 (Phases H-K — Multi-seed validation v4_strat, 10 graines, chiffres consolidés ; défense + roadmap actifs)_
 
-> Résultats détaillés et interprétation scientifique → `docs/results.md`
+> Résultats détaillés et interprétation scientifique → [docs/results.md](docs/results.md)
+> **Évolution post-stage planifiée → [ROADMAP.md](ROADMAP.md)** (axes A: couplage onto/pred, B: précursion robuste, C: open-set, D: déploiement)
+> Mémo défense (1 page A4) → [docs/defense_memo.md](docs/defense_memo.md)
 
 ---
 
