@@ -1,0 +1,33 @@
+\begin{abstract}
+\noindent
+Kubernetes microservice deployments produce a continuous stream of \emph{benign} change ---
+rolling deployments, autoscaling, reconfiguration --- that classical anomaly detectors
+confuse with genuine faults, yielding massive false-positive rates in production. We present
+EWAT (\emph{Early Warning and Anomaly Typing}), a pipeline that explicitly separates benign
+drift from real anomalies before learning an empirical ontology of fault types. EWAT is
+positioned as \emph{early warning} (\emph{what} fault, \emph{how long before}) and is
+deliberately distinct from root-cause analysis (\emph{where}/\emph{why}, post-mortem).
+The four-stage pipeline combines (i) drift detection by Maximum Mean Discrepancy with Random
+Fourier Features and a \emph{look-through} mechanism, (ii) a spatio-temporal graph convolutional
+encoder, (iii) contrastive siamese typing with agglomerative clustering, and (iv) per-type
+precursor classifiers, capped by a formal OWL/RDF ontology built with Transfer Entropy (KSG
+estimator). We evaluate on data collected from a real nine-node RKE2 cluster
+(\texttt{observit-cluster1}) under controlled Chaos~Mesh fault injection.
+We report results with deliberate statistical honesty. Our \textbf{defensible headline is a
+macro-AUROC of $0.920$ ($95\%$ bootstrap CI $[0.878, 0.956]$)} for active-scenario typing
+against the \emph{independent} Chaos~Mesh ground truth on the \texttt{ewat\_v4\_strat} dataset
+--- a deterministic logistic-regression baseline that does \emph{not} require the learned
+encoder. The latent space is geometrically structurable (H1: silhouette $=0.782\pm0.065$ over
+ten seeds on \texttt{ewat\_v3}). We show that the much higher self-referential precursor AUROC
+($0.987\pm0.011$) is \emph{circular} and, via a battery of stress tests, that genuine temporal
+precursion exists but only surfaces against the independent target ($\Delta_{\text{far}-\text{near}}=-0.116$).
+Negative results are reported as contributions: the look-through hypothesis is robustly
+falsified ($p=0.27$ on \texttt{ewat\_v3}, $p=0.37$ on \texttt{ewat\_v4\_strat}), open-set
+generalisation to unseen fault types is only partial (OpenMax unknown-AUROC $=0.55$), and the
+number of empirical types is intrinsically unstable. End-to-end inference latency is $13$~ms at
+the $95$th percentile, $375\times$ under a $5$~s budget.
+
+\smallskip
+\noindent\textbf{Keywords:} anomaly detection, early warning, microservices, Kubernetes, STGCN,
+Transfer Entropy, concept drift, contrastive typing, open-set recognition.
+\end{abstract}

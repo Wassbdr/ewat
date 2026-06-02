@@ -1,0 +1,52 @@
+\section{Experimental Setup}
+\label{sec:setup}
+
+\paragraph{Cluster and observability.}
+All data were collected on \texttt{observit-cluster1}, a real nine-node RKE2 cluster (Kubernetes
+v1.32.7) running the Online Boutique demo. Two observability stacks coexist: Prometheus/Grafana
+for mature metrics and an OpenTelemetry collector for traces and logs, correlated through OTel
+semantic conventions. The service set is fixed at $N=6$ (\texttt{frontend}, \texttt{cart},
+\texttt{recommendation}, \texttt{ad}, \texttt{product-catalog}, \texttt{load-generator}); services
+invisible on any modality were excluded to avoid systemic NaNs.
+
+\paragraph{Fault injection.}
+Faults are injected with Chaos~Mesh over 15 scenarios: 4 benign drifts
+(\texttt{drift\_config\_change}, \texttt{drift\_rolling\_deploy}, \texttt{drift\_scale\_up},
+\texttt{drift\_traffic\_ramp}) and 11 anomalies, including \texttt{faulty\_deploy\_overlap} which
+realises the combined regime $\thetadn$. Each episode follows the
+\emph{record\,$\to$\,build\,$\to$\,assemble} protocol: raw dumps are immutable ground truth,
+features are recomputed offline, and datasets are split last.
+
+\paragraph{Datasets.}
+Table~\ref{tab:datasets} summarises the four datasets. We highlight one methodological pitfall:
+the original temporal split of \texttt{ewat\_v4} left four scenarios entirely absent from the
+training set, collapsing the independent-target AUROC to a trivial $0.5$. We therefore assembled
+\texttt{ewat\_v4\_strat} (stratified, at least one episode per scenario per split), which is the
+dataset behind our defensible headline.
+
+\begin{table}[t]
+\centering
+\caption{Datasets. ``strat'' = stratified split guaranteeing every scenario in every split.}
+\label{tab:datasets}
+\small
+\begin{tabularx}{\columnwidth}{@{}lXl@{}}
+\toprule
+\textbf{Dataset} & \textbf{Episodes / split} & \textbf{Notes} \\
+\midrule
+\texttt{ewat\_v3}       & 299; 209/45/45 (strat) & $\sim$21 steps; disk\_io 16.7\% NaN \\
+\texttt{ewat\_v4}       & 375; 262/56/57 (temp.) & 47--51 steps; 4 scen.\ absent train \\
+\texttt{ewat\_v4\_strat}& 270/60/45 (strat)      & \textbf{headline dataset} \\
+\texttt{ewat\_rcaeval}  & 90; 30 fault types     & adapted RCAEval RE2-OB \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Protocol and methodology corrections.}
+Unless stated otherwise, H1/H3 on \texttt{ewat\_v3} use the optimised configuration
+(average$+$cosine clustering, $d_{\text{proj}}=64$, margin~$2.0$, tuned logistic regression) and
+are aggregated over ten seeds. Two methodological corrections apply throughout: (i) H1 silhouette
+on val/test is computed with \emph{nearest-centroid} labels from the training centroids, not an
+independent per-split clustering (which inflated scores); (ii) the precursor horizon $k^*$ is
+selected on validation, never on test. Confidence intervals are $95\%$ bootstrap (BCa for AUROC).
+We name the dataset and configuration for every reported number, because they differ
+substantially between \texttt{ewat\_v3} and \texttt{ewat\_v4\_strat}.

@@ -1,0 +1,32 @@
+\section{Discussion and Future Work}
+\label{sec:discussion}
+
+\paragraph{What EWAT is, and is not.}
+EWAT is a working early-warning pipeline whose honest, independently-validated contribution is
+active-scenario typing at $0.920$ macro-AUROC with confirmed temporal precursion
+($\Delta=-0.116$). It is not a generic event predictor: the learned encoder adds geometric and
+ontological value, not aggregate predictive power, and open-set generalisation to unseen fault
+types remains only partially solved. We consider the negative and nuanced results --- a robustly
+falsified look-through, a circular metric demoted in favour of an independent one, an unstable type
+count --- to be as much a contribution as the positive headline, because they delimit precisely
+where the approach is and is not trustworthy.
+
+\paragraph{Roadmap.}
+Four research axes follow directly from the limitations.
+\emph{Axis~A (ontology$\,\leftrightarrow\,$prediction coupling)} would feed the causal graph back
+into the precursor as upstream features or a post-hoc re-ranker, testing whether the ontology adds
+predictive value rather than only descriptive value.
+\emph{Axis~B (robust temporal precursion)} would replace the STGCN with a temporal transformer,
+multi-seed the C2 distant-window result, and validate lead time cross-dataset on RCAEval.
+\emph{Axis~C (open-set)} would extend the partial OpenMax result with Mahalanobis-based and
+energy-based detectors and few-shot meta-learning.
+\emph{Axis~D (deployment)} would specify the streaming pipeline, the retraining trigger, and a
+formal alert contract.
+
+\paragraph{Towards \texttt{ewat\_v5}.}
+The most consequential next step is data. \texttt{ewat\_v5} abandons the six-service Online Boutique
+for \emph{Train~Ticket} (41 Spring~Cloud services), with a much larger episode budget and, crucially,
+a held-out set drawn from the project's documented \emph{real} bugs (the F1--F12 catalogue) ---
+a literature gold standard for RCA-style evaluation. This directly attacks L1 (episode length),
+L13 (topology scale), L14 (cross-system validity), and L17 (real rather than synthetic faults),
+and would let us re-test every hypothesis on a substantially harder and more realistic system.

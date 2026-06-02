@@ -1,0 +1,180 @@
+% ============================================================
+%  EWAT — paper bibliography
+%  Core entries reused from docs/rapport/bibliography.bib (notes translated to EN),
+%  plus additions cited in the codebase/docs (OpenMax, OOD, surveys).
+% ============================================================
+
+@article{fu2025,
+  author  = {Fu, Qiqi and others},
+  title   = {A Survey on Root Cause Analysis of Microservice Systems},
+  journal = {ACM Computing Surveys},
+  year    = {2025},
+  note    = {Identifies the benchmark/production gap in RCA}
+}
+
+@inproceedings{myrtollari2025,
+  author    = {Myrtollari, Enxhi and others},
+  title     = {Concept Drift-Aware Anomaly Detection for {Kubernetes} Microservices},
+  booktitle = {Proceedings of IEEE/ACM},
+  year      = {2025}
+}
+
+@inproceedings{hinder2024,
+  author    = {Hinder, Fabian and others},
+  title     = {Concept Drift in Unsupervised Data Streams},
+  booktitle = {Proceedings of ECML-PKDD},
+  year      = {2024}
+}
+
+@book{kaufman1990,
+  author    = {Kaufman, Leonard and Rousseeuw, Peter J.},
+  title     = {Finding Groups in Data: An Introduction to Cluster Analysis},
+  publisher = {Wiley},
+  year      = {1990},
+  note      = {Silhouette threshold $\geq 0.3$ for acceptable clustering}
+}
+
+@article{kraskov2004,
+  author  = {Kraskov, Alexander and St{\"o}gbauer, Harald and Grassberger, Peter},
+  title   = {Estimating Mutual Information},
+  journal = {Physical Review E},
+  volume  = {69},
+  number  = {6},
+  pages   = {066138},
+  year    = {2004},
+  note    = {KSG estimator used for Transfer Entropy}
+}
+
+@article{tibshirani2001,
+  author  = {Tibshirani, Robert and Walther, Guenther and Hastie, Trevor},
+  title   = {Estimating the Number of Clusters in a Data Set via the Gap Statistic},
+  journal = {Journal of the Royal Statistical Society: Series B},
+  volume  = {63},
+  number  = {2},
+  pages   = {411--423},
+  year    = {2001}
+}
+
+@book{gregg2013,
+  author    = {Gregg, Brendan},
+  title     = {Systems Performance: Enterprise and the Cloud},
+  publisher = {Prentice Hall},
+  year      = {2013},
+  note      = {USE methodology; queue depth as a leading indicator}
+}
+
+@inproceedings{gretton2012,
+  author    = {Gretton, Arthur and Borgwardt, Karsten M. and Rasch, Malte J.
+               and Sch{\"o}lkopf, Bernhard and Smola, Alexander},
+  title     = {A Kernel Two-Sample Test},
+  booktitle = {Journal of Machine Learning Research},
+  volume    = {13},
+  pages     = {723--773},
+  year      = {2012},
+  note      = {MMD$^2$ two-sample statistic}
+}
+
+@inproceedings{yu2018,
+  author    = {Yu, Bing and Yin, Haoteng and Zhu, Zhanxing},
+  title     = {Spatio-Temporal Graph Convolutional Networks:
+               A Deep Learning Framework for Traffic Forecasting},
+  booktitle = {Proceedings of IJCAI},
+  year      = {2018},
+  note      = {STGCN architecture}
+}
+
+@inproceedings{chen2020simclr,
+  author    = {Chen, Ting and Kornblith, Simon and Norouzi, Mohammad and Hinton, Geoffrey},
+  title     = {A Simple Framework for Contrastive Learning of Visual Representations},
+  booktitle = {Proceedings of ICML},
+  year      = {2020},
+  note      = {NT-Xent contrastive loss (SimCLR)}
+}
+
+@article{velivckovic2018,
+  author  = {Veli{\v{c}}kovi{\'c}, Petar and Cucurull, Guillem and Casanova, Arantxa
+             and Romero, Adriana and Li{\`o}, Pietro and Bengio, Yoshua},
+  title   = {Graph Attention Networks},
+  journal = {Proceedings of ICLR},
+  year    = {2018}
+}
+
+@inproceedings{lundberg2017,
+  author    = {Lundberg, Scott M. and Lee, Su-In},
+  title     = {A Unified Approach to Interpreting Model Predictions},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {30},
+  year      = {2017},
+  note      = {SHAP values — Shapley game theory}
+}
+
+@article{benjamini1995,
+  author  = {Benjamini, Yoav and Hochberg, Yosef},
+  title   = {Controlling the False Discovery Rate: A Practical and Powerful Approach
+             to Multiple Testing},
+  journal = {Journal of the Royal Statistical Society: Series B},
+  volume  = {57},
+  number  = {1},
+  pages   = {289--300},
+  year    = {1995}
+}
+
+% ---------------- Additions for the paper ----------------
+
+@inproceedings{bendale2016openmax,
+  author    = {Bendale, Abhijit and Boult, Terrance E.},
+  title     = {Towards Open Set Deep Networks},
+  booktitle = {Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2016},
+  note      = {OpenMax open-set recognition via extreme value theory}
+}
+
+@article{soldani2022,
+  author  = {Soldani, Jacopo and Brogi, Antonio},
+  title   = {Anomaly Detection and Failure Root Cause Analysis in (Micro)Service-Based
+             Cloud Applications: A Survey},
+  journal = {ACM Computing Surveys},
+  volume  = {55},
+  number  = {3},
+  pages   = {1--39},
+  year    = {2022},
+  note    = {Microservice anti-patterns taxonomy used to anchor the OWL TBox}
+}
+
+@inproceedings{lee2018mahalanobis,
+  author    = {Lee, Kimin and Lee, Kibok and Lee, Honglak and Shin, Jinwoo},
+  title     = {A Simple Unified Framework for Detecting Out-of-Distribution Samples
+               and Adversarial Attacks},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {31},
+  year      = {2018},
+  note      = {Mahalanobis-distance OOD detector (future-work alternative to OpenMax)}
+}
+
+@inproceedings{liu2020energy,
+  author    = {Liu, Weitang and Wang, Xiaoyun and Owens, John D. and Li, Yixuan},
+  title     = {Energy-based Out-of-distribution Detection},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {33},
+  year      = {2020},
+  note      = {Energy-based OOD scoring (future-work alternative to OpenMax)}
+}
+
+% NOTE (verify before submission): exact venue/authors of the RCAEval benchmark
+% could not be confirmed from the repository; placeholder kept intentionally minimal.
+@misc{rcaeval,
+  author = {{RCAEval contributors}},
+  title  = {{RCAEval}: A Benchmark for Root Cause Analysis of Microservice Systems (RE2-OB)},
+  year   = {2024},
+  note   = {Public RE2 Online-Boutique benchmark adapted for zero-/few-shot transfer.
+            TO VERIFY: authors, venue, year before camera-ready.}
+}
+
+% NOTE (verify before submission): cited in the OWL taxonomy as the cascading-failure
+% anchor ("Aniello et al. 2014"); full bibliographic record not confirmed in repo.
+@misc{aniello2014,
+  author = {Aniello, Leonardo and others},
+  title  = {Cascading Failures in Distributed Service Architectures},
+  year   = {2014},
+  note   = {TO VERIFY: exact title, authors and venue before camera-ready.}
+}

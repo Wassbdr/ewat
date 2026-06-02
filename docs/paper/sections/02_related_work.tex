@@ -1,0 +1,42 @@
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{RCA for microservices.}
+The dominant body of work on microservice reliability targets root-cause analysis. Fu et
+al.~\cite{fu2025} survey the field and identify a persistent gap between benchmark performance and
+production deployability, driven largely by false positives. Soldani and Brogi~\cite{soldani2022}
+catalogue microservice anti-patterns and failure modes; we reuse their taxonomy, together with
+Gregg's USE methodology~\cite{gregg2013} and cascading-failure modelling~\cite{aniello2014}, to
+anchor our OWL class hierarchy in the literature rather than in ad-hoc cluster labels. EWAT
+departs from this line of work in objective: we predict and type developing faults rather than
+explaining past ones.
+
+\paragraph{Concept drift.}
+Distinguishing benign distributional change from genuine anomalies is a concept-drift problem.
+Hinder et al.~\cite{hinder2024} formalise drift in unsupervised streams, and Myrtollari et
+al.~\cite{myrtollari2025} propose drift-aware anomaly detection specifically for Kubernetes
+microservices. EWAT operationalises the drift/anomaly separation as an explicit fourth regime
+$\thetadn$ and a look-through filter built on the kernel two-sample test~\cite{gretton2012},
+estimated cheaply with Random Fourier Features. Our negative result on look-through
+(Section~\ref{sec:validity}) is, to our knowledge, a useful data point on the limits of MMD-based
+separation on short episodes.
+
+\paragraph{Representation learning on service graphs.}
+We encode the time-evolving service graph with a spatio-temporal graph convolutional network
+(STGCN)~\cite{yu2018}, and compare against graph attention~\cite{velivckovic2018} and contrastive
+pre-training in the SimCLR style~\cite{chen2020simclr}. Type structure is assessed with the
+silhouette criterion, using the conventional acceptability threshold of $0.3$~\cite{kaufman1990},
+complemented by the gap statistic~\cite{tibshirani2001} for choosing the number of clusters.
+
+\paragraph{Causality and interpretability.}
+For the ontology we estimate directed information flow with Transfer Entropy using the KSG
+estimator~\cite{kraskov2004} --- never Granger causality, which assumes linearity inappropriate
+for our signals --- and control multiple testing with Benjamini--Hochberg FDR~\cite{benjamini1995}.
+Feature attributions are validated with SHAP~\cite{lundberg2017} after we found gradient-based
+saliency to be unreliable ($\rho=-0.34$ against permutation importance).
+
+\paragraph{Open-set recognition.}
+Because production faults include types never seen in training, we evaluate open-set recognition
+with OpenMax~\cite{bendale2016openmax} and discuss Mahalanobis~\cite{lee2018mahalanobis} and
+energy-based~\cite{liu2020energy} alternatives as future work. For external validation we adapt
+the public RCAEval RE2-OB benchmark~\cite{rcaeval}.

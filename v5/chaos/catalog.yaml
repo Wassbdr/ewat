@@ -1,0 +1,197 @@
+# EWAT v5 — catalogue des scénarios chaos pour Train Ticket (namespace tt)
+#
+# Rendu et appliqué par v5/chaos/inject.py.
+# Types validés sur tt 2026-06-01 : StressChaos, NetworkChaos, PodChaos,
+# DNSChaos, TimeChaos (tous appliqués avec succès).
+#
+# Cibles = services TT centraux du graphe de réservation (forte connectivité,
+# propagation observable). Intensité paramétrable via `intensity` (low/med/high)
+# pour le ramp-up — l'injecteur module le champ marqué {{INTENSITY}}.
+#
+# Catégories (alignées sur la taxonomie v4) :
+#   drift   = dérive bénigne (pas de panne franche)
+#   hard    = panne franche (crash, kill)
+#   gray    = dégradation lente/partielle
+#   contention = pression ressource
+#   compo   = composition (cascade ou concurrence)
+#   held_out = type/forme réservé au test (jamais en training)
+
+namespace: tt
+
+# Niveaux d'intensité pour le ramp-up (step/10 → cible nominale)
+intensity_levels:
+  low: {cpu_load: 30, mem_pct: 25, latency: "50ms", loss: "10", workers: 1}
+  med: {cpu_load: 60, mem_pct: 50, latency: "200ms", loss: "30", workers: 2}
+  high: {cpu_load: 90, mem_pct: 80, latency: "500ms", loss: "60", workers: 4}
+
+scenarios:
+  # ───────────── MONO-CAUSE (15) — training ─────────────
+  - name: cpu_stress
+    category: contention
+    kind: StressChaos
+    target: ts-travel-service
+    spec: {mode: one, stressors: {cpu: {workers: "{{WORKERS}}", load: "{{CPU_LOAD}}"}}}
+
+  - name: cpu_starvation
+    category: contention
+    kind: StressChaos
+    target: ts-travel2-service
+    spec: {mode: all, stressors: {cpu: {workers: "{{WORKERS}}", load: "{{CPU_LOAD}}"}}}
+
+  - name: memory_stress
+    category: contention
+    kind: StressChaos
+    target: ts-order-service
+    spec: {mode: one, stressors: {memory: {workers: "{{WORKERS}}", size: "{{MEM_PCT}}%"}}}
+
+  - name: memory_pressure
+    category: contention
+    kind: StressChaos
+    target: ts-user-service
+    spec: {mode: one, stressors: {memory: {workers: 2, size: "{{MEM_PCT}}%"}}}
+
+  - name: network_delay
+    category: gray
+    kind: NetworkChaos
+    target: ts-basic-service
+    spec: {action: delay, mode: one, delay: {latency: "{{LATENCY}}", jitter: "20ms"}}
+
+  - name: network_loss
+    category: gray
+    kind: NetworkChaos
+    target: ts-route-service
+    spec: {action: loss, mode: one, loss: {loss: "{{LOSS}}", correlation: "25"}}
+
+  - name: network_corrupt
+    category: gray
+    kind: NetworkChaos
+    target: ts-order-other-service
+    spec: {action: corrupt, mode: one, corrupt: {corrupt: "{{LOSS}}", correlation: "25"}}
+
+  - name: network_duplicate
+    category: gray
+    kind: NetworkChaos
+    target: ts-preserve-service
+    spec: {action: duplicate, mode: one, duplicate: {duplicate: "{{LOSS}}", correlation: "25"}}
+
+  - name: network_partition
+    category: hard
+    kind: NetworkChaos
+    target: ts-station-service
+    spec: {action: partition, mode: one, direction: both}
+
+  - name: pod_kill
+    category: hard
+    kind: PodChaos
+    target: ts-seat-service
+    spec: {action: pod-kill, mode: one}
+
+  - name: pod_failure
+    category: hard
+    kind: PodChaos
+    target: ts-config-service
+    spec: {action: pod-failure, mode: one}
+
+  - name: container_kill
+    category: hard
+    kind: PodChaos
+    target: ts-price-service
+    spec: {action: container-kill, mode: one, containerNames: [ts-price-service]}
+
+  - name: dns_error
+    category: hard
+    kind: DNSChaos
+    target: ts-ticketinfo-service
+    spec: {action: error, mode: one, patterns: ["ts-*-service"]}
+
+  - name: time_skew
+    category: gray
+    kind: TimeChaos
+    target: ts-auth-service
+    spec: {mode: one, timeOffset: "-300s"}
+
+  - name: net_delay_central
+    category: gray
+    kind: NetworkChaos
+    target: ts-travel-service
+    spec: {action: delay, mode: all, delay: {latency: "{{LATENCY}}", jitter: "50ms"}}
+
+  # ───────────── COMPOSITIONNELS (4) — training ─────────────
+  # Rendus comme 2 ressources chaos simultanées par l'injecteur.
+  - name: compo_cpu_then_mem
+    category: compo
+    kind: composite
+    parts:
+      - {kind: StressChaos, target: ts-travel-service, spec: {mode: one, stressors: {cpu: {workers: 2, load: "{{CPU_LOAD}}"}}}}
+      - {kind: StressChaos, target: ts-travel-service, spec: {mode: one, stressors: {memory: {workers: 1, size: "{{MEM_PCT}}%"}}}, delay_steps: 5}
+
+  - name: compo_net_loss_concurrent
+    category: compo
+    kind: composite
+    parts:
+      - {kind: NetworkChaos, target: ts-order-service, spec: {action: loss, mode: one, loss: {loss: "{{LOSS}}"}}}
+      - {kind: NetworkChaos, target: ts-route-service, spec: {action: delay, mode: one, delay: {latency: "{{LATENCY}}"}}}
+
+  - name: compo_pod_kill_under_delay
+    category: compo
+    kind: composite
+    parts:
+      - {kind: NetworkChaos, target: ts-travel-service, spec: {action: delay, mode: all, delay: {latency: "{{LATENCY}}"}}}
+      - {kind: PodChaos, target: ts-seat-service, spec: {action: pod-kill, mode: one}, delay_steps: 5}
+
+  - name: compo_cascade_dns_net
+    category: compo
+    kind: composite
+    parts:
+      - {kind: DNSChaos, target: ts-basic-service, spec: {action: error, mode: one, patterns: ["ts-station-service"]}}
+      - {kind: NetworkChaos, target: ts-basic-service, spec: {action: delay, mode: one, delay: {latency: "{{LATENCY}}"}}, delay_steps: 3}
+
+  # ───────────── HELD-OUT chaos (3) — test only, types absents du training ─────────────
+  - name: held_io_latency
+    category: held_out
+    kind: IOChaos
+    target: ts-order-mongo
+    spec: {action: latency, mode: one, volumePath: /data/db, path: "/data/db/**", delay: "100ms", percent: 50}
+
+  - name: held_net_bandwidth
+    category: held_out
+    kind: NetworkChaos
+    target: ts-travel-service
+    spec: {action: bandwidth, mode: one, bandwidth: {rate: "1mbps", limit: 20971520, buffer: 10000}}
+
+  - name: held_kernel_fault
+    category: held_out
+    kind: TimeChaos
+    target: ts-order-service
+    spec: {mode: all, timeOffset: "-1h", clockIds: [CLOCK_REALTIME, CLOCK_MONOTONIC]}
+
+# ───────────── HELD-OUT bugs réels (batch B, test only) ─────────────
+# Statut des images fautives (audit 2026-06-02) :
+#   - Seul kylinxiang/ts-voucher-service:f1.1 (F1) est pré-buildé sur Docker Hub.
+#   - Les branches ts-error-F* sont des FORKS COMPLETS 2020 (≈1758 fichiers de
+#     diff), pas des patches isolables → builder = recompiler tout TT au maven
+#     depuis une base ancienne (déps potentiellement disparues, échec probable).
+#     Impraticable sans l'environnement docker-compose fault-inject FudanSELab.
+#   - F3 est une exception : c'est un bug de CONFIGURATION (JVM -Xmx > limite
+#     mémoire conteneur), donc reproductible SANS rebuild via `mode: env`
+#     (patch JAVA_TOOL_OPTIONS pour forcer -Xmx au-dessus de la limite → OOMKill
+#     sous charge ; symptôme capté par oom_events + restart_count + jvm_heap_ratio).
+# Mode d'injection : image=swap d'image | env=patch JAVA_TOOL_OPTIONS.
+bugs:
+  - {id: F1, service: ts-voucher-service, image: "kylinxiang/ts-voucher-service:f1.1",
+     mode: image, status: ready,
+     desc: "séquencement async drawback/reset order status", load: query_and_cancel}
+  # F3 : -Xmx200m est codé en dur dans la commande (JAVA_TOOL_OPTIONS ne peut pas
+  # l'augmenter). On reproduit le mismatch en ABAISSANT la limite mémoire conteneur
+  # (500Mi→250Mi) sous l'empreinte réelle JVM (~270Mi heap+nonheap) → OOMKill sous
+  # charge. Mécanisme F3 authentique, sans rebuild. Symptôme : oom_events + restart_count.
+  - {id: F3, service: ts-order-service, image: null, mode: mem_limit, status: ready,
+     mem_limit: "250Mi", desc: "JVM/Docker mem mismatch → OOMKill périodique",
+     load: query_and_preserve}
+  - {id: F5, service: ts-basic-service, image: null, mode: image, status: needs_source_build,
+     desc: "épuisement thread pool async (Basic-Info) — bug de code, image requise",
+     load: query_travel_left_parallel}
+  - {id: F7, service: ts-inside-payment-service, image: null, mode: image, status: no_branch,
+     desc: "third-party Node.js timeout — pas de branche ts-error-F7", load: query_order_and_pay}
+  - {id: F12, service: ts-order-service, image: null, status: to_build,
+     desc: "status-dependent (locked station + thread pool)", load: query_and_cancel}

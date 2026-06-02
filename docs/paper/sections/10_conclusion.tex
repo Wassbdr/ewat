@@ -1,0 +1,14 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+EWAT shows that benign drift and genuine anomalies can be separated and that developing faults can
+be typed ahead of time in a real Kubernetes microservice environment, provided the four operational
+regimes --- including the combined $\thetadn$ --- are modelled explicitly. Our two robust positive
+results are geometric structurability (H1, silhouette $0.782\pm0.065$ over ten seeds) and, against
+an \emph{independent} ground truth, active-scenario typing at macro-AUROC $0.920$ $[0.878,0.956]$
+with confirmed temporal precursion ($\Delta_{\text{far}-\text{near}}=-0.116$) and a $13$~ms p95
+latency. We deliberately refuse the inflated self-referential number ($0.987$) and the
+single-seed optimism it came with, and we report the look-through falsification and the partial
+open-set result as honest negatives that constrain future work rather than embarrassments to be
+hidden. The path forward is more and harder data: \texttt{ewat\_v5} on Train~Ticket with real,
+documented faults will let us re-test every hypothesis at production scale.

@@ -1,0 +1,80 @@
+\section{Method}
+\label{sec:method}
+
+EWAT is a cascade of four stages (Figure~\ref{fig:pipeline}); stages~0, 1 and 3 run online within a
+latency budget, while typing and ontology construction (stage~2/2b) run offline.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{pipeline_architecture.pdf}
+\caption{The EWAT four-stage pipeline. Stage~0 (drift), stage~1 (encoder) and stage~3
+(precursors) are online; stage~2/2b (typing and ontology) are offline.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Stage 0 --- Drift detection (MMD-RFF, look-through)}
+We estimate $\text{MMD}^2(W_{\text{ref}},W_{\text{cur}})$ between a reference and a current window
+with Random Fourier Features $\varphi:\R^d\to\R^D$, giving $O(nD)$ cost. The \emph{look-through}
+filter never zeroes the signal during drift:
+if $\text{MMD}^2<\varepsilon_{\text{drift}}$ the signal passes unchanged; if it exceeds the
+threshold and a post-drift confirmation test is positive, the signal passes flagged
+\texttt{DRIFT}; if the confirmation is negative, the detector recalibrates
+($W_{\text{ref}}\!\leftarrow\!W_{\text{cur}}$). The threshold is calibrated by injecting benign
+drifts; we obtain $\varepsilon_{\text{drift}}=0.5226$ (Youden-optimal).
+
+\subsection{Stage 1 --- STGCN encoder}
+The encoder maps a windowed signal and graph to an embedding
+$z_e=\mathrm{Enc}_\theta(\tilde{\mathbf{S}}_{[t-W,t+\delta]},\Gt)\in\R^{64}$, combining graph
+convolution over the weighted adjacency with a causal temporal-convolution stack and a masked
+mean-pooling head (padding excluded). It is pre-trained by self-supervised reconstruction without
+scenario labels. The graph convolution uses the time-varying adjacency $A(t)$ (the earlier static
+$A_{\text{mean}}$ implementation is retained only as an ablation variant).
+
+\subsection{Stage 2 --- Contrastive typing}
+A siamese projection head ($d_{\text{proj}}=64$) trained with a contrastive hinge loss
+(margin~$2.0$, semi-hard negative mining) maps embeddings onto the L2-normalised unit sphere.
+Because the embeddings live on a sphere, we cluster with \emph{average-linkage agglomerative
+clustering under cosine distance} --- aligning the metric with the geometry, a change that proves
+to be the principal driver of H1 (Section~\ref{sec:results}). Cross-split labels are assigned by
+\emph{nearest centroid} from the training centroids, so cluster identities are consistent across
+train/val/test. Per-type feature attributions use permutation importance, cross-validated with
+KernelSHAP~\cite{lundberg2017}.
+
+\subsection{Stage 2b --- Ontology}
+The ontology $O=(C,R)$ carries three relation families: temporal transitions
+$C_i\!\to^{\Delta t,\sigma}\!C_j$; \emph{causal} edges from Transfer Entropy with the KSG
+estimator~\cite{kraskov2004} (multivariate on synthesised cascades; permutation-bootstrap
+significance with Benjamini--Hochberg FDR~\cite{benjamini1995}); and co-occurrence edges by a
+$2\times2$ Yates $\chi^2$ with a Fisher-exact fallback and Holm correction. The result is exported
+as a formal OWL/RDF artefact (TBox of 29 literature-anchored classes; ABox of 143 individuals) and
+checked for consistency with the HermiT reasoner.
+
+\subsection{Stage 3 --- Typed precursors}
+For each type $C_i$ a one-vs-rest classifier produces a precursor probability
+$\hat{p}_i(t)=f_i(\tilde{\mathbf{S}}_{[t-k,t]},\Gt)\in[0,1]$. The horizon is chosen \emph{on the
+validation set}, $k^*_i=\arg\max_k \mathrm{AUROC}(f_i,k)$ over $k\in\{1,\dots,20\}$ steps; test
+AUROC is reported only at $k^*_i$. The final alert is
+$\mathrm{Alert}(t)=(C_i,\hat{p}_i(t),k^*_i,\text{card}_{C_i})$.
+
+\subsection{Latency budget}
+The formal budget is stage~0 $<1$~s, stage~1$+$2 $<2$~s, stage~3 $<1$~s, total $<5$~s. Measured on
+CPU over 200 iterations (Table~\ref{tab:latency}), the end-to-end $95$th percentile is $13.28$~ms
+--- $375\times$ under budget.
+
+\begin{table}[t]
+\centering
+\caption{End-to-end inference latency (CPU, 200 iterations, \texttt{ewat\_v3}).}
+\label{tab:latency}
+\small
+\begin{tabularx}{\columnwidth}{@{}Xrrr@{}}
+\toprule
+\textbf{Stage} & \textbf{median} & \textbf{p95} & \textbf{budget} \\
+\midrule
+0 — drift               & 0.01~ms & 0.01~ms & 1000~ms \\
+1+2 — encoder+siamese   & 0.96~ms & 1.97~ms & 2000~ms \\
+3 — precursors          & 1.85~ms & 3.91~ms & 1000~ms \\
+\midrule
+\textbf{Total}          & \textbf{9.26~ms} & \textbf{13.28~ms} & \textbf{5000~ms} \\
+\bottomrule
+\end{tabularx}
+\end{table}

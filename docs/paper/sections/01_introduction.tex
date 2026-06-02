@@ -1,0 +1,70 @@
+\section{Introduction}
+\label{sec:intro}
+
+Microservice architectures deployed on Kubernetes are in permanent flux. Rolling deployments,
+horizontal autoscaling, configuration changes and traffic ramps all shift the statistical
+distribution of observability signals without any underlying fault. Anomaly detectors that react
+to distributional change therefore fire on these \emph{benign drifts} exactly as they fire on
+real incidents. We confirm this directly: a per-feature $z$-score detector raises a false alarm
+on $100\%$ of benign-drift episodes at every threshold $\sigma\in[2.0,3.5]$ we tested
+(Section~\ref{sec:results}). The conflation of drift and anomaly is the operational problem EWAT
+attacks.
+
+\paragraph{Early warning, not RCA.}
+EWAT is an \emph{early-warning} system: it predicts \emph{what} type of fault is developing and
+\emph{how long before} it manifests. It is not root-cause analysis (RCA). RCA is post-mortem and
+answers \emph{where} and \emph{why} a failure occurred; EWAT acts \emph{before} the failure and
+answers \emph{what} and \emph{when}. Table~\ref{tab:ewat-vs-rca} makes the distinction explicit.
+This boundary is a design commitment, not a slogan: the typing and ontology stages approach the
+``what'' but never attribute a root cause, and our evaluation metrics (lead time, false-alarm
+rate on drifts) are warning metrics, not diagnostic ones.
+
+\begin{table}[t]
+\centering
+\caption{EWAT (early warning) versus root-cause analysis.}
+\label{tab:ewat-vs-rca}
+\small
+\begin{tabularx}{\columnwidth}{@{}lXX@{}}
+\toprule
+ & \textbf{EWAT (early warning)} & \textbf{RCA} \\
+\midrule
+Question & \emph{What} / \emph{when} & \emph{Where} / \emph{why} \\
+Timing   & before the fault          & after the fault \\
+Output   & typed precursor alert     & causal explanation \\
+Metric   & lead time, FA on drift    & localisation accuracy \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Four operational regimes.}
+A central modelling choice is that we recognise \emph{four} regimes, not three:
+$\theta\in\{\theta_{\text{normal}},\theta_{\text{drift}},\theta_{\text{anomaly}},\thetadn\}$.
+The fourth regime $\thetadn$ models the faulty-deployment case in which a benign drift and a real
+anomaly occur simultaneously --- precisely the case where naive detectors are most dangerous.
+The look-through mechanism (Stage~0) is designed to keep the signal flowing during drift rather
+than zeroing it out, so that an anomaly hidden inside a drift remains observable.
+
+\paragraph{Contributions.}
+\begin{enumerate}\setlength{\itemsep}{1pt}
+  \item An atomic, reproducible four-stage early-warning pipeline (Section~\ref{sec:method}),
+        implemented as independent testable modules ($425{+}$ unit tests) on a real cluster.
+  \item A \emph{geometric} contribution validated as H1: the STGCN latent space is structurable
+        into separable fault types, silhouette $=0.782\pm0.065$ over ten seeds
+        (Section~\ref{sec:results}), driven by the cosine--average clustering choice on the
+        L2-normalised embedding sphere.
+  \item A \emph{statistically honest} predictive headline: macro-AUROC $=0.920$
+        $[0.878,0.956]$ for active-scenario typing against the independent Chaos~Mesh ground
+        truth, deterministic and without the learned encoder.
+  \item Evidence, via a stress-test battery (Section~\ref{sec:validity}), that the
+        self-referential precursor AUROC ($0.987$) is \emph{circular}, while genuine temporal
+        precursion exists against the independent target ($\Delta_{\text{far}-\text{near}}=-0.116$).
+  \item Reported \emph{negative} results as contributions: look-through falsified twice
+        ($p=0.27$, $p=0.37$), partial open-set recognition (OpenMax $0.55$), unstable type count.
+  \item A formal OWL/RDF ontology of fault types (29 literature-anchored classes, 143
+        individuals, HermiT-consistent) extracted with multivariate Transfer Entropy (KSG), never
+        Granger causality.
+\end{enumerate}
+
+All numbers in this paper are traceable to the project's experiment logs; we name the dataset and
+configuration for every figure, and we surface --- rather than hide --- the residual
+inconsistencies we found between intermediate runs (Section~\ref{sec:limitations}).

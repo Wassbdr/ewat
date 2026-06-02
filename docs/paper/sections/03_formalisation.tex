@@ -1,0 +1,71 @@
+\section{Problem Formalisation}
+\label{sec:formal}
+
+\subsection{Service graph}
+We model the system as a time-evolving weighted graph $\Gt=(V,E(t),w_E(t))$. Vertices $V$ are
+Kubernetes \emph{services} and \emph{deployments} (not pods), with $|V|=N$ held constant over an
+episode. Each edge carries a vector weight $w_E(t):E(t)\to\R^3$,
+$e_{ij}(t)\mapsto(\text{volume}_{ij},\text{latency}^{\text{med}}_{ij},\text{error-rate}_{ij})$; an
+edge is present when its call volume exceeds zero over the sliding window.
+
+\subsection{Telemetry signal}
+The per-step signal stacks three modalities,
+\begin{equation}
+\St=\big[\,\mathbf{M}(t)\;\big|\;\mathbf{T}(t)\;\big|\;\mathbf{L}(t)\,\big]\in\R^{N\times 17},
+\end{equation}
+with $\mathbf{M}(t)\in\R^{N\times7}$ metrics (CPU, RAM, latency P99, HTTP error rate, network
+saturation, disk I/O, queue depth), $\mathbf{T}(t)\in\R^{N\times6}$ trace features (span-duration
+P99, abnormal-span rate, trace depth, fan-out, retry rate, latency coefficient of variation), and
+$\mathbf{L}(t)\in\R^{N\times4}$ log features (error rate, warning rate, semantic anomaly score as
+mean SentenceBERT distance to the normal centroid, lexical entropy). Metrics come from the
+existing Prometheus stack; traces and logs from the OpenTelemetry collector. Crucially,
+$\St\sim D_{\theta(t)}(\Gt)$ is \emph{not} an additive mixture of regime effects.
+
+\paragraph{Differentiated aggregation.}
+Intra-service aggregation is component-specific, never a plain mean: saturation components (CPU,
+RAM, net, disk I/O) aggregate by \emph{max}; rate components (error, warning) by
+\emph{volume-weighted sum}; latency components (P99, span duration) by the \emph{P99 of the union}
+of raw per-pod distributions (never a percentile of percentiles); structural components (trace
+depth, fan-out, lexical entropy) by \emph{median}.
+
+\subsection{Operational regimes}
+The regime variable is $\theta(t)\in\{\theta_{\text{normal}},\theta_{\text{drift}},
+\theta_{\text{anomaly}},\thetadn\}$. Table~\ref{tab:regimes} gives the correspondence to dataset
+labels. Benign drift $\theta_{\text{drift}}$ (rolling deploy, autoscaling) is \emph{not} a regime
+label; it is detected orthogonally by the drift detector through the boolean
+\texttt{drift\_flag}. The combined regime $\thetadn$ is materialised by the
+\texttt{faulty\_deploy\_overlap} scenario.
+
+\begin{table}[t]
+\centering
+\caption{Regime $\theta$ to dataset label correspondence (\texttt{labels.parquet}).}
+\label{tab:regimes}
+\small
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
+\toprule
+\textbf{Label} & \textbf{Regime} \\
+\midrule
+\texttt{normal}        & $\theta_{\text{normal}}$ (pre-injection reference) \\
+\texttt{injection}     & $\theta_{\text{anomaly}}$ (chaos active) \\
+\texttt{drift\_anomaly}& $\thetadn$ (simultaneous faulty deploy) \\
+\texttt{recovery}      & post-injection return (excluded from H1/H3) \\
+\texttt{drift\_flag}   & $\theta_{\text{drift}}$ (detected, not a label) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Hypotheses and falsification}
+\label{sec:hypotheses}
+EWAT is organised around four falsifiable hypotheses.
+\textbf{H1 (structurability).} Fault types form separable groups in the latent space; falsified if
+held-out silhouette $<0.3$~\cite{kaufman1990} across seeds and splits.
+\textbf{H2a (drift separability).} Look-through reduces the false-positive rate at constant recall;
+falsified if no significant reduction ($p>0.05$).
+\textbf{H2b (combined-regime identification).} The pipeline identifies $\thetadn$ as distinct from
+pure drift and pure anomaly; falsified if no cluster shows simultaneous
+\texttt{drift\_flag} and precursor alert above chance.
+\textbf{H3 (predictability).} Per-type precursors beat the $0.5$ baseline for some horizon $k$;
+falsified if AUROC $<0.5\;\forall k$. We additionally distinguish \emph{circular} H3
+(self-referential cluster labels as target) from \emph{honest} H3 (independent Chaos~Mesh
+scenarios as target), a distinction that turns out to be decisive (Sections~\ref{sec:results}
+and~\ref{sec:validity}).

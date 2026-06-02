@@ -1,0 +1,171 @@
+\section{Results}
+\label{sec:results}
+
+We organise results by hypothesis, then report baselines, ablations, architecture comparison,
+ontology, and operational alerting. Throughout we separate the \emph{circular} evaluation target
+(EWAT's own cluster labels) from the \emph{independent} target (Chaos~Mesh scenarios); only the
+latter supports a defensible predictive claim.
+
+\subsection{H1 --- Structurability (PASS)}
+On \texttt{ewat\_v3} with the optimised configuration, the held-out silhouette is
+$0.782\pm0.065$ over ten seeds (minimum $0.618$, all $\gg 0.3$): H1 passes robustly. The optimised
+configuration improves on the initial baseline (Ward$+$Euclidean, $0.519\pm0.092$) by $+51\%$; the
+gain is geometric and comes almost entirely from matching the clustering metric (cosine) to the
+L2-normalised embedding sphere. On the longer \texttt{ewat\_v4\_strat} episodes the silhouette is
+lower and more variable ($0.691\pm0.115$, range $[0.521,0.839]$), and the number of types $K$ is
+intrinsically unstable: neither silhouette nor the gap statistic stabilises it (modes $K=14$ and
+$K=12$ respectively, agreement on only $4/10$ seeds). Figure~\ref{fig:multiseed} shows the
+per-seed distributions.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{multiseed_distribution.pdf}
+\caption{Multi-seed distributions (\texttt{ewat\_v4\_strat}, Phase~H, 10 seeds): silhouette,
+circular precursor AUROC, selected $K$, and the distant-window gap $\Delta$. The circular AUROC is
+stable; silhouette, $K$ and $\Delta$ are not, and seed~42 is an outlier on $\Delta$.}
+\label{fig:multiseed}
+\end{figure}
+
+\subsection{H2a --- Drift separability by look-through (FAIL)}
+Look-through does not reduce the false-positive rate. On \texttt{ewat\_v3}, the look-through
+detector reaches a drift true-positive rate of $0.42$ versus $0.67$ for a plain threshold, and an
+anomaly false-positive rate of $0.67$ versus $0.73$ --- not a significant reduction
+($p=0.27$, paired one-sided $t$). The same test on STGCN embeddings is also negative
+($p=0.978$). Critically, the negative result is \emph{robust} to episode length: re-running on the
+$2\times$ longer \texttt{ewat\_v4\_strat} episodes still fails ($\text{TPR}=0.50$, $p=0.372$).
+The mechanism is falsified, not merely under-powered; we report this as an honest negative result.
+
+\subsection{H2b --- Combined regime $\thetadn$ (PASS but trivial)}
+The formal criterion passes (overlap $>30\%$ everywhere), but trivially: the drift detector's
+5-step window fires on almost every short episode, so overlap is high regardless. A strict Fisher
+test of the overlap cluster (\texttt{faulty\_deploy\_overlap}) against pure drift gives
+$\text{OR}=1.48$, $p=0.35$ --- not significant. Moreover, the precursor alert \emph{precedes} the
+drift flag in $85$--$100\%$ of cases: the drift detector is a \emph{late} indicator, and the early
+warning comes from stage~3, not stage~0. H2b thus reinforces H2a rather than standing on its own.
+
+\subsection{H3 --- Predictability}
+\paragraph{Circular target (self-referential).}
+Predicting EWAT's own cluster labels from the embedding gives a peak AUROC of $0.987\pm0.011$
+($10/10$ seeds PASS). We flag this as \emph{circular}: the target is produced by the same
+encoder/clustering being evaluated. Section~\ref{sec:validity} shows directly that this number does
+not reflect temporal precursion.
+
+\paragraph{Independent target (honest).}
+Against the Chaos~Mesh ground truth, our defensible headline is a deterministic logistic-regression
+one-vs-rest classifier on instance-normalised pre-injection features (no learned encoder):
+\textbf{macro-AUROC $=0.920$, $95\%$ bootstrap CI $[0.878,0.956]$} on
+\texttt{ewat\_v4\_strat}, stable under leave-one-scenario-out ($0.930\pm0.007$, 15 folds).
+Table~\ref{tab:baselines} consolidates all baselines by target. Two facts stand out: the encoder
+does \emph{not} add aggregate predictive value (training an STGCN end-to-end on the same
+independent target yields $0.863$, \emph{below} the linear baseline), and the circular numbers
+($0.95$--$0.99$) sit far above the honest ones ($0.84$--$0.94$).
+
+\begin{table}[t]
+\centering
+\caption{Baselines grouped by evaluation target. Circular = EWAT's own labels; Independent =
+Chaos~Mesh scenarios. CIs are $95\%$ bootstrap.}
+\label{tab:baselines}
+\small
+\begin{tabularx}{\columnwidth}{@{}Xl@{}}
+\toprule
+\textbf{Model (dataset)} & \textbf{macro-AUROC} \\
+\midrule
+\multicolumn{2}{@{}l}{\emph{Circular target — EWAT cluster labels}}\\
+Random                                    & 0.500 \\
+Raw features $\to$ EWAT labels (v3)        & 0.966 \\
+$k$-means + LR $\to$ EWAT labels (v3)      & 0.975 \\
+EWAT precursors, self (v3)                 & 0.951 \\
+EWAT precursors, optimised peak (v3, 10s)  & $0.987\pm0.011$ \\
+\midrule
+\multicolumn{2}{@{}l}{\emph{Independent target — Chaos~Mesh scenarios}}\\
+Raw features, $k{=}6$ (v3)                 & 0.835 {\scriptsize[0.773,0.888]} \\
+STGCN $z_e$ (v3)                           & 0.835 {\scriptsize[0.772,0.885]} \\
+STGCN end-to-end (v4\_strat)               & 0.863 {\scriptsize[0.823,0.905]} \\
+Raw, instance-norm best (v4\_strat)        & 0.941 {\scriptsize[0.909,0.970]} \\
+\textbf{Raw, inst-norm flatten LR (v4\_strat)} & \textbf{0.920} {\scriptsize[0.878,0.956]} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Per-scenario redistribution.}
+On \texttt{ewat\_v3} the aggregate gap between raw features and STGCN embeddings is exactly
+$\Delta_{\text{macro}}=0.000$. This is not neutrality by coincidence alone: AUROC on $n=45$ test is
+a ratio of concordant pairs over a fixed integer denominator, and the encoder \emph{redistributes}
+discriminability across scenarios (e.g.\ $+27$~pp on \texttt{fail\_slow\_cpu}, $-25$~pp on
+\texttt{noisy\_neighbor}) with the per-scenario gains and losses summing to zero. The redistribution
+is real; its exact cancellation is an artefact of the small test set.
+
+\subsection{Ablations}
+\paragraph{Modality (rigorous, full retraining).}
+Retraining the encoder and siamese head per condition (seed 42, \texttt{ewat\_v3}),
+metrics-only beats the full model on H1 silhouette ($0.497$ vs $0.439$, $\Delta=+0.058$); adding
+traces and logs injects geometric noise into the clustering on $n=209$. Logs-only collapses
+($0.051$). The hierarchy is $M>T>L$ for clustering geometry.\footnote{An inference-time masking
+ablation (no retraining) gives a lower full baseline of $0.333$ but the same qualitative ranking;
+we report the rigorous retraining figures here.}
+\paragraph{Modality (precursor H3, inference masking).}
+For predictability the ordering inverts: the full model is best ($0.954$), and dropping traces and
+logs hurts ($M$-only $0.756$, $L$-only $0.488$). Traces and logs are noise for clustering geometry
+but \emph{necessary} for prediction. The single most critical feature for H3 is \texttt{disk\_io}
+($\Delta=-0.088$ leave-one-out), despite its $16.7\%$ NaN rate --- a direct argument for the
+\texttt{ewat\_v4} re-collection. Two feature pairs are redundant
+($|\rho|>0.9$): \texttt{latency\_p99}$\leftrightarrow$\texttt{span\_dur\_p99} and
+\texttt{error\_rate\_http}$\leftrightarrow$\texttt{abnormal\_span\_rate}.
+
+\subsection{Encoder architecture comparison}
+Table~\ref{tab:arch} compares encoders on \texttt{ewat\_v3} (seed 42, corrected methodology). GAT
+gives the best clustering geometry and type coverage; SimCLR the best circular AUROC; STGCN the
+most stable $K$. We retain STGCN as the reference (simplest, multi-seed evidence available), while
+noting that none of these encoders improves the \emph{independent}-target prediction
+(Section~\ref{sec:validity}).
+
+\begin{table}[t]
+\centering
+\caption{Encoder comparison (\texttt{ewat\_v3}, seed 42). AUROC is the circular precursor metric.}
+\label{tab:arch}
+\small
+\begin{tabularx}{\columnwidth}{@{}Xrrrr@{}}
+\toprule
+\textbf{Encoder} & $K$ & \textbf{sil$_{\text{test}}$} & \textbf{types} & \textbf{AUROC} \\
+\midrule
+STGCN  & 10 & 0.414 & 8/10  & 0.954 \\
+SimCLR & 15 & 0.429 & 11/15 & \textbf{0.964} \\
+GAT    & 15 & \textbf{0.497} & \textbf{13/15} & 0.929 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Ontology}
+The OWL/RDF ontology comprises 29 literature-anchored classes (TBox) and 143 individuals (ABox).
+Multivariate TE on synthesised cascades yields 3 significant causal edges (BH-FDR $p<0.05$;
+e.g.\ crash~$\to$~traffic-ramp, $\text{TE}=0.182$, $p=0.015$), 19 co-occurrence edges, and 46
+service-propagation edges after a specificity filter that drops ubiquitous traffic edges. Notably,
+the two benign-drift clusters produce \emph{zero} propagation edges --- a validating result, since
+benign drifts should not cascade. HermiT verifies consistency in $0.61$~s with no inconsistent
+class. Eight of ten validation criteria pass; the two misses are the causal-edge count (3 vs a
+target of 15, limited by the synthetic corpus size) and materialised inferences (an owlready2
+limitation, mitigated via SPARQL).
+
+\subsection{Operational alerting}
+The practical value is false-alarm control. A $z$-score detector raises alarms on $100\%$ of
+benign-drift episodes at every $\sigma$. EWAT at threshold $0.7$ cuts the drift false-alarm rate to
+$8.3\%$ while keeping a $3.0$~min lead time (Table~\ref{tab:alerting}). Lower thresholds detect more
+but the drift detector's short warm-up on $\sim$21-step episodes pushes false alarms back to
+$100\%$ --- a data-length limitation (L1), not a design flaw.
+
+\begin{table}[t]
+\centering
+\caption{Online alerting (\texttt{ewat\_v3} test, 45 episodes).}
+\label{tab:alerting}
+\small
+\begin{tabularx}{\columnwidth}{@{}Xrrrr@{}}
+\toprule
+\textbf{Method} & \textbf{Detect.} & \textbf{Correct type} & \textbf{FA drift} & \textbf{Lead} \\
+\midrule
+$z$-score ($\sigma{=}2$--$3.5$) & 100\% & --- & 100\% & 2.5~min \\
+EWAT @0.3 & 100\% & 42.4\% & 100\% & 4.6~min \\
+EWAT @0.5 & 78.8\% & 63.6\% & 100\% & 3.9~min \\
+\textbf{EWAT @0.7} & \textbf{57.6\%} & \textbf{51.5\%} & \textbf{8.3\%} & \textbf{3.0~min} \\
+\bottomrule
+\end{tabularx}
+\end{table}

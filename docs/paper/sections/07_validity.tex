@@ -1,0 +1,84 @@
+\section{Validity and Stress Tests}
+\label{sec:validity}
+
+The circular precursor AUROC ($0.987$) is high enough to be suspicious. This section reports the
+battery of stress tests we ran to determine what that number actually measures. The headline
+finding is a clean dissociation: on the self-referential target the model learns the \emph{static
+signature} of a scenario, not temporal precursion; on the independent target, genuine temporal
+precursion does appear.
+
+\subsection{Self-referential target: signature, not precursion}
+We probe the circular evaluation with four tests (Table~\ref{tab:phaseA}).
+\textbf{A1 (distant-window).} Sliding the inference window anywhere inside the normal regime leaves
+the AUROC unchanged: $\Delta_{\text{far}-\text{near}}=-0.007$. If the score were precursive, moving
+the window earlier should degrade it. It does not --- the classifier reads a static scenario
+signature recoverable from any point in the normal regime.
+\textbf{A3 (permutation null).} The signal is nonetheless real: against a label-permutation null
+($0.49\pm0.10$), the observed AUROC of $0.893$ gives $p<0.01$.
+\textbf{A2 (leave-one-scenario-out).} The model does not generalise to an unseen fault type: top-1
+accuracy on the held-out scenario is $0.51\pm0.38$, polarised into $100\%$ and $0\%$ cases ---
+interpolation between known scenarios, not extrapolation.
+\textbf{A5 (paired $\Delta$).} The encoder adds nothing in aggregate: the paired bootstrap CI on
+the STGCN-minus-raw difference is $[-0.031,+0.044]$, comfortably containing zero.
+
+\begin{table}[t]
+\centering
+\caption{Stress tests on the self-referential target (\texttt{ewat\_v3}).}
+\label{tab:phaseA}
+\small
+\begin{tabularx}{\columnwidth}{@{}llX@{}}
+\toprule
+\textbf{Test} & \textbf{Result} & \textbf{Reading} \\
+\midrule
+A1 distant-window & $\Delta=-0.007$ & no precursion (leak) \\
+A3 permutation    & $p<0.01$        & signal is real \\
+A2 LOSO top-1     & $0.51\pm0.38$   & no open-set generalisation \\
+A5 paired $\Delta$& $[-0.031,+0.044]$ & encoder adds nothing \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Independent target: precursion reappears}
+The picture changes once the target is the independent Chaos~Mesh ground truth.
+\textbf{B1 (instance-norm diagnostic).} With global normalisation, the distant-window gap on the
+independent target is $\Delta_{\text{far}-\text{near}}=-0.071$ on \texttt{ewat\_v3} and $-0.043$ on
+\texttt{ewat\_v4\_strat}: there \emph{is} pre-injection dynamics, worth several AUROC points, that
+the circular evaluation hid. Instance normalisation, which removes per-service baseline offsets,
+improves the signal (up to $+5.5$~pp at the earliest window).
+\textbf{B2/B3 (headline).} The resulting linear classifier reaches $0.920$ $[0.878,0.956]$ on
+\texttt{ewat\_v4\_strat}, up from $0.855$ on \texttt{ewat\_v3}; the longer episodes amplify the
+pre-injection signal.
+
+\subsection{End-to-end model on the independent target}
+\textbf{C1.} An STGCN trained directly on the independent target reaches $0.863$ $[0.823,0.905]$ ---
+below the linear baseline. Consistent with A5, the encoder is not predictively useful in aggregate.
+\textbf{C2 (the key reversal).} Yet the \emph{same} end-to-end model exhibits genuine temporal
+precursion: AUROC rises from $0.759$ at the earliest window to $0.876$ just before injection,
+$\Delta_{\text{far}-\text{near}}=-0.116$ (Figure~\ref{fig:distant}). Twelve points of AUROC depend
+on \emph{when} the window sits. The leak seen in A1 was an artefact of the circular labels, not a
+property of the signal: against an independent target, EWAT is more than a static-signature
+identifier.
+\textbf{C3 (open-set).} OpenMax provides only partial novelty detection: unknown-AUROC
+$=0.55\pm0.24$ (below the $0.7$ target), although top-1 unknown rate rises from $0$ (closed
+one-vs-rest) to $0.40$. We report this as a partial, honest result and discuss stronger detectors
+in Section~\ref{sec:discussion}.
+\textbf{C5.} The look-through retest on longer episodes confirms H2a's failure ($p=0.372$).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{distant_window.pdf}
+\caption{Distant-window analysis. On the circular target (A1) the gap is $\approx 0$ (leak); on the
+independent end-to-end model (C2) AUROC falls as the window moves away from injection,
+$\Delta_{\text{far}-\text{near}}=-0.116$ --- genuine temporal precursion.}
+\label{fig:distant}
+\end{figure}
+
+\subsection{Synthesis and reproducibility caveat}
+The encoder's value is \emph{geometric} (it structures the latent space for typing, H1) and
+\emph{ontological} (it grounds the OWL artefact), not aggregate-predictive. The honest predictive
+contribution is active-scenario typing at $0.920$ with confirmed temporal precursion. A multi-seed
+audit (Phase~H/J/K) tempers earlier single-seed optimism: a prior run on seed~42 reported
+silhouette $0.84$ and $\Delta=-0.05$, but neither reproduces across ten seeds (silhouette
+$0.691\pm0.115$; $\Delta$ leak-confirmed on $9/10$ seeds, seed~42 the lone outlier). The headline
+$0.920$ is unaffected because the underlying logistic regression is deterministic; the bootstrap CI
+captures its only stochasticity.

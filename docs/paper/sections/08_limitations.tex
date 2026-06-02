@@ -1,0 +1,49 @@
+\section{Limitations}
+\label{sec:limitations}
+
+We documented seventeen limitations (L1--L17); Table~\ref{tab:limitations} lists the structural
+ones with their proposed fixes. Four deserve emphasis.
+
+\textbf{Short episodes (L1)} are the dominant data constraint. At $\sim$21 steps, \texttt{ewat\_v3}
+leaves too little window for the look-through warm-up, which is the proximate cause of H2a's
+failure, H2b's triviality, and the high false-alarm rate at low thresholds. \texttt{ewat\_v4}
+(47--51 steps) mitigates but does not eliminate it (H2a still fails).
+
+\textbf{Evaluation circularity (L9)} is the methodological core of this paper. The
+$0.987$ precursor AUROC targets EWAT's own labels; we therefore demote it and adopt the independent
+Chaos~Mesh target ($0.920$) as the headline, with the stress tests of Section~\ref{sec:validity} as
+the evidence.
+
+\textbf{Type-count instability (L10).} The siamese head overfits in $2$--$7$ epochs on
+\texttt{ewat\_v4} and $K$ ranges from $9$ to $15$ across seeds; this is structural (small training
+set, diverse episode lengths), not a mining bug. We recommend fixing $K$ or moving to density-based
+clustering in future iterations.
+
+\textbf{Scope and external validity (L13, L14, L17).} All experiments use one six-service topology
+on one cluster. Zero-shot transfer to RCAEval recovers generic anomaly detection (H1 silhouette
+$0.684$) but not type discrimination (H3 $\approx 0.5$); the bottleneck is a non-transferable
+scaler. The ontology, while HermiT-consistent and literature-anchored, has not been audited by an
+operational SRE, and its causal edges are extracted from synthetic cascades.
+
+\begin{table}[t]
+\centering
+\caption{Structural limitations and proposed fixes.}
+\label{tab:limitations}
+\small
+\begin{tabularx}{\columnwidth}{@{}lXl@{}}
+\toprule
+\textbf{ID} & \textbf{Limitation} & \textbf{Fix} \\
+\midrule
+L1  & short episodes ($\sim$21 steps)      & \texttt{v4}/\texttt{v5} long episodes \\
+L9  & H3 circularity                        & independent target \\
+L10 & siamese overfit / $K$ unstable        & fixed $K$ / HDBSCAN \\
+L13 & $N=6$, one topology                   & Train~Ticket (\texttt{v5}) \\
+L14 & no cross-cluster validation           & few-shot domain adapt. \\
+L17 & ontology not SRE-audited              & expert review \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+We also note minor caveats for transparency: a single train/val/test split (no $k$-fold), no a
+priori power analysis (post-hoc: $5/10$ clusters are statistically reportable at $n_{\text{pos}}\geq
+5$), and stress tests A1--A5 designed \emph{post hoc} rather than pre-registered.

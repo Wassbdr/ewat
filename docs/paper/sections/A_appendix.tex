@@ -1,0 +1,53 @@
+\section{Per-cluster precursor results}
+\label{app:precursor}
+
+Table~\ref{tab:percluster} gives the per-type precursor results on \texttt{ewat\_v3} (seed 42,
+$k^*$ selected on validation, AUROC on test with $95\%$ bootstrap CI). These are
+\emph{circular}-target numbers (Section~\ref{sec:results}) and should be read alongside the
+stress-test caveats of Section~\ref{sec:validity}. Clusters with fewer than two positive test
+episodes (C6, C9) yield undefined AUROC and are marked n/a.
+
+\begin{table}[h]
+\centering
+\caption{Per-cluster precursors (\texttt{ewat\_v3}, circular target). $k^*$ in 30~s steps.}
+\label{tab:percluster}
+\small
+\begin{tabularx}{\columnwidth}{@{}lrrrX@{}}
+\toprule
+\textbf{Type} & $n_{\text{pos}}$ & $k^*$ & \textbf{AUROC} & \textbf{95\% CI} \\
+\midrule
+C0 & 8 & 6  & 0.973 & [0.906, 1.000] \\
+C1 & 3 & 6  & 0.992 & [0.953, 1.000] \\
+C2 & 5 & 6  & 0.945 & [0.865, 1.000] \\
+C3 & 3 & 2  & 0.794 & [0.636, 0.930] \\
+C4 & 8 & 2  & 1.000 & [1.000, 1.000] \\
+C5 & 2 & 6  & 0.977 & [0.909, 1.000] \\
+C6 & 1 & 2  & n/a   & --- \\
+C7 & 7 & 6  & 0.992 & [0.966, 1.000] \\
+C8 & 7 & 10 & 0.962 & [0.895, 1.000] \\
+C9 & 1 & 2  & n/a   & --- \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The dominant optimal horizon is $k^*=6$ steps ($3$~min), the practical zone of predictability for
+most fault types in this dataset; \texttt{C3} has an immediate signature ($k^*=2$) and \texttt{C8}
+(the combined-regime overlap) a slow one ($k^*=10$).
+
+\section{Cluster--scenario alignment}
+\label{app:nmi}
+
+Normalised mutual information between clusters and Chaos~Mesh scenarios is $0.518$ and mean purity
+$0.503$ --- the moderate alignment expected of unsupervised clustering that compresses 15 scenarios
+into $\approx 10$ empirical types. Two scenarios sharing a latent fault signature (e.g.\ crash and
+OOM near the injection point) are a finding, not an error. Figure~\ref{fig:heatmap} shows the
+full alignment. Gradient$\times$input saliency was found unreliable ($\rho=-0.34$ versus
+permutation importance) and is not used; permutation importance is cross-validated by KernelSHAP
+($\rho>0$ on $9/10$ clusters).
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\columnwidth]{scenario_cluster_heatmap.pdf}
+\caption{Scenario$\times$cluster alignment heatmap (\texttt{ewat\_v3}).}
+\label{fig:heatmap}
+\end{figure}
