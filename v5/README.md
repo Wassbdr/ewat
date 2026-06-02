@@ -55,19 +55,41 @@ F3/F5/F7/F12 à builder depuis les branches `ts-error-*-Fxx` (maven+docker).
 - `run_episode.py` : **orchestrateur** — charge continue + baseline → injection
   → recovery + collecte + features + labels régime, en un appel.
 
+### Workflow 2-phases : COLLECTE puis BUILD (Record → Build → Assemble)
+
+La collecte et le build sont **séparés** (les dumps `data/raw_v5/` sont sacrés) :
+la boucle de collecte est rapide (~50 min/ép, pas de build), le build tourne
+**offline, en parallèle, rejouable** (ré-exécutable si le schéma S(t) change, sans
+recollecter — crucial).
+
+**Phase 1 — collecte** (run_episode) : phases + pull 3 sources → dumps gzip +
+`episode_meta.json` (boundaries + meta). Gate qualité brut (traces/logs/prom > 0).
 ```bash
-# un épisode complet (chaos)
-python -m collect.run_episode --scenario cpu_stress --out data/raw_v5/ep_001 \
-    --baseline 180 --injection 180 --recovery 120 --users 12 --intensity high
-# un épisode bug F (swap image)
-python -m collect.run_episode --scenario F1 --bug --out data/raw_v5/ep_F1_001 ...
-# sortie : prometheus/jaeger/loki.json.gz + features.npz (S, services, regime…) + meta.json
+python -m collect.run_episode --scenario cpu_stress --out data/raw_v5/ep_001
+python -m collect.run_episode --scenario F1 --bug --held-out --out data/raw_v5/ep_F1_001
+# sortie : prometheus/jaeger/loki.json.gz + episode_meta.json  (PAS de features)
 ```
 
-### Protocole de collecte massive (boucle)
-Pour chaque scénario × répétition : `run_episode` produit un dossier autonome.
-Anatomie cible plan §4 : T=120 steps (60 min) — baseline 16 / pre 30 / ramp 10 /
-inj 50 / recovery 14. Pour le pilote on utilise des durées réduites.
+**Phase 2 — build offline** (build_features_v5) : dumps → contrat v4 complet
+(signal/mask/adjacency/labels/metadata). Batch parallèle, idempotent.
+```bash
+python -m collect.build_features_v5 --raw-root data/raw_v5 --workers 4
+python -m collect.build_features_v5 --episode data/raw_v5/ep_001 --force   # un seul
+```
+
+**Phase 3 — validation + assemblage**
+```bash
+python scripts/validate_v5.py --features-root data/raw_v5      # gate features
+python -m scripts.assemble_dataset --features-root data/raw_v5 --output data/datasets/ewat_v5 --stratified
+python scripts/enforce_heldout_v5.py --dataset data/datasets/ewat_v5   # held-out → test only
+python scripts/validate_v5.py --dataset data/datasets/ewat_v5  # check fuite held-out
+```
+
+### Collecte massive
+`run_campaign` orchestre la Phase 1 (collecte uniquement, gate brut, checkpoint,
+reset). Le build (Phase 2) se lance après/en parallèle sur le poste de travail.
+Anatomie épisode : 60 steps × 30 s = 30 min (baseline12/pre14/ramp6/inj20/rec8 ;
+override test via env `V5_PHASES="b,pre,ramp,inj,rec"`).
 
 ## Ressources cluster
 
