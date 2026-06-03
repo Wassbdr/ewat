@@ -71,6 +71,10 @@ for r in "${RUNNERS[@]}"; do
             -d '{"username":"fdse_microservice","password":"111111"}' 2>/dev/null | head -c 80)
   if echo "$login" | grep -q "success"; then echo "  $ns login :$port ✓"; else echo "  $ns login :$port ✗"; fail=1; fi
 done
+# NodePort Prometheus + Loki (collecte sans port-forward) — doivent répondre
+PROM_NP="${V5_PROM_NODEPORT:-32700}"; LOKI_NP="${V5_LOKI_NODEPORT:-32701}"
+if curl -s -m10 "http://$NODE_IP:$PROM_NP/-/ready" | grep -qi "ready"; then echo "  Prometheus NodePort :$PROM_NP ✓"; else echo "  Prometheus NodePort :$PROM_NP ✗ (kubectl apply -f v5/deploy/monitoring_nodeports.yaml ?)"; fail=1; fi
+if curl -s -m10 "http://$NODE_IP:$LOKI_NP/ready" | grep -qi "ready"; then echo "  Loki NodePort :$LOKI_NP ✓"; else echo "  Loki NodePort :$LOKI_NP ✗ (kubectl apply -f v5/deploy/monitoring_nodeports.yaml ?)"; fail=1; fi
 echo "  RAM workers :"
 kubectl --context "$KCTX" top nodes --no-headers 2>/dev/null | awk '/workers/{printf "    %s %s\n",$1,$5}'
 [ "$fail" -eq 0 ] || { echo "ABORT: préflight échoué (voir ✗ ci-dessus)"; exit 1; }
