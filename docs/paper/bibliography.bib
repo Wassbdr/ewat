@@ -178,3 +178,193 @@
   year   = {2014},
   note   = {TO VERIFY: exact title, authors and venue before camera-ready.}
 }
+
+% ============================================================
+%  Additions for the internship report (rapport de stage)
+%  17 references required by the report skeleton. Canonical-publication
+%  metadata; entries flagged TO VERIFY where title/venue is uncertain.
+% ============================================================
+
+% ---- Founders: anomaly detection & time-series surveys, RCA, gray failure ----
+
+@article{chandola2009,
+  author  = {Chandola, Varun and Banerjee, Arindam and Kumar, Vipin},
+  title   = {Anomaly Detection: A Survey},
+  journal = {ACM Computing Surveys},
+  volume  = {41},
+  number  = {3},
+  pages   = {1--58},
+  year    = {2009},
+  note    = {Taxonomy of anomaly types/contexts; anchors the regime framing of $S(t)$}
+}
+
+@article{zamanzadeh2024,
+  author  = {Zamanzadeh Darban, Zahra and Webb, Geoffrey I. and Pan, Shirui
+             and Aggarwal, Charu C. and Salehi, Mahsa},
+  title   = {Deep Learning for Time Series Anomaly Detection: A Survey},
+  journal = {ACM Computing Surveys},
+  year    = {2024},
+  note    = {Deep TS-AD landscape; motivates the temporal-window encoder.
+            TO VERIFY: volume/issue/pages before camera-ready.}
+}
+
+@inproceedings{pham2024,
+  author    = {Pham, Luan and others},
+  title     = {Root Cause Analysis for Microservices based on Causal Inference:
+               How Far Are We?},
+  booktitle = {Proceedings of the 39th IEEE/ACM International Conference on
+               Automated Software Engineering (ASE)},
+  year      = {2024},
+  note      = {Causal-inference RCA appraisal; motivates TE-KSG over causal RCA.
+            TO VERIFY: full author list and pages before camera-ready.}
+}
+
+@inproceedings{grayscope2024,
+  author    = {Anonymous},
+  title     = {{GrayScope}: Non-intrusive Localization of Gray Failures},
+  booktitle = {Proceedings of the ACM International Conference on the Foundations
+               of Software Engineering (FSE)},
+  year      = {2024},
+  note      = {Gray-failure (telemetry-invisible) localization; anchors bug F1.
+            TO VERIFY: exact title, authors and venue before camera-ready.}
+}
+
+% ---- Encoders / representation learning ----
+
+@inproceedings{kipf2017,
+  author    = {Kipf, Thomas N. and Welling, Max},
+  title     = {Semi-Supervised Classification with Graph Convolutional Networks},
+  booktitle = {Proceedings of the International Conference on Learning Representations (ICLR)},
+  year      = {2017},
+  note      = {GCN — spectral graph-convolution foundation of the STGCN encoder}
+}
+
+@inproceedings{eldele2021,
+  author    = {Eldele, Emadeldeen and Ragab, Mohamed and Chen, Zhenghua and Wu, Min
+               and Kwoh, Chee Keong and Li, Xiaoli and Guan, Cuntai},
+  title     = {Time-Series Representation Learning via Temporal and Contextual Contrasting},
+  booktitle = {Proceedings of the International Joint Conference on Artificial Intelligence (IJCAI)},
+  year      = {2021},
+  note      = {TS-TCC — contrastive pre-training for time series}
+}
+
+% ---- Drift detection ----
+
+@inproceedings{rahimi2007,
+  author    = {Rahimi, Ali and Recht, Benjamin},
+  title     = {Random Features for Large-Scale Kernel Machines},
+  booktitle = {Advances in Neural Information Processing Systems (NIPS)},
+  volume    = {20},
+  year      = {2007},
+  note      = {Random Fourier Features — enables MMD-RFF at $O(nD)$}
+}
+
+% ---- Causality, multiple testing, ontology reasoning ----
+
+@article{schreiber2000,
+  author  = {Schreiber, Thomas},
+  title   = {Measuring Information Transfer},
+  journal = {Physical Review Letters},
+  volume  = {85},
+  number  = {2},
+  pages   = {461--464},
+  year    = {2000},
+  note    = {Transfer Entropy — directed information flow (step 2b)}
+}
+
+@article{holm1979,
+  author  = {Holm, Sture},
+  title   = {A Simple Sequentially Rejective Multiple Test Procedure},
+  journal = {Scandinavian Journal of Statistics},
+  volume  = {6},
+  number  = {2},
+  pages   = {65--70},
+  year    = {1979},
+  note    = {Holm correction for the co-occurrence $\chi^2$/Fisher family}
+}
+
+@article{glimm2014,
+  author  = {Glimm, Birte and Horrocks, Ian and Motik, Boris and Stoilos, Giorgos
+             and Wang, Zhe},
+  title   = {{HermiT}: An {OWL} 2 Reasoner},
+  journal = {Journal of Automated Reasoning},
+  volume  = {53},
+  number  = {3},
+  pages   = {245--269},
+  year    = {2014},
+  note    = {OWL 2 reasoner used for ontology consistency checking}
+}
+
+@article{lamy2017,
+  author  = {Lamy, Jean-Baptiste},
+  title   = {Owlready: Ontology-Oriented Programming in {Python} with Automatic
+             Classification and High Level Constructs for Biomedical Ontologies},
+  journal = {Artificial Intelligence in Medicine},
+  volume  = {80},
+  pages   = {11--28},
+  year    = {2017},
+  note    = {owlready2 — Python OWL toolkit driving the ABox/TBox build}
+}
+
+% ---- Statistics / bootstrap / spherical clustering ----
+
+@article{efron1987,
+  author  = {Efron, Bradley},
+  title   = {Better Bootstrap Confidence Intervals},
+  journal = {Journal of the American Statistical Association},
+  volume  = {82},
+  number  = {397},
+  pages   = {171--185},
+  year    = {1987},
+  note    = {BCa intervals for AUROC/silhouette}
+}
+
+@book{davison1997,
+  author    = {Davison, Anthony C. and Hinkley, David V.},
+  title     = {Bootstrap Methods and Their Application},
+  publisher = {Cambridge University Press},
+  year      = {1997},
+  note      = {General resampling framework for the bootstrap CIs}
+}
+
+@article{phipson2010,
+  author  = {Phipson, Belinda and Smyth, Gordon K.},
+  title   = {Permutation P-values Should Never Be Zero: Calculating Exact P-values
+             When Permutations Are Randomly Drawn},
+  journal = {Statistical Applications in Genetics and Molecular Biology},
+  volume  = {9},
+  number  = {1},
+  year    = {2010},
+  note    = {Permutation p-value estimation (stress test A3; TE thresholds)}
+}
+
+@book{agresti2002,
+  author    = {Agresti, Alan},
+  title     = {Categorical Data Analysis},
+  edition   = {2nd},
+  publisher = {Wiley},
+  year      = {2002},
+  note      = {$\chi^2$ Yates / Fisher exact for 2$\times$2 co-occurrence}
+}
+
+@article{dhillon2001,
+  author  = {Dhillon, Inderjit S. and Modha, Dharmendra S.},
+  title   = {Concept Decompositions for Large Sparse Text Data Using Clustering},
+  journal = {Machine Learning},
+  volume  = {42},
+  number  = {1},
+  pages   = {143--175},
+  year    = {2001},
+  note    = {Spherical k-means — justifies cosine on the unit sphere}
+}
+
+% ---- Log semantics ----
+
+@inproceedings{reimers2019,
+  author    = {Reimers, Nils and Gurevych, Iryna},
+  title     = {Sentence-{BERT}: Sentence Embeddings Using Siamese {BERT}-Networks},
+  booktitle = {Proceedings of the Conference on Empirical Methods in Natural
+               Language Processing (EMNLP)},
+  year      = {2019},
+  note      = {SBERT — semantic log-anomaly scoring in $L(t)$}
+}

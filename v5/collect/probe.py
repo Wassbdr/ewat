@@ -94,7 +94,7 @@ def _pf_one(cfg: dict) -> subprocess.Popen:
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def _pf_ready(name: str, cfg: dict, timeout: float = 4) -> bool:
+def _pf_ready(name: str, cfg: dict, timeout: float = 10) -> bool:
     url = _READY_URL[name].format(local=cfg["local"])
     try:
         urllib.request.urlopen(url, timeout=timeout)
@@ -103,16 +103,21 @@ def _pf_ready(name: str, cfg: dict, timeout: float = 4) -> bool:
         return False
 
 
-def _ensure_pf(pf: dict | None = None, retries: int = 3) -> list[subprocess.Popen]:
+def _ensure_pf(pf: dict | None = None, retries: int = 6) -> list[subprocess.Popen]:
     """Ouvre les 3 port-forwards (config `pf`, défaut = pf_config() mono-runner)
     et VÉRIFIE leur connectivité avant de rendre la main (cause racine d'un
     blocage précédent : un pf mort + requêtes séquentielles bloquaient >1h).
-    Relance un pf qui ne répond pas."""
+    Relance un pf qui ne répond pas.
+
+    Tolérances élargies (2026-06-03) pour la VM : Prometheus est PARTAGÉ par les 3
+    runners (un seul `monitoring-metrics/prometheus-server`) et le réseau VM→cluster
+    est plus lent → quand les 3 ouvrent leur pf Prometheus en même temps, /-/ready
+    pouvait dépasser 4 s × 3 essais. timeout 10 s, 6 essais, sleeps plus longs."""
     pf = pf or pf_config()
     procs: dict[str, subprocess.Popen] = {}
     for name, cfg in pf.items():
         procs[name] = _pf_one(cfg)
-    time.sleep(6)
+    time.sleep(8)
     for name, cfg in pf.items():
         for _ in range(retries):
             if _pf_ready(name, cfg):
@@ -122,7 +127,7 @@ def _ensure_pf(pf: dict | None = None, retries: int = 3) -> list[subprocess.Pope
             except Exception:
                 pass
             procs[name] = _pf_one(cfg)
-            time.sleep(5)
+            time.sleep(7)
         else:
             raise RuntimeError(f"port-forward {name} ({cfg['svc']}) ne répond pas après {retries} essais")
     return list(procs.values())
