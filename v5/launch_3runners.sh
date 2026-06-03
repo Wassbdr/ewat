@@ -42,6 +42,11 @@ if [ "${1:-}" = "stop" ]; then
   pkill -f "collect.run_campaign" 2>/dev/null && echo "  run_campaign tués"
   pkill -f "collect.build_features_v5" 2>/dev/null && echo "  build tué"
   pkill -f "loadgen.runner" 2>/dev/null
+  # port-forwards orphelins (enfants des run_episode tués) → libèrent les ports locaux
+  for svc in prometheus-server jaeger-query svc/loki; do
+    pkill -f "port-forward.*$svc" 2>/dev/null
+  done
+  echo "  port-forwards collecte nettoyés"
   echo "fait."
   exit 0
 fi
