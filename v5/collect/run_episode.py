@@ -186,30 +186,22 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
     # Délai de drainage : Jaeger all-in-one est très lent à INTERROGER tant qu'il
     # ingère le flux de spans de la charge ; on laisse 20 s après l'arrêt de la
     # charge pour qu'il draine avant de requêter (sinon /api/traces explose).
-    print(f"[{scenario}] drainage 20s puis collecte fenêtre {total}s (ns={namespace}) ...", flush=True)
+    print(f"[{scenario}] drainage 20s puis collecte fenêtre {total}s (ns={namespace}, NodePort) ...", flush=True)
     time.sleep(20)
-    pf = probe.pf_config(namespace, pf_offset)
-    procs = probe._ensure_pf(pf)
-    try:
-        from concurrent.futures import ThreadPoolExecutor
-        timings = {}
+    # Collecte en DIRECT via NodePort (plus de port-forward : cf. probe.nodeport_bases).
+    # 3 pulls concurrents. Jaeger : chunks larges (300 s) → ÷5 le nombre d'appels.
+    from concurrent.futures import ThreadPoolExecutor
+    timings = {}
 
-        def _timed(name, fn, *a, **k):
-            _t = time.time(); r = fn(*a, **k); timings[name] = round(time.time() - _t, 1); return r
+    def _timed(name, fn, *a, **k):
+        _t = time.time(); r = fn(*a, **k); timings[name] = round(time.time() - _t, 1); return r
 
-        # 3 pulls concurrents (port-forwards distincts). Jaeger : chunks larges
-        # (300 s) car le volume de traces est faible (~quelques centaines) → bien
-        # sous le plafond 1500/chunk, et ÷5 le nombre d'appels (le coût Jaeger est
-        # dominé par le nombre d'appels, pas le volume).
-        with ThreadPoolExecutor(max_workers=3) as ex:
-            f_prom = ex.submit(_timed, "prom", probe.pull_prometheus, t_start, t_end, step, ns=namespace, pf=pf)
-            f_jae = ex.submit(_timed, "jaeger", probe.pull_jaeger, t_start, t_end, 300, 1500, namespace, pf)
-            f_loki = ex.submit(_timed, "loki", probe.pull_loki, t_start, t_end, step, namespace, pf)
-            prom, jae, loki = f_prom.result(), f_jae.result(), f_loki.result()
-        print(f"[{scenario}] pull timings: {timings}", flush=True)
-    finally:
-        for p in procs:
-            p.terminate()
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_prom = ex.submit(_timed, "prom", probe.pull_prometheus, t_start, t_end, step, namespace)
+        f_jae = ex.submit(_timed, "jaeger", probe.pull_jaeger, t_start, t_end, 300, 1500, namespace)
+        f_loki = ex.submit(_timed, "loki", probe.pull_loki, t_start, t_end, step, namespace)
+        prom, jae, loki = f_prom.result(), f_jae.result(), f_loki.result()
+    print(f"[{scenario}] pull timings: {timings}", flush=True)
     for name, data in [("prometheus", prom), ("jaeger", jae), ("loki", loki)]:
         with gzip.open(out / f"{name}.json.gz", "wt") as f:
             json.dump(data, f)

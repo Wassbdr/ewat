@@ -1,0 +1,42 @@
+# EWAT v5 — NodePort pour Prometheus + Loki (collecte SANS port-forward).
+#
+# Prometheus & Loki sont partagés (monitoring-metrics, ClusterIP). La collecte v5.2
+# les interroge en DIRECT via NodePort (probe.nodeport_bases) : le tunnel SPDY des
+# port-forwards était lent (jaeger 330-420 s) et lâchait sous contention 3 runners
+# → épisodes perdus. NodePort = TCP direct, robuste + ~15× plus rapide.
+#
+# Services SÉPARÉS (suffixe -np), mêmes selectors que les originaux → on ne touche
+# pas aux services ClusterIP gérés par la stack monitoring. Read-only, réversible :
+#   kubectl delete -f v5/deploy/monitoring_nodeports.yaml
+#
+# Jaeger a déjà ses NodePorts (créés par deploy_runner.sh) : tt 32688 / tt-b 32690 / tt-c 32692.
+# Ports : Prometheus 32700, Loki 32701 (overridables via probe env V5_PROM_NODEPORT/V5_LOKI_NODEPORT).
+#
+# Appliquer : kubectl --context observit-cluster1 apply -f v5/deploy/monitoring_nodeports.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-server-np
+  namespace: monitoring-metrics
+  labels: {ewat-collect: nodeport}
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: prometheus
+    app.kubernetes.io/name: prometheus
+  ports:
+  - {name: http, port: 80, targetPort: 9090, nodePort: 32700}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-np
+  namespace: monitoring-metrics
+  labels: {ewat-collect: nodeport}
+spec:
+  type: NodePort
+  selector: {app: loki, release: loki}
+  ports:
+  - {name: http, port: 3100, targetPort: http-metrics, nodePort: 32701}

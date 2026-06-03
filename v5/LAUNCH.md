@@ -8,13 +8,20 @@ validé ; ce runbook ne fait que **lancer**.
 à 3 runners. Mini-batch 3 runners validé : collecte parallèle sans collision (ports décalés
 0/10/20), **RAM workers 87 % au pic** (sous le plafond 90 %), **0 éviction**, chaos localisé.
 
+**Collecte via NodePort, ZÉRO port-forward** (v5.2) : la télémétrie est pompée en TCP direct
+(`probe.nodeport_bases`) — Prometheus `:32700`, Loki `:32701` (services `*-np`), Jaeger
+`:32688/32690/32692` par runner. Sur la VM, les port-forwards (tunnel SPDY) étaient lents
+(jaeger 330-420 s) et lâchaient sous contention 3 runners → épisodes perdus. NodePort = pulls
+en ~1-25 s, robuste. `--pf-offset` est devenu vestigial (gardé pour compat).
+
 **Contrainte = RAM, pas CPU** : chaque runner ≈ ~20 GB (41 JVM + mongos). À 3 runners les
 workers sont à ~80-87 %. Le gate de collecte a un **garde-fou RAM** (`--ram-ceiling`, défaut
 90) qui met en pause avant un épisode si un worker dépasse le seuil → anti-éviction. Si
 `health_monitor` signale `ram_max` répété > 90 % ou des évictions, **revenir à 2 runners**.
 
-Pré-requis (faits) : `tt` + `tt-b` + `tt-c` déployés (64/64, JVM instrumenté), stack collecte
-paramétrée par namespace + contexte épinglé, schéma v5.1, séparation collecte/build.
+Pré-requis (faits) : `tt` + `tt-b` + `tt-c` déployés (64/64, JVM instrumenté) ; **NodePort
+Prometheus+Loki créés** (`kubectl apply -f v5/deploy/monitoring_nodeports.yaml`, une fois) ;
+stack paramétrée par namespace + contexte épinglé, schéma v5.1, séparation collecte/build.
 
 `NODE_IP=172.16.203.12` · `cd ~/repos/ewat/v5` · `export PYTHONPATH=../src`
 

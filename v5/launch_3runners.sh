@@ -42,11 +42,14 @@ if [ "${1:-}" = "stop" ]; then
   pkill -f "collect.run_campaign" 2>/dev/null && echo "  run_campaign tués"
   pkill -f "collect.build_features_v5" 2>/dev/null && echo "  build tué"
   pkill -f "loadgen.runner" 2>/dev/null
-  # port-forwards orphelins (enfants des run_episode tués) → libèrent les ports locaux
-  for svc in prometheus-server jaeger-query svc/loki; do
-    pkill -f "port-forward.*$svc" 2>/dev/null
+  # chaos orphelins : un runner tué en pleine injection laisse le chaos APPLIQUÉ
+  # (vu 2026-06-03 : container-kill actif >1h sur tt-b/tt-c) → dégrade le namespace
+  # et affame les épisodes suivants. On nettoie tout chaos v5 résiduel.
+  for ns in tt tt-b tt-c; do
+    kubectl --context "$KCTX" delete stresschaos,networkchaos,podchaos,dnschaos,timechaos,iochaos \
+      -n "$ns" --all --ignore-not-found 2>/dev/null
   done
-  echo "  port-forwards collecte nettoyés"
+  echo "  chaos orphelins nettoyés (tt/tt-b/tt-c)"
   echo "fait."
   exit 0
 fi

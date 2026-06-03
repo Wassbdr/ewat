@@ -180,11 +180,13 @@ documentés (F1–F22). Tout est dans `v5/` (loadgen, chaos, collect, deploy). S
 
 Trois namespaces (`tt`, `tt-b`, `tt-c`) = 3 runners parallèles (~720 ép, **~7–9 j**). Contrainte
 = RAM (workers ~80-87 %, garde-fou `--ram-ceiling`). Contexte kubectl **épinglé**
-(`V5_KUBE_CONTEXT`, défaut `observit-cluster1`) avec préflight bloquant. Runbook : `v5/LAUNCH.md`.
+(`V5_KUBE_CONTEXT`, défaut `observit-cluster1`) avec préflight bloquant. Collecte **via NodePort,
+zéro port-forward** (Prometheus :32700, Loki :32701, Jaeger :32688/90/92). Runbook : `v5/LAUNCH.md`.
 
 ```bash
 # 0. Pré-vol
 kubectl config current-context                          # observit-cluster1 (sinon export V5_KUBE_CONTEXT=...)
+kubectl apply -f v5/deploy/monitoring_nodeports.yaml    # NodePort Prometheus+Loki (une fois)
 for ns in tt tt-b tt-c; do kubectl get pods -n $ns --no-headers | grep -c 1/1; done  # 64 chacun
 kubectl top nodes | awk '/workers/{print $1,$5}'        # RAM workers < ~85% au repos
 

@@ -28,9 +28,33 @@ from pathlib import Path
 
 NAMESPACE = "tt"  # défaut mono-runner
 
-# Contexte kubectl épinglé sur les port-forwards (immunise contre une bascule de
-# contexte : un pf vers le mauvais cluster échouerait silencieusement). Cf. inject.py.
+# Contexte kubectl épinglé (utilisé par le mode port-forward legacy uniquement). Cf. inject.py.
 _KCTX = os.environ.get("V5_KUBE_CONTEXT", "observit-cluster1")
+
+# ───────────────────────── ACCÈS NodePort (défaut) ─────────────────────────
+# v5.2 (2026-06-03) : la collecte pompe les 3 sources en DIRECT via NodePort,
+# SANS port-forward. Sur la VM, le tunnel SPDY des pf était lent (jaeger 330-420s)
+# et lâchait sous contention (3 runners sur le Prometheus partagé) → épisodes perdus.
+# NodePort = TCP direct, pas de tunnel, pas de contention pf, plus robuste + rapide.
+#   - Prometheus + Loki : partagés → 1 NodePort chacun (services `*-np` créés dans
+#     monitoring-metrics, mêmes selectors que les originaux ClusterIP).
+#   - Jaeger : par-namespace → NodePort de `jaeger-query` (créé par deploy_runner.sh).
+_NODE_IP = os.environ.get("V5_NODE_IP", "172.16.203.12")
+_PROM_NP = os.environ.get("V5_PROM_NODEPORT", "32700")
+_LOKI_NP = os.environ.get("V5_LOKI_NODEPORT", "32701")
+_JAEGER_NP = {"tt": "32688", "tt-b": "32690", "tt-c": "32692"}
+
+
+def nodeport_bases(ns: str = NAMESPACE) -> dict:
+    """URLs de base des 3 sources via NodePort (pas de port-forward)."""
+    jnp = _JAEGER_NP.get(ns)
+    if not jnp:
+        raise RuntimeError(f"NodePort Jaeger inconnu pour ns={ns} (compléter _JAEGER_NP)")
+    return {
+        "prometheus": f"http://{_NODE_IP}:{_PROM_NP}",
+        "jaeger": f"http://{_NODE_IP}:{jnp}",
+        "loki": f"http://{_NODE_IP}:{_LOKI_NP}",
+    }
 
 
 def pf_config(ns: str = NAMESPACE, offset: int = 0) -> dict:
@@ -134,18 +158,18 @@ def _ensure_pf(pf: dict | None = None, retries: int = 6) -> list[subprocess.Pope
 
 
 def pull_prometheus(start: float, end: float, step: int, ns: str = NAMESPACE,
-                    pf: dict | None = None) -> dict:
+                    base: str | None = None) -> dict:
     from concurrent.futures import ThreadPoolExecutor
 
-    pf = pf or pf_config(ns)
-    base = f"http://127.0.0.1:{pf['prometheus']['local']}/api/v1/query_range"
+    base = base or nodeport_bases(ns)["prometheus"]
+    url = f"{base}/api/v1/query_range"
     queries = list(_prom_queries(ns).items())
 
     def _fetch(item):
         name, q = item
         params = urllib.parse.urlencode({"query": q, "start": start, "end": end, "step": step})
         try:
-            return name, _get(f"{base}?{params}").get("data", {}).get("result", [])
+            return name, _get(f"{url}?{params}").get("data", {}).get("result", [])
         except Exception as e:
             return name, {"error": str(e)}
 
@@ -154,7 +178,7 @@ def pull_prometheus(start: float, end: float, step: int, ns: str = NAMESPACE,
 
 
 def pull_jaeger(start: float, end: float, chunk_s: int = 60, limit: int = 1500,
-                ns: str = NAMESPACE, pf: dict | None = None) -> dict:
+                ns: str = NAMESPACE, base: str | None = None) -> dict:
     """Pull Jaeger par tranches temporelles pour éviter le plafond `limit`
     par requête (200 traces/service saturait dès 5 min → biais à l'échelle).
 
@@ -166,8 +190,7 @@ def pull_jaeger(start: float, end: float, chunk_s: int = 60, limit: int = 1500,
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    pf = pf or pf_config(ns)
-    base = f"http://127.0.0.1:{pf['jaeger']['local']}/api"
+    base = (base or nodeport_bases(ns)["jaeger"]) + "/api"
     svcs = _get(f"{base}/services").get("data", []) or []
     ts_svcs = [s for s in svcs if s.startswith("ts-")]
 
@@ -204,7 +227,7 @@ def pull_jaeger(start: float, end: float, chunk_s: int = 60, limit: int = 1500,
 
 
 def pull_loki(start: float, end: float, chunk_s: int = 30, ns: str = NAMESPACE,
-              pf: dict | None = None) -> dict:
+              base: str | None = None) -> dict:
     """Pull Loki par tranches temporelles pour éviter le plafond de 5000 lignes
     qui tasserait tous les logs dans le bin le plus récent.
 
@@ -214,8 +237,7 @@ def pull_loki(start: float, end: float, chunk_s: int = 30, ns: str = NAMESPACE,
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    pf = pf or pf_config(ns)
-    base = f"http://127.0.0.1:{pf['loki']['local']}/loki/api/v1/query_range"
+    base = (base or nodeport_bases(ns)["loki"]) + "/loki/api/v1/query_range"
     q = f'{{namespace="{ns}"}}'
     # chunks temporels parallélisés (sous charge, Loki = le goulot : 60 chunks ×
     # milliers de lignes ; le séquentiel dominait les ~8 min de collecte).
@@ -262,14 +284,10 @@ def main() -> None:
     end = time.time()
     start = end - args.window
 
-    procs = [] if args.no_pf else _ensure_pf()
-    try:
-        prom = pull_prometheus(start, end, args.step)
-        jae = pull_jaeger(start, end)
-        loki = pull_loki(start, end)
-    finally:
-        for pr in procs:
-            pr.terminate()
+    # NodePort direct, sans port-forward.
+    prom = pull_prometheus(start, end, args.step)
+    jae = pull_jaeger(start, end)
+    loki = pull_loki(start, end)
 
     for name, data in [("prometheus", prom), ("jaeger", jae), ("loki", loki)]:
         with gzip.open(out / f"{name}.json.gz", "wt") as f:
