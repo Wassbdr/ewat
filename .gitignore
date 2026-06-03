@@ -10,10 +10,16 @@ build/
 data/raw/
 data/raw_new/
 data/raw_v4/
+data/raw_v5/
+data/_v5_verify_episodes/
 data/features/
 data/datasets/
 data/processed/
 data/embeddings/
+
+# Dumps bruts gzip (Prometheus/Jaeger/Loki) — contiennent des détails d'infra
+# (noms de nœuds, IPs internes, DNS, namespaces) → JAMAIS committer.
+*.json.gz
 
 # Split archives (raw_v4 parts)
 *.part_a*

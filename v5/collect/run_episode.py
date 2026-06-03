@@ -32,6 +32,11 @@ import os
 
 STEP_S = 30
 
+# Contexte kubectl épinglé sur toutes les commandes (cf. inject.py / probe.py) :
+# immunise la collecte contre une bascule de contexte (vue en session 2026-06-03).
+KCTX = os.environ.get("V5_KUBE_CONTEXT", "observit-cluster1")
+KCTX_ARGS = ["--context", KCTX]
+
 # Anatomie en steps (× STEP_S secondes). 30 min par défaut ; override possible
 # via V5_PHASES="b,pre,ramp,inj,rec" (steps) pour les tests rapides.
 PHASES = {"baseline": 12, "pre": 14, "ramp": 6, "injection": 20, "recovery": 8}
@@ -43,6 +48,44 @@ RAMP_INTENSITIES = ["low", "med", "high"]  # répartis sur la phase ramp
 
 def _run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, **kw)
+
+
+def _run_logged(cmd: list[str], tag: str, **kw) -> subprocess.CompletedProcess:
+    """Comme _run mais réaffiche stdout/stderr (les injections bug étaient
+    fire-and-forget : un échec de restauration passait silencieusement)."""
+    r = _run(cmd, **kw)
+    out, err = (r.stdout or "").strip(), (r.stderr or "").strip()
+    if out:
+        print(f"[{tag}] {out}", flush=True)
+    if err:
+        print(f"[{tag}] STDERR {err}", flush=True)
+    return r
+
+
+def _restore_bug(scenario: str, bug_svc: str | None, namespace: str, v5: Path,
+                 nsargs: list[str], faulty_image: str | None, retries: int = 2) -> bool:
+    """Restaure l'état sain APRÈS un bug, de façon vérifiée (corrige une race où
+    le delete-bug de l'épisode ne reprenait pas : déploiement laissé sur l'image
+    fautive → contamination des épisodes suivants). delete-bug → attente rollout →
+    vérif image → retry. Bloque jusqu'à restauration confirmée (ou échec loggé)."""
+    for attempt in range(retries + 1):
+        _run_logged([sys.executable, "-m", "chaos.inject", "delete-bug", scenario, *nsargs],
+                    f"{scenario}/restore", cwd=str(v5))
+        if not bug_svc:
+            return True
+        _run(["kubectl", *KCTX_ARGS, "rollout", "status", "deploy", "-n", namespace, bug_svc,
+              "--timeout=300s"])
+        if not faulty_image:  # bug non-image (ex. mem_limit) : delete-bug + rollout suffit
+            return True
+        cur = _run(["kubectl", *KCTX_ARGS, "get", "deploy", "-n", namespace, bug_svc, "-o",
+                    "jsonpath={.spec.template.spec.containers[0].image}"]).stdout.strip()
+        if cur != faulty_image:
+            print(f"[{scenario}/restore] OK image saine = {cur}", flush=True)
+            return True
+        print(f"[{scenario}/restore] image encore fautive ({cur}) — retry {attempt + 1}/{retries}",
+              flush=True)
+    print(f"[{scenario}/restore] ÉCHEC: image fautive persistante après {retries + 1} essais", flush=True)
+    return False
 
 
 def _v5_dir() -> Path:
@@ -62,17 +105,24 @@ def _category_of(scenario: str, catalog: dict) -> tuple[str, list[str], str]:
 
 
 def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
-                is_bug: bool, held_out: bool) -> dict:
+                is_bug: bool, held_out: bool, namespace: str = "tt",
+                pf_offset: int = 0) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     v5 = _v5_dir()
     import yaml
     catalog = yaml.safe_load(open(v5 / "chaos" / "catalog.yaml"))
     category, targets, _kind = _category_of(scenario, catalog)
+    nsargs = ["--namespace", namespace]  # passé à chaos.inject
 
     dur = {k: PHASES[k] * step for k in PHASES}
     total = sum(dur.values())
 
-    # charge continue
+    # Charge = mix nominal (NOMINAL_MIX) pour TOUS les épisodes, y compris bugs.
+    # Le champ catalog `load:` (charge ciblée mono-scénario) a été testé pour les
+    # bugs (2026-06-03) et ABANDONNÉ : query_and_cancel seul → couverture trace
+    # 8/41 (< plancher 18, validate FAIL), ne trace même pas voucher, et ne fait
+    # PAS émerger F1 (bug de logique async, invisible en télémétrie infra/trace
+    # quelle que soit la charge). Le mix nominal donne 29/41 tracés et passe le gate.
     load = subprocess.Popen(
         [sys.executable, "-m", "loadgen.runner", "--address", address,
          "--users", str(users), "--duration", str(total + 30), "--rps-log", "300"],
@@ -96,30 +146,33 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
             # que le pod fautif soit prêt AVANT de compter la fenêtre active,
             # sinon on ne capte que le reboot et pas la signature de la panne.
             bug_svc = targets[0] if targets else None
+            faulty_image = next((b.get("image") for b in catalog.get("bugs", [])
+                                 if b["id"] == scenario), None)
             print(f"[{scenario}] inject bug ({scenario}) sur {bug_svc} ...", flush=True)
-            _run([sys.executable, "-m", "chaos.inject", "apply-bug", scenario], cwd=str(v5))
+            _run_logged([sys.executable, "-m", "chaos.inject", "apply-bug", scenario, *nsargs],
+                        f"{scenario}/apply-bug", cwd=str(v5))
             if bug_svc:
                 print(f"[{scenario}] attente redémarrage pod fautif ...", flush=True)
-                _run(["kubectl", "rollout", "status", "deploy", "-n", "tt", bug_svc,
-                      "--timeout=600s"])
+                _run(["kubectl", *KCTX_ARGS, "rollout", "status", "deploy", "-n", namespace,
+                      bug_svc, "--timeout=600s"])
             # fenêtre active du bug (charge tourne, la panne se manifeste)
             time.sleep(dur["ramp"] + dur["injection"])
-            print(f"[{scenario}] restauration bug ...", flush=True)
-            _run([sys.executable, "-m", "chaos.inject", "delete-bug", scenario], cwd=str(v5))
+            print(f"[{scenario}] restauration bug (vérifiée) ...", flush=True)
+            _restore_bug(scenario, bug_svc, namespace, v5, nsargs, faulty_image)
         else:
             # ramp-up : intensité croissante
             ramp_each = dur["ramp"] / len(RAMP_INTENSITIES)
             for inten in RAMP_INTENSITIES:
                 print(f"[{scenario}] ramp intensité={inten} ...", flush=True)
                 _run([sys.executable, "-m", "chaos.inject", "apply", scenario,
-                      "--intensity", inten, "--duration", f"{int(ramp_each)+2}s"], cwd=str(v5))
+                      "--intensity", inten, "--duration", f"{int(ramp_each)+2}s", *nsargs], cwd=str(v5))
                 time.sleep(ramp_each)
             # injection stable high
             print(f"[{scenario}] injection high {dur['injection']}s ...", flush=True)
             _run([sys.executable, "-m", "chaos.inject", "apply", scenario,
-                  "--intensity", "high", "--duration", f"{dur['injection']}s"], cwd=str(v5))
+                  "--intensity", "high", "--duration", f"{dur['injection']}s", *nsargs], cwd=str(v5))
             time.sleep(dur["injection"])
-            _run([sys.executable, "-m", "chaos.inject", "delete", scenario], cwd=str(v5))
+            _run([sys.executable, "-m", "chaos.inject", "delete", scenario, *nsargs], cwd=str(v5))
 
         mark("injection_end")
         print(f"[{scenario}] recovery {dur['recovery']}s ...", flush=True)
@@ -129,13 +182,31 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
         load.terminate()
     t_end = time.time()
 
-    # collecte
-    print(f"[{scenario}] collecte fenêtre {total}s ...", flush=True)
-    procs = probe._ensure_pf()
+    # collecte (port-forwards namespacés + offset pour coexistence multi-runner).
+    # Délai de drainage : Jaeger all-in-one est très lent à INTERROGER tant qu'il
+    # ingère le flux de spans de la charge ; on laisse 20 s après l'arrêt de la
+    # charge pour qu'il draine avant de requêter (sinon /api/traces explose).
+    print(f"[{scenario}] drainage 20s puis collecte fenêtre {total}s (ns={namespace}) ...", flush=True)
+    time.sleep(20)
+    pf = probe.pf_config(namespace, pf_offset)
+    procs = probe._ensure_pf(pf)
     try:
-        prom = probe.pull_prometheus(t_start, t_end, step)
-        jae = probe.pull_jaeger(t_start, t_end, chunk_s=60, limit=1500)
-        loki = probe.pull_loki(t_start, t_end, chunk_s=step)
+        from concurrent.futures import ThreadPoolExecutor
+        timings = {}
+
+        def _timed(name, fn, *a, **k):
+            _t = time.time(); r = fn(*a, **k); timings[name] = round(time.time() - _t, 1); return r
+
+        # 3 pulls concurrents (port-forwards distincts). Jaeger : chunks larges
+        # (300 s) car le volume de traces est faible (~quelques centaines) → bien
+        # sous le plafond 1500/chunk, et ÷5 le nombre d'appels (le coût Jaeger est
+        # dominé par le nombre d'appels, pas le volume).
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            f_prom = ex.submit(_timed, "prom", probe.pull_prometheus, t_start, t_end, step, ns=namespace, pf=pf)
+            f_jae = ex.submit(_timed, "jaeger", probe.pull_jaeger, t_start, t_end, 300, 1500, namespace, pf)
+            f_loki = ex.submit(_timed, "loki", probe.pull_loki, t_start, t_end, step, namespace, pf)
+            prom, jae, loki = f_prom.result(), f_jae.result(), f_loki.result()
+        print(f"[{scenario}] pull timings: {timings}", flush=True)
     finally:
         for p in procs:
             p.terminate()
@@ -186,9 +257,11 @@ def main() -> None:
     p.add_argument("--step", type=int, default=STEP_S)
     p.add_argument("--bug", action="store_true")
     p.add_argument("--held-out", action="store_true")
+    p.add_argument("--namespace", default="tt")
+    p.add_argument("--pf-offset", type=int, default=0, help="décalage ports locaux (multi-runner)")
     args = p.parse_args()
     res = run_episode(args.scenario, Path(args.out), args.address, args.users,
-                      args.step, args.bug, args.held_out)
+                      args.step, args.bug, args.held_out, args.namespace, args.pf_offset)
     print(json.dumps(res, indent=2))
 
 

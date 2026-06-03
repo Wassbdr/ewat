@@ -171,6 +171,46 @@ servent à calibrer ε_drift (étape 0 MMD-RFF) et à falsifier H2.
 Voir `docs/notes/synthese_collecte_dataset.md` pour le détail des évolutions
 et des décisions de conception.
 
+## EWAT v5 — collecte Train Ticket (prête au lancement)
+
+À partir de v5, la collecte bascule sur **Train Ticket** (FudanSELab, 41 microservices
+Spring Cloud) au lieu d'Online Boutique — système plus riche, base publique, bugs réels
+documentés (F1–F22). Tout est dans `v5/` (loadgen, chaos, collect, deploy). Schéma
+**S(t) ∈ ℝ^{T×41×18}** (v5.1). Runbook complet : [`v5/LAUNCH.md`](v5/LAUNCH.md).
+
+Deux namespaces (`tt`, `tt-b`) = 2 runners parallèles (~720 ép, ~11–13 j). Le contexte
+kubectl est **épinglé** (`V5_KUBE_CONTEXT`, défaut `observit-cluster1`) avec préflight bloquant.
+
+```bash
+# 0. Pré-vol
+kubectl config current-context                          # observit-cluster1 (sinon export V5_KUBE_CONTEXT=...)
+kubectl get pods -n tt   --no-headers | grep -c 1/1     # 64
+kubectl get pods -n tt-b --no-headers | grep -c 1/1     # 64
+
+# 1. COLLECTE — 2 runners en parallèle (2 terminaux/tmux), Phase 1 (dumps bruts)
+cd v5
+PYTHONPATH=../src python -m collect.run_campaign \
+  --namespace tt   --address http://172.16.203.12:32677 \
+  --rep-start 0  --rep-end 15 --reps 30 --pf-offset 0 \
+  --out-root ../data/raw_v5 --users 12 --reset-every 10 --held-out-cap 28
+PYTHONPATH=../src python -m collect.run_campaign \
+  --namespace tt-b --address http://172.16.203.12:32679 \
+  --rep-start 15 --rep-end 30 --reps 30 --pf-offset 10 \
+  --out-root ../data/raw_v5 --users 12 --reset-every 10 --held-out-cap 28
+# reprise = relancer la même commande (idempotent via episode_meta.json)
+
+# 2. BUILD offline (Phase 2) — rejouable, en parallèle de la collecte
+PYTHONPATH=../src python -m collect.build_features_v5 --raw-root ../data/raw_v5 --workers 4
+
+# 3. ASSEMBLAGE + VALIDATION (Phase 3) — collecte finie
+cd ..
+PYTHONPATH=src python scripts/validate_v5.py --features-root data/raw_v5
+PYTHONPATH=src python -m scripts.assemble_dataset --features-root data/raw_v5 \
+  --output data/datasets/ewat_v5 --stratified --train-ratio 0.7 --val-ratio 0.15
+PYTHONPATH=src python scripts/enforce_heldout_v5.py --dataset data/datasets/ewat_v5
+PYTHONPATH=src python scripts/validate_v5.py --dataset data/datasets/ewat_v5
+```
+
 ## Reproduction soutenance (ewat_v3)
 
 Prérequis : dataset `data/datasets/ewat_v3`, features `data/features/v3`.

@@ -51,7 +51,8 @@ F3/F5/F7/F12 à builder depuis les branches `ts-error-*-Fxx` (maven+docker).
   Prometheus = `monitoring-metrics/prometheus-server` (cAdvisor **et**
   kube-state-metrics → restart_count). Loki paginé par tranches de `step` s
   (évite le plafond 5000 lignes).
-- `build_features_tt.py` : dumps → S(t) ∈ ℝ^{41×T×17} (jeu Lean enrichi).
+- `build_features_v5.py` : dumps → contrat v4 complet (S(t) ∈ ℝ^{T×41×18} v5.1 +
+  mask + G(t) + labels) — Phase 2 OFFLINE, batch parallèle `--raw-root --workers N`.
 - `run_episode.py` : **orchestrateur** — charge continue + baseline → injection
   → recovery + collecte + features + labels régime, en un appel.
 

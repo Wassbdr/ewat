@@ -1,10 +1,26 @@
 # EWAT — État courant du projet
 
-_Mis à jour : 2026-05-27 (Phases H-K — Multi-seed validation v4_strat, 10 graines, chiffres consolidés ; défense + roadmap actifs)_
+_Mis à jour : 2026-06-03 (v5 — pipeline collecte Train Ticket prêt + vérifié, GO lancement VM ; analyses H1-K sur v4_strat)_
 
 > Résultats détaillés et interprétation scientifique → [docs/results.md](docs/results.md)
 > **Évolution post-stage planifiée → [ROADMAP.md](ROADMAP.md)** (axes A: couplage onto/pred, B: précursion robuste, C: open-set, D: déploiement)
 > Mémo défense (1 page A4) → [docs/defense_memo.md](docs/defense_memo.md)
+
+---
+
+## v5 — Collecte Train Ticket : PRÊTE AU LANCEMENT (2026-06-03)
+
+Pivot v5 : abandon d'Online Boutique → **Train Ticket** (FudanSELab, 41 microservices Spring Cloud).
+Pipeline complet construit, vérifié end-to-end et durci. **GO collecte sur la VM** via [`v5/LAUNCH.md`](v5/LAUNCH.md).
+
+- **Déploiement** : `tt` + `tt-b` (64/64 chacun), k8s-with-jaeger + mongo:4.4 + jaeger:1.53 + JVM (jmx javaagent sans rebuild).
+- **Schéma S(t) v5.1 = ℝ^{T×41×18}** : M[0-9] cpu,ram,latency_p99,error_rate,net,disk_io,**mem_limit_ratio,jvm_heap_ratio,jvm_gc_util,jvm_threads_blocked** ; T[10-13] abnormal_span_rate,trace_depth,fan_out,latency_cv ; L[14-17] log_error_rate,restart_count,semantic_anomaly(SBERT),lexical_entropy.
+- **Pipeline séparé** Record→Build→Assemble (`run_campaign` → dumps ; `build_features_v5 --raw-root` offline ; `validate_v5` + `assemble_dataset --stratified` + `enforce_heldout_v5`).
+- **Catalogue** : 22 scénarios chaos (15 mono + 4 compo + 3 held-out) + bugs F1/F3. 2 runners parallèles → ~720 ép en ~11-13 j.
+- **Vérif data pré-lancement (6 épisodes réels)** : chaos localisé (cpu ×2.0 sur cible), régimes propres, G(t) dynamique, 0 NaN imputé, validate `[OK]`. error_rate/abnormal_span vivants, JVM + semantic actifs.
+- **Bugs corrigés en vérif** : (1) restauration F1 (swap image) cassée → `run_episode._restore_bug` vérifié+retry ; (2) **contexte kubectl non épinglé** → `--context` partout + préflight bloquant (`V5_KUBE_CONTEXT`). Feature morte `oom_events`→`mem_limit_ratio` (cAdvisor ne surface pas l'OOM sur ce cluster).
+- **Bugs réels** : **F3 (OOM) = headline détectable** (restart_count+ram_util+heap) ; **F1 = négatif honnête** (bug logique silencieux, invisible en télémétrie — prouvé 107 ops/0 err/0 log).
+- **Objectif** : dataset potentiellement **public** (base TT/Chaos Mesh ouverte) — conditions : autorisation Devoteam + sanitization des bruts (voir mémoire projet).
 
 ---
 

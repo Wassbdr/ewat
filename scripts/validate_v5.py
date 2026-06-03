@@ -1,7 +1,7 @@
 """EWAT v5 — porte de validation pour les épisodes/dataset Train Ticket.
 
-Profil v5 (N=41, contrat v4-conforme, schéma feature v5). Vérifie par épisode :
-  - shape signal (T, N, 17), adjacency (T, N, N, 3), mask cohérent
+Profil v5 (N=41, contrat v4-conforme, schéma feature v5.1 = 18 features). Vérifie par épisode :
+  - shape signal (T, N, 18), adjacency (T, N, N, 3), mask cohérent
   - N == nombre de services canoniques (services.json)
   - 0 % NaN dans signal.npz (imputé) ; NaN brut (signal_raw) < seuil
   - G(t) non vide : ≥ min_graph_fraction des steps ont ≥ 1 arête

@@ -802,3 +802,70 @@ HermiT cohérent en 0.61s — 8/10 critères de validation atteints
 8. **Infrastructure sweep = investissement rentable** — les 54 runs (clustering+siamese+precursor)
    auraient pris plusieurs semaines manuellement. Avec `run_sweep.py` et skip-existing, ils ont
    tourné en ~6h de compute CPU et ont continué après interruptions de session sans perte.
+
+---
+
+## Phase — Pivot Train Ticket (v5, fin mai – début juin 2026)
+
+### Motivation
+
+Après les analyses multi-graines sur ewat_v4 (Online Boutique, N=6), un constat de fond :
+le dataset était **trop petit et trop pauvre** (6 services, épisodes courts, K instable
+n_train=270, H3 circulaire). Plutôt qu'un énième fix incrémental, décision d'attaquer le
+choix fondateur — **changer de système** : pivot vers **Train Ticket** (FudanSELab, 41
+microservices Spring Cloud, base publique, **bugs réels documentés F1–F22** = gold standard
+de la littérature RCA). Online Boutique abandonné pour v5.
+
+### Construction du pipeline v5 (`v5/`)
+
+- **Déploiement TT** : manifests `k8s-with-jaeger` + fixes obligatoires (mongo:4.4 car la v7
+  supprime OP_QUERY ; jaeger:1.53 car la v2 supprime l'agent UDP). Deux runners `tt` + `tt-b`
+  (64/64) pour collecte parallèle. JVM instrumentée **sans rebuild** (jmx_prometheus_javaagent
+  via initContainer + JAVA_TOOL_OPTIONS, scrapé par pod-annotation discovery).
+- **Schéma S(t) v5.1 = ℝ^{T×41×18}** : enrichi vs v3/v4 (3 features JVM ajoutées, redondances
+  supprimées : span_dur_p99≡latency_p99, retry_rate mort). Sourcing natif (Jaeger UDP + cAdvisor
+  + promtail) plutôt qu'OTel (qui causait 25% NaN en v4).
+- **Pipeline séparé Record→Build→Assemble** : `run_campaign` (collecte → dumps + episode_meta),
+  `build_features_v5 --raw-root` (build offline parallèle, rejouable), `validate_v5` +
+  `assemble_dataset --stratified` + `enforce_heldout_v5`. Réutilise les modules matures
+  (`src/graph/`, `src/telemetry/extractors/`).
+- **Modèle de panne hybride** : 22 scénarios Chaos Mesh + bugs réels F (injection par swap
+  d'image F1 / patch mem-limit F3).
+
+### Vérification pré-lancement — la rigueur paie (2026-06-03)
+
+Avant de lancer une campagne de ~720 épisodes sur ~13 jours, vérification end-to-end sur
+**6 épisodes réels** (collect→build→validate→inspection). Cette passe a sorti des bugs
+qu'aucune relecture de code n'aurait montrés :
+
+1. **Feature morte `oom_events`** : `container_oom_events_total` lit 0 partout sur le cluster
+   (cAdvisor ne le surface pas). Remplacée par `mem_limit_ratio = working_set/limite` ∈ [0,1]
+   → vivante sur 41/41 services, monte sous pression mémoire.
+2. **Restauration bug F1 cassée** : `run_episode` lançait `delete-bug` en fire-and-forget →
+   après un épisode F1, le service restait sur l'image fautive → **contamination silencieuse
+   de tous les épisodes suivants**. Corrigé : restauration loggée + attente rollout + vérif
+   image + retry.
+3. **Contexte kubectl non épinglé** : le contexte a basculé spontanément sur un autre cluster
+   en cours de session → un `delete-bug` a tapé le mauvais cluster en silence. Durci :
+   `--context` épinglé sur tout le chemin de collecte (`V5_KUBE_CONTEXT`) + préflight bloquant.
+4. **Hypothèse réfutée** : la charge ciblée (`load:` par bug) testée puis abandonnée — elle
+   cassait la couverture trace (8/41 < 18) sans rien gagner. Retour au mix nominal.
+
+### Limite assumée — F1 télémétrie-invisible
+
+F1 (bug de logique async : séquencement drawback/reset order status) est **silencieux** :
+107 opérations sous charge, 0 erreur HTTP, 0 ligne d'erreur dans les logs voucher+order.
+Un bug de **correction de données** ne se voit pas en télémétrie passive (métriques/traces/logs)
+— il faudrait un oracle métier. Conséquence honnête : **F3 (OOM, visible) = bug réel headline ;
+F1 = négatif honnête** marquant la frontière de la détection télémétrique (cohérent Fu et al.).
+
+### Leçons (v5)
+
+9. **Attaquer le choix fondateur plutôt que le réglage** — passer de Online Boutique à Train
+   Ticket résout d'un coup plusieurs limites (taille, richesse, bugs réels) qu'aucun fix
+   incrémental n'aurait corrigées.
+10. **Vérifier sur de la vraie data avant une longue campagne** — les 4 bugs ci-dessus
+    (feature morte, restauration cassée, contexte non épinglé, hypothèse fausse) étaient tous
+    invisibles à la relecture et n'ont été trouvés qu'en collectant 6 épisodes réels.
+11. **Un négatif honnête > un positif gonflé** — F1 invisible est documenté comme tel plutôt
+    que maquillé ; F3 porte le résultat positif. La crédibilité tient à l'honnêteté des limites.

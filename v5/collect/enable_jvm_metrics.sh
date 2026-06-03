@@ -5,7 +5,7 @@
 # pour que monitoring-metrics/prometheus-server scrape automatiquement.
 # Rollout batché maxSurge=0 (pas de doublement de pods) pour ménager le cluster.
 set +e
-NS=tt
+NS=${1:-tt}   # namespace cible (défaut tt ; ex: tt-b pour le 2e runner)
 JAR_URL="https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.17.2/jmx_prometheus_javaagent-0.17.2.jar"
 INIT_IMG="codewisdom/ts-order-service-with-jaeger:v1"  # image avec wget+java, déjà sur les nœuds
 LOG=/tmp/v5_jvm_rollout.log

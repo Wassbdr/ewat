@@ -5,17 +5,19 @@ les modules matures du repo (graphe + indices de trace), de sorte que
 `scripts/assemble_dataset.py` et `scripts/validate_dataset.py` fonctionnent
 sans modification.
 
-Sourcing TT (pas d'Istio/OTel HTTP → latence/erreur viennent des traces) :
-  M[0] cpu_util, M[1] ram_util          ← cAdvisor (dump Prometheus)
-  M[2] latency_p99                       ← SpanLatencyIndex (traces)
-  M[3] error_rate_http                   ← SpanErrorRateIndex (traces)
-  M[4] net_sat, M[5] disk_io             ← cAdvisor
-  M[6] oom_events (ex-queue_depth)       ← cAdvisor container_oom_events
-  T[7..12]                               ← TraceCollector (modules existants)
-  L[13] log_error_rate                   ← Loki
-  L[14] restart_count (ex-log_warn_rate) ← kube-state-metrics (dump Prometheus)
-  L[15] semantic_anomaly                 ← placeholder 0.0 (SentenceBERT en aval)
-  L[16] lexical_entropy                  ← Loki
+Sourcing TT v5.1, 18 features (pas d'Istio/OTel HTTP → latence/erreur via traces) :
+  M[0] cpu_util, M[1] ram_util            ← cAdvisor (dump Prometheus)
+  M[2] latency_p99                        ← SpanLatencyIndex (traces)
+  M[3] error_rate_http                    ← SpanErrorRateIndex (traces)
+  M[4] net_sat, M[5] disk_io              ← cAdvisor
+  M[6] mem_limit_ratio                    ← cAdvisor working_set/limite (saturation)
+  M[7] jvm_heap_ratio, M[8] jvm_gc_util,
+  M[9] jvm_threads_blocked                ← jmx_prometheus_javaagent (annotations)
+  T[10] abnormal_span_rate, T[11] trace_depth,
+  T[12] fan_out, T[13] latency_cv         ← TraceCollector (modules existants)
+  L[14] log_error_rate, L[17] lexical_entropy  ← Loki
+  L[15] restart_count                     ← kube-state-metrics (dump Prometheus)
+  L[16] semantic_anomaly                  ← SentenceBERT (collect/semantic.py)
 G(t) ← compute_graph_for_window (volume, latence médiane, taux d'erreur).
 
 Sortie : signal.npz, signal_mask.npz, adjacency.npz, labels.parquet,
@@ -64,10 +66,12 @@ except Exception:  # diagnostics optionnel
 # Schéma v5.1 (18 features). Évolution vs v5.0 : suppression de span_dur_p99
 # (≡ latency_p99, ρ=1.0) et retry_rate (structurellement mort sur TT) ; ajout de
 # 3 features JVM (le signal manquant pour un système Spring Boot + bugs F).
+# M[6] : mem_limit_ratio remplace oom_events (container_oom_events_total lit 0
+# partout sur observit-cluster1 — vérifié 2026-06-02 ; saturation mémoire utile).
 FEATURE_NAMES = [
     # M(t) infra + JVM (0-9)
     "cpu_util", "ram_util", "latency_p99", "error_rate_http", "net_sat",
-    "disk_io", "oom_events", "jvm_heap_ratio", "jvm_gc_util", "jvm_threads_blocked",
+    "disk_io", "mem_limit_ratio", "jvm_heap_ratio", "jvm_gc_util", "jvm_threads_blocked",
     # T(t) traces (10-13)
     "abnormal_span_rate", "trace_depth", "fan_out", "latency_cv",
     # L(t) logs (14-17)
@@ -97,7 +101,7 @@ def _metrics_cadvisor(prom: dict, services: list[str], idx: dict, t_grid, step):
     T = len(t_grid) - 1
     t0 = t_grid[0]
     out = {f: np.full((len(services), T), np.nan, np.float32)
-           for f in ["cpu_util", "ram_util", "net_sat", "disk_io", "oom_events",
+           for f in ["cpu_util", "ram_util", "net_sat", "disk_io", "mem_limit",
                      "restart_count", "jvm_heap_used", "jvm_heap_max",
                      "jvm_gc_util", "jvm_threads_blocked"]}
 
@@ -122,7 +126,7 @@ def _metrics_cadvisor(prom: dict, services: list[str], idx: dict, t_grid, step):
     accum(["ram"], "ram_util", "max")
     accum(["net_rx", "net_tx"], "net_sat", "sum")
     accum(["fs_reads", "fs_writes"], "disk_io", "sum")
-    accum(["oom"], "oom_events", "sum")
+    accum(["mem_limit"], "mem_limit", "max")
     accum(["restarts"], "restart_count", "max")
     # JVM (jmx_prometheus_javaagent) — saturation → max
     accum(["jvm_heap_used"], "jvm_heap_used", "max")
@@ -133,6 +137,12 @@ def _metrics_cadvisor(prom: dict, services: list[str], idx: dict, t_grid, step):
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = out["jvm_heap_used"] / out["jvm_heap_max"]
     out["jvm_heap_ratio"] = np.clip(ratio, 0.0, 1.0).astype(np.float32)
+    # mem_limit_ratio = working_set / limite conteneur ∈ [0,1] (saturation mémoire).
+    # Remplace oom_events (nul sur ce cluster). Capte memory_stress/pressure (numérateur
+    # monte) et F3 (dénominateur abaissé 500→250Mi → ratio → 1.0).
+    with np.errstate(divide="ignore", invalid="ignore"):
+        mem_ratio = out["ram_util"] / out["mem_limit"]
+    out["mem_limit_ratio"] = np.clip(mem_ratio, 0.0, 1.0).astype(np.float32)
     return out
 
 
@@ -175,7 +185,7 @@ def impute(S, mask, names):
     S = S.copy()
     # gauges = saturation (forward-fill si scrape manqué). jvm_threads_blocked est
     # un compteur transitoire (0 = pas de contention) → NaN→0, pas de forward-fill.
-    gauges = {"cpu_util", "ram_util", "jvm_heap_ratio"}
+    gauges = {"cpu_util", "ram_util", "jvm_heap_ratio", "mem_limit_ratio"}
     for fi, fn in enumerate(names):
         plane = S[:, :, fi]  # (T, N)
         if fn in gauges:
@@ -233,7 +243,7 @@ def build(dump: Path, services: list[str], step: int, aliases: dict | None = Non
     L, log_buckets = _logs(loki, services, idx, t_grid, step)
 
     # M cAdvisor + JVM (transpose service×T → T×service)
-    for fname in ["cpu_util", "ram_util", "net_sat", "disk_io", "oom_events",
+    for fname in ["cpu_util", "ram_util", "net_sat", "disk_io", "mem_limit_ratio",
                   "restart_count", "jvm_heap_ratio", "jvm_gc_util", "jvm_threads_blocked"]:
         S[:, :, FEATURE_NAMES.index(fname)] = M[fname].T
     for fname in ["log_error_rate", "lexical_entropy"]:

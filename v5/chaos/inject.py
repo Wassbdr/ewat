@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,13 @@ from pathlib import Path
 import yaml
 
 CATALOG = Path(__file__).parent / "catalog.yaml"
+
+# Contexte kubectl ÉPINGLÉ sur toutes les commandes (chemin d'échec silencieux :
+# si le contexte courant bascule, inject taperait le mauvais cluster sans erreur
+# → chaos appliqué ailleurs / pas appliqué → épisodes corrompus en douce).
+# Configurable (V5_KUBE_CONTEXT) pour la VM ; défaut = cluster de prod EWAT.
+_KCTX = os.environ.get("V5_KUBE_CONTEXT", "observit-cluster1")
+_KC = ["kubectl", "--context", _KCTX]
 
 
 def _load() -> dict:
@@ -115,7 +123,7 @@ def _kubectl(action: str, manifests: list[dict]) -> None:
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
         f.write(doc)
         path = f.name
-    cmd = ["kubectl", action, "-f", path]
+    cmd = [*_KC, action, "-f", path]
     if action == "delete":
         cmd.append("--wait=false")
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -167,7 +175,7 @@ def _state_path(bug_id: str) -> str:
 
 
 def _kget(ns: str, svc: str, jsonpath: str) -> str:
-    r = subprocess.run(["kubectl", "get", "deploy", "-n", ns, svc, "-o",
+    r = subprocess.run([*_KC, "get", "deploy", "-n", ns, svc, "-o",
                         "jsonpath=" + jsonpath], capture_output=True, text=True)
     return r.stdout.strip()
 
@@ -191,7 +199,7 @@ def cmd_apply_bug(cat: dict, bug_id: str) -> None:
         json.dump({"mode": "image", "service": svc, "healthy": healthy},
                   open(_state_path(bug_id), "w"))
         print(f"{bug_id} [image] {svc}: {healthy} -> {b['image']}")
-        subprocess.run(["kubectl", "set", "image", "-n", ns,
+        subprocess.run([*_KC, "set", "image", "-n", ns,
                         f"deploy/{svc}", f"{svc}={b['image']}"], check=False)
     elif mode == "mem_limit":
         healthy = _kget(ns, svc, "{.spec.template.spec.containers[0].resources.limits.memory}") or "500Mi"
@@ -201,7 +209,7 @@ def cmd_apply_bug(cat: dict, bug_id: str) -> None:
         print(f"{bug_id} [mem_limit] {svc}: {healthy} -> {faulty}")
         patch = {"spec": {"template": {"spec": {"containers": [
             {"name": svc, "resources": {"limits": {"memory": faulty}}}]}}}}
-        subprocess.run(["kubectl", "patch", "deploy", "-n", ns, svc, "--type=strategic",
+        subprocess.run([*_KC, "patch", "deploy", "-n", ns, svc, "--type=strategic",
                         "-p", json.dumps(patch)], check=False)
     else:
         raise SystemExit(f"{bug_id}: mode inconnu {mode}")
@@ -222,13 +230,13 @@ def cmd_delete_bug(cat: dict, bug_id: str, healthy_override: str | None = None) 
     if mode == "image":
         if not healthy:
             raise SystemExit(f"{bug_id}: image saine inconnue (pas d'état sauvegardé).")
-        subprocess.run(["kubectl", "set", "image", "-n", ns,
+        subprocess.run([*_KC, "set", "image", "-n", ns,
                         f"deploy/{svc}", f"{svc}={healthy}"], check=False)
     elif mode == "mem_limit":
         healthy = healthy or "500Mi"
         patch = {"spec": {"template": {"spec": {"containers": [
             {"name": svc, "resources": {"limits": {"memory": healthy}}}]}}}}
-        subprocess.run(["kubectl", "patch", "deploy", "-n", ns, svc, "--type=strategic",
+        subprocess.run([*_KC, "patch", "deploy", "-n", ns, svc, "--type=strategic",
                         "-p", json.dumps(patch)], check=False)
     print(f"{bug_id}: restauré -> {healthy}")
 
@@ -238,11 +246,15 @@ def main() -> None:
     p = argparse.ArgumentParser(description="EWAT v5 chaos injector")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list")
-    a = sub.add_parser("apply"); a.add_argument("name"); a.add_argument("--intensity", default="high"); a.add_argument("--duration", default="600s")
-    d = sub.add_parser("delete"); d.add_argument("name")
-    ab = sub.add_parser("apply-bug"); ab.add_argument("bug_id")
-    db = sub.add_parser("delete-bug"); db.add_argument("bug_id"); db.add_argument("healthy_image", nargs="?", default=None)
+    a = sub.add_parser("apply"); a.add_argument("name"); a.add_argument("--intensity", default="high"); a.add_argument("--duration", default="600s"); a.add_argument("--namespace", default=None)
+    d = sub.add_parser("delete"); d.add_argument("name"); d.add_argument("--namespace", default=None)
+    ab = sub.add_parser("apply-bug"); ab.add_argument("bug_id"); ab.add_argument("--namespace", default=None)
+    db = sub.add_parser("delete-bug"); db.add_argument("bug_id"); db.add_argument("healthy_image", nargs="?", default=None); db.add_argument("--namespace", default=None)
     args = p.parse_args()
+
+    # override du namespace cible (multi-runner) — toutes les fonctions lisent cat["namespace"]
+    if getattr(args, "namespace", None):
+        cat["namespace"] = args.namespace
 
     if args.cmd == "list":
         cmd_list(cat)

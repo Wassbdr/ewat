@@ -19,43 +19,60 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import os
 import subprocess
 import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-NAMESPACE = "tt"
+NAMESPACE = "tt"  # défaut mono-runner
 
-# Endpoints via port-forward local (ouverts par _ensure_pf)
-# Prometheus = monitoring-metrics/prometheus-server : couvre cAdvisor ET
-# kube-state-metrics (restart_count) — source unique pour tout M(t).
-PF = {
-    "prometheus": {"svc": "svc/prometheus-server", "ns": "monitoring-metrics", "local": 19090, "remote": 80},
-    "jaeger": {"svc": "svc/jaeger-query", "ns": "tt", "local": 16686, "remote": 16686},
-    "loki": {"svc": "svc/loki", "ns": "monitoring-metrics", "local": 13100, "remote": 3100},
-}
+# Contexte kubectl épinglé sur les port-forwards (immunise contre une bascule de
+# contexte : un pf vers le mauvais cluster échouerait silencieusement). Cf. inject.py.
+_KCTX = os.environ.get("V5_KUBE_CONTEXT", "observit-cluster1")
 
-# Métriques M(t) — cAdvisor / kube-state (les 7 features infra du jeu Lean enrichi)
-PROM_QUERIES = {
-    "cpu": f'rate(container_cpu_usage_seconds_total{{namespace="{NAMESPACE}",container!=""}}[2m])',
-    "ram": f'container_memory_working_set_bytes{{namespace="{NAMESPACE}",container!=""}}',
-    "net_rx": f'rate(container_network_receive_bytes_total{{namespace="{NAMESPACE}"}}[2m])',
-    "net_tx": f'rate(container_network_transmit_bytes_total{{namespace="{NAMESPACE}"}}[2m])',
-    "fs_reads": f'rate(container_fs_reads_bytes_total{{namespace="{NAMESPACE}",container!=""}}[2m])',
-    "fs_writes": f'rate(container_fs_writes_bytes_total{{namespace="{NAMESPACE}",container!=""}}[2m])',
-    "blkio": f'rate(container_blkio_device_usage_total{{namespace="{NAMESPACE}"}}[2m])',
-    "oom": f'increase(container_oom_events_total{{namespace="{NAMESPACE}"}}[2m])',
-    "restarts": f'kube_pod_container_status_restarts_total{{namespace="{NAMESPACE}"}}',
-    # JVM (via jmx_prometheus_javaagent scrapé par pod-annotation discovery)
-    "jvm_heap_used": f'jvm_memory_bytes_used{{namespace="{NAMESPACE}",area="heap"}}',
-    "jvm_heap_max": f'jvm_memory_bytes_max{{namespace="{NAMESPACE}",area="heap"}}',
-    "jvm_gc_sum": f'rate(jvm_gc_collection_seconds_sum{{namespace="{NAMESPACE}"}}[2m])',
-    # threads BLOQUÉS (contention) plutôt que total : le total corrèle à 0.96 avec
-    # ram_util (redondant), les bloqués spike sous épuisement pool/verrous (F5) et
-    # ne corrèlent pas avec la ram.
-    "jvm_threads_blocked": f'jvm_threads_state{{namespace="{NAMESPACE}",state="BLOCKED"}}',
-}
+
+def pf_config(ns: str = NAMESPACE, offset: int = 0) -> dict:
+    """Config des 3 port-forwards pour un runner.
+
+    Prometheus & Loki sont partagés (`monitoring-metrics`) ; Jaeger est
+    par-namespace (`<ns>/jaeger-query`). Les ports locaux sont décalés de
+    `offset` pour que PLUSIEURS runners coexistent sur le même poste sans
+    collision (tt: offset 0 → 19090/16686/13100 ; tt-b: offset 10 → 19100/...).
+    """
+    return {
+        "prometheus": {"svc": "svc/prometheus-server", "ns": "monitoring-metrics",
+                       "local": 19090 + offset, "remote": 80},
+        "jaeger": {"svc": "svc/jaeger-query", "ns": ns,
+                   "local": 16686 + offset, "remote": 16686},
+        "loki": {"svc": "svc/loki", "ns": "monitoring-metrics",
+                 "local": 13100 + offset, "remote": 3100},
+    }
+
+
+def _prom_queries(ns: str = NAMESPACE) -> dict:
+    """Requêtes M(t) (cAdvisor + kube-state + JVM) filtrées sur `ns`."""
+    return {
+        "cpu": f'rate(container_cpu_usage_seconds_total{{namespace="{ns}",container!=""}}[2m])',
+        "ram": f'container_memory_working_set_bytes{{namespace="{ns}",container!=""}}',
+        "net_rx": f'rate(container_network_receive_bytes_total{{namespace="{ns}"}}[2m])',
+        "net_tx": f'rate(container_network_transmit_bytes_total{{namespace="{ns}"}}[2m])',
+        "fs_reads": f'rate(container_fs_reads_bytes_total{{namespace="{ns}",container!=""}}[2m])',
+        "fs_writes": f'rate(container_fs_writes_bytes_total{{namespace="{ns}",container!=""}}[2m])',
+        "blkio": f'rate(container_blkio_device_usage_total{{namespace="{ns}"}}[2m])',
+        # saturation mémoire = working_set / limite conteneur (cf. build_features_v5).
+        # Remplace container_oom_events_total, qui lit 0 partout sur observit-cluster1
+        # (cAdvisor/kernel ne surface pas ce compteur — vérifié 2026-06-02).
+        "mem_limit": f'container_spec_memory_limit_bytes{{namespace="{ns}",container!=""}}',
+        "restarts": f'kube_pod_container_status_restarts_total{{namespace="{ns}"}}',
+        # JVM (jmx_prometheus_javaagent scrapé par pod-annotation discovery)
+        "jvm_heap_used": f'jvm_memory_bytes_used{{namespace="{ns}",area="heap"}}',
+        "jvm_heap_max": f'jvm_memory_bytes_max{{namespace="{ns}",area="heap"}}',
+        "jvm_gc_sum": f'rate(jvm_gc_collection_seconds_sum{{namespace="{ns}"}}[2m])',
+        # threads BLOQUÉS (contention) — voir build_features_v5 (ρ ram_util faible).
+        "jvm_threads_blocked": f'jvm_threads_state{{namespace="{ns}",state="BLOCKED"}}',
+    }
 
 
 def _get(url: str, timeout: float = 30) -> dict:
@@ -72,7 +89,7 @@ _READY_URL = {
 
 def _pf_one(cfg: dict) -> subprocess.Popen:
     return subprocess.Popen(
-        ["kubectl", "-n", cfg["ns"], "port-forward", cfg["svc"],
+        ["kubectl", "--context", _KCTX, "-n", cfg["ns"], "port-forward", cfg["svc"],
          f'{cfg["local"]}:{cfg["remote"]}'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -86,15 +103,17 @@ def _pf_ready(name: str, cfg: dict, timeout: float = 4) -> bool:
         return False
 
 
-def _ensure_pf(retries: int = 3) -> list[subprocess.Popen]:
-    """Ouvre les 3 port-forwards et VÉRIFIE leur connectivité avant de rendre la
-    main (cause racine d'un blocage précédent : un pf mort + requêtes
-    séquentielles bloquaient >1h). Relance un pf qui ne répond pas."""
+def _ensure_pf(pf: dict | None = None, retries: int = 3) -> list[subprocess.Popen]:
+    """Ouvre les 3 port-forwards (config `pf`, défaut = pf_config() mono-runner)
+    et VÉRIFIE leur connectivité avant de rendre la main (cause racine d'un
+    blocage précédent : un pf mort + requêtes séquentielles bloquaient >1h).
+    Relance un pf qui ne répond pas."""
+    pf = pf or pf_config()
     procs: dict[str, subprocess.Popen] = {}
-    for name, cfg in PF.items():
+    for name, cfg in pf.items():
         procs[name] = _pf_one(cfg)
     time.sleep(6)
-    for name, cfg in PF.items():
+    for name, cfg in pf.items():
         for _ in range(retries):
             if _pf_ready(name, cfg):
                 break
@@ -109,21 +128,28 @@ def _ensure_pf(retries: int = 3) -> list[subprocess.Popen]:
     return list(procs.values())
 
 
-def pull_prometheus(start: float, end: float, step: int) -> dict:
-    base = f"http://127.0.0.1:{PF['prometheus']['local']}/api/v1/query_range"
-    out = {}
-    for name, q in PROM_QUERIES.items():
+def pull_prometheus(start: float, end: float, step: int, ns: str = NAMESPACE,
+                    pf: dict | None = None) -> dict:
+    from concurrent.futures import ThreadPoolExecutor
+
+    pf = pf or pf_config(ns)
+    base = f"http://127.0.0.1:{pf['prometheus']['local']}/api/v1/query_range"
+    queries = list(_prom_queries(ns).items())
+
+    def _fetch(item):
+        name, q = item
         params = urllib.parse.urlencode({"query": q, "start": start, "end": end, "step": step})
         try:
-            res = _get(f"{base}?{params}")
-            series = res.get("data", {}).get("result", [])
-            out[name] = series
+            return name, _get(f"{base}?{params}").get("data", {}).get("result", [])
         except Exception as e:
-            out[name] = {"error": str(e)}
-    return out
+            return name, {"error": str(e)}
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        return {name: series for name, series in ex.map(_fetch, queries)}
 
 
-def pull_jaeger(start: float, end: float, chunk_s: int = 60, limit: int = 1500) -> dict:
+def pull_jaeger(start: float, end: float, chunk_s: int = 60, limit: int = 1500,
+                ns: str = NAMESPACE, pf: dict | None = None) -> dict:
     """Pull Jaeger par tranches temporelles pour éviter le plafond `limit`
     par requête (200 traces/service saturait dès 5 min → biais à l'échelle).
 
@@ -135,7 +161,8 @@ def pull_jaeger(start: float, end: float, chunk_s: int = 60, limit: int = 1500) 
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    base = f"http://127.0.0.1:{PF['jaeger']['local']}/api"
+    pf = pf or pf_config(ns)
+    base = f"http://127.0.0.1:{pf['jaeger']['local']}/api"
     svcs = _get(f"{base}/services").get("data", []) or []
     ts_svcs = [s for s in svcs if s.startswith("ts-")]
 
@@ -158,7 +185,10 @@ def pull_jaeger(start: float, end: float, chunk_s: int = 60, limit: int = 1500) 
             return []
 
     merged: dict[str, dict] = {}  # traceID -> trace object (dédup)
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    # 16 workers : Jaeger /api/traces est lent par appel (~2-3s même après
+    # drainage) ; le coût est dominé par le NOMBRE d'appels (services × chunks),
+    # donc on parallélise agressivement.
+    with ThreadPoolExecutor(max_workers=16) as ex:
         for traces_chunk in ex.map(_fetch, tasks):
             for tr in traces_chunk:
                 tid = tr.get("traceID", "")
@@ -168,7 +198,8 @@ def pull_jaeger(start: float, end: float, chunk_s: int = 60, limit: int = 1500) 
     return {"services": ts_svcs, "n_traces_total": len(traces), "traces": traces}
 
 
-def pull_loki(start: float, end: float, chunk_s: int = 30) -> dict:
+def pull_loki(start: float, end: float, chunk_s: int = 30, ns: str = NAMESPACE,
+              pf: dict | None = None) -> dict:
     """Pull Loki par tranches temporelles pour éviter le plafond de 5000 lignes
     qui tasserait tous les logs dans le bin le plus récent.
 
@@ -176,28 +207,39 @@ def pull_loki(start: float, end: float, chunk_s: int = 30) -> dict:
     chacune (limit 5000/chunk, direction=forward), puis on fusionne les streams
     par jeu de labels.
     """
-    base = f"http://127.0.0.1:{PF['loki']['local']}/loki/api/v1/query_range"
-    q = f'{{namespace="{NAMESPACE}"}}'
-    merged: dict[str, dict] = {}
+    from concurrent.futures import ThreadPoolExecutor
+
+    pf = pf or pf_config(ns)
+    base = f"http://127.0.0.1:{pf['loki']['local']}/loki/api/v1/query_range"
+    q = f'{{namespace="{ns}"}}'
+    # chunks temporels parallélisés (sous charge, Loki = le goulot : 60 chunks ×
+    # milliers de lignes ; le séquentiel dominait les ~8 min de collecte).
+    chunks = []
     t = start
-    total = 0
     while t < end:
-        t_end = min(t + chunk_s, end)
+        chunks.append((t, min(t + chunk_s, end)))
+        t = chunks[-1][1]
+
+    def _fetch(c):
+        a, b = c
         params = urllib.parse.urlencode({
-            "query": q, "start": int(t * 1e9), "end": int(t_end * 1e9),
-            "limit": 5000, "direction": "forward",
-        })
+            "query": q, "start": int(a * 1e9), "end": int(b * 1e9),
+            "limit": 5000, "direction": "forward"})
         try:
-            res = _get(f"{base}?{params}")
-            for s in res.get("data", {}).get("result", []):
+            return _get(f"{base}?{params}").get("data", {}).get("result", [])
+        except Exception:
+            return []
+
+    merged: dict[str, dict] = {}
+    total = 0
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for result in ex.map(_fetch, chunks):
+            for s in result:
                 key = json.dumps(s.get("stream", {}), sort_keys=True)
                 if key not in merged:
                     merged[key] = {"stream": s["stream"], "values": []}
                 merged[key]["values"].extend(s.get("values", []))
                 total += len(s.get("values", []))
-        except Exception:
-            pass
-        t = t_end
     streams = list(merged.values())
     return {"n_streams": len(streams), "n_lines": total, "streams": streams}
 

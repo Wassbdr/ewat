@@ -175,7 +175,7 @@ scenarios:
 #   - F3 est une exception : c'est un bug de CONFIGURATION (JVM -Xmx > limite
 #     mémoire conteneur), donc reproductible SANS rebuild via `mode: env`
 #     (patch JAVA_TOOL_OPTIONS pour forcer -Xmx au-dessus de la limite → OOMKill
-#     sous charge ; symptôme capté par oom_events + restart_count + jvm_heap_ratio).
+#     sous charge ; symptôme capté par mem_limit_ratio + restart_count + jvm_heap_ratio).
 # Mode d'injection : image=swap d'image | env=patch JAVA_TOOL_OPTIONS.
 bugs:
   - {id: F1, service: ts-voucher-service, image: "kylinxiang/ts-voucher-service:f1.1",
@@ -184,7 +184,8 @@ bugs:
   # F3 : -Xmx200m est codé en dur dans la commande (JAVA_TOOL_OPTIONS ne peut pas
   # l'augmenter). On reproduit le mismatch en ABAISSANT la limite mémoire conteneur
   # (500Mi→250Mi) sous l'empreinte réelle JVM (~270Mi heap+nonheap) → OOMKill sous
-  # charge. Mécanisme F3 authentique, sans rebuild. Symptôme : oom_events + restart_count.
+  # charge. Mécanisme F3 authentique, sans rebuild. Symptôme capté (vérifié 2026-06-02) :
+  # mem_limit_ratio→1 + restart_count + jvm_heap_ratio (oom_events nul sur ce cluster).
   - {id: F3, service: ts-order-service, image: null, mode: mem_limit, status: ready,
      mem_limit: "250Mi", desc: "JVM/Docker mem mismatch → OOMKill périodique",
      load: query_and_preserve}

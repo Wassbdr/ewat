@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import subprocess
 import sys
 import time
@@ -35,6 +36,23 @@ REPO = V5.parent
 
 HELD_OUT_CHAOS = {"held_io_latency", "held_net_bandwidth", "held_kernel_fault"}
 
+# Contexte kubectl épinglé (cf. inject.py / probe.py / run_episode.py).
+KCTX = os.environ.get("V5_KUBE_CONTEXT", "observit-cluster1")
+KCTX_ARGS = ["--context", KCTX]
+
+
+def _assert_context(namespace: str) -> None:
+    """Préflight bloquant : le contexte épinglé doit exister ET voir le namespace
+    cible. Évite de lancer une campagne de plusieurs jours contre le mauvais
+    cluster (bascule de contexte vue en 2026-06-03 — inject échouait en silence)."""
+    r = subprocess.run(["kubectl", *KCTX_ARGS, "get", "ns", namespace, "--no-headers"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(f"[campaign] PRÉFLIGHT ÉCHEC : contexte '{KCTX}' ne voit pas le namespace "
+                 f"'{namespace}' (rc={r.returncode}). {r.stderr.strip()}\n"
+                 f"  → vérifier `kubectl config get-contexts` ou définir V5_KUBE_CONTEXT.")
+    print(f"[campaign] préflight OK : contexte={KCTX} namespace={namespace} visible", flush=True)
+
 
 def _catalog() -> dict:
     return yaml.safe_load(open(V5 / "chaos" / "catalog.yaml"))
@@ -46,7 +64,7 @@ def _ts() -> str:
 
 def _tt_healthy(namespace: str) -> bool:
     r = subprocess.run(
-        ["kubectl", "get", "pods", "-n", namespace, "--no-headers"],
+        ["kubectl", *KCTX_ARGS, "get", "pods", "-n", namespace, "--no-headers"],
         capture_output=True, text=True)
     lines = [l for l in r.stdout.splitlines() if l.strip()]
     if not lines:
@@ -67,7 +85,7 @@ def _validate(ep_dir: Path) -> bool:
 
 def collect_episode(scenario: str, rep: int, out_root: Path, address: str,
                     users: int, is_bug: bool, held_out: bool, max_retries: int,
-                    namespace: str) -> bool:
+                    namespace: str, pf_offset: int = 0) -> bool:
     for attempt in range(max_retries + 1):
         ep_id = f"episode_{scenario}_{rep:03d}_{_ts()}"
         ep_dir = out_root / ep_id
@@ -79,7 +97,8 @@ def collect_episode(scenario: str, rep: int, out_root: Path, address: str,
         try:
             # COLLECTE uniquement (pas de build) — Record→Build→Assemble.
             res = run_episode.run_episode(scenario, ep_dir, address, users,
-                                          run_episode.STEP_S, is_bug, held_out)
+                                          run_episode.STEP_S, is_bug, held_out,
+                                          namespace, pf_offset)
         except Exception as e:
             print(f"[campaign] {scenario} rep{rep} attempt{attempt} EXC: {e}", flush=True)
             (ep_dir).mkdir(parents=True, exist_ok=True)
@@ -105,8 +124,14 @@ def main() -> None:
     ap.add_argument("--max-retries", type=int, default=1)
     ap.add_argument("--reset-every", type=int, default=10, help="deep reset tous les N épisodes")
     ap.add_argument("--only", default="", help="liste de scénarios (CSV) pour restreindre")
+    ap.add_argument("--rep-start", type=int, default=0, help="rep de début (split multi-runner)")
+    ap.add_argument("--rep-end", type=int, default=None, help="rep de fin exclue (défaut = reps)")
+    ap.add_argument("--pf-offset", type=int, default=0, help="décalage ports locaux (multi-runner ; ex. tt=0, tt-b=10)")
+    ap.add_argument("--held-out-cap", type=int, default=28, help="reps max pour les scénarios held-out (test-only)")
     args = ap.parse_args()
+    rep_end = args.rep_end if args.rep_end is not None else args.reps
 
+    _assert_context(args.namespace)  # préflight : bon cluster avant tout
     args.out_root.mkdir(parents=True, exist_ok=True)
     cat = _catalog()
     scenarios = [s["name"] for s in cat["scenarios"]]
@@ -131,9 +156,14 @@ def main() -> None:
         if args.out_root.exists() else 0
     print(f"[campaign] {len(plan)} (scénario,type) × {args.reps} reps ; déjà {done} épisodes collectés", flush=True)
 
+    print(f"[campaign] ns={args.namespace} reps[{args.rep_start}:{rep_end}] pf_offset={args.pf_offset} "
+          f"held-out cap={args.held_out_cap}", flush=True)
     episode_n = 0
-    for rep in range(args.reps):
+    for rep in range(args.rep_start, rep_end):
         for (name, is_bug, held_out) in plan:
+            # held-out plafonnés (test-only) : pas besoin de 30 reps
+            if held_out and rep >= args.held_out_cap:
+                continue
             episode_n += 1
             # reprise idempotente : sauter si déjà collecté
             existing = list(args.out_root.glob(f"episode_{name}_{rep:03d}_*"))
@@ -145,7 +175,7 @@ def main() -> None:
                             "--mode", mode, "--namespace", args.namespace,
                             "--cooldown", "30"], cwd=str(V5))
             collect_episode(name, rep, args.out_root, args.address, args.users,
-                            is_bug, held_out, args.max_retries, args.namespace)
+                            is_bug, held_out, args.max_retries, args.namespace, args.pf_offset)
 
     print("[campaign] terminé.", flush=True)
 
