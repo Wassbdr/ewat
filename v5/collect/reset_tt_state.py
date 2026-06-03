@@ -17,8 +17,13 @@ Usage :
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import time
+
+# Contexte kubectl épinglé (cf. inject.py/probe.py) : ce reset fait du rolling-restart
+# (write) — un contexte qui bascule restarterait des pods du mauvais cluster.
+_KC = ["kubectl", "--context", os.environ.get("V5_KUBE_CONTEXT", "observit-cluster1")]
 
 # Services porteurs d'état accumulé (orders, réservations, paiements).
 STATEFUL = [
@@ -46,9 +51,9 @@ def reset_deep(namespace: str, cooldown: int) -> None:
     print(f"[reset] deep : rolling-restart stateful ({len(STATEFUL)} svc + "
           f"{len(STATEFUL_DBS)} db) dans {namespace}", flush=True)
     for d in STATEFUL_DBS + STATEFUL:
-        _run(["kubectl", "rollout", "restart", "deploy", "-n", namespace, d])
+        _run([*_KC, "rollout", "restart", "deploy", "-n", namespace, d])
     for d in STATEFUL_DBS + STATEFUL:
-        subprocess.run(["kubectl", "rollout", "status", "deploy", "-n", namespace, d,
+        subprocess.run([*_KC, "rollout", "status", "deploy", "-n", namespace, d,
                         "--timeout=300s"], capture_output=True, text=True)
     print(f"[reset] deep terminé, cooldown {cooldown}s", flush=True)
     time.sleep(cooldown)

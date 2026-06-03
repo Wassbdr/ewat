@@ -74,6 +74,34 @@ def _tt_healthy(namespace: str) -> bool:
     return ready / total >= 0.90  # ≥90% pods prêts
 
 
+def _nodes_ram_ok(ceiling: float = 90.0) -> bool:
+    """Garde-fou RAM — contrainte *binding* à 3 runners (CPU large, RAM tendue :
+    1 runner ≈ 20 GB JVM+mongos). Retourne False si un nœud worker dépasse
+    `ceiling` % de mémoire → le gate met la collecte en pause (anti-éviction qui
+    corromprait les épisodes). Fail-open si `kubectl top` échoue (un blip
+    metrics-server ne doit pas stopper une campagne de plusieurs jours)."""
+    r = subprocess.run(["kubectl", *KCTX_ARGS, "top", "nodes", "--no-headers"],
+                       capture_output=True, text=True)
+    if r.returncode != 0 or not r.stdout.strip():
+        return True  # fail-open
+    hot = []
+    for line in r.stdout.splitlines():
+        cols = line.split()
+        # NAME  CPU(cores)  CPU%  MEM(bytes)  MEM%
+        if len(cols) < 5 or "workers" not in cols[0]:
+            continue
+        try:
+            mem_pct = float(cols[4].rstrip("%"))
+        except ValueError:
+            continue
+        if mem_pct > ceiling:
+            hot.append(f"{cols[0].split('-')[-1]}={mem_pct:.0f}%")
+    if hot:
+        print(f"[campaign] RAM workers > {ceiling:.0f}% ({','.join(hot)}) — pause", flush=True)
+        return False
+    return True
+
+
 def _validate(ep_dir: Path) -> bool:
     r = subprocess.run(
         [sys.executable, str(REPO / "scripts" / "validate_v5.py"), "--episode", str(ep_dir)],
@@ -85,14 +113,14 @@ def _validate(ep_dir: Path) -> bool:
 
 def collect_episode(scenario: str, rep: int, out_root: Path, address: str,
                     users: int, is_bug: bool, held_out: bool, max_retries: int,
-                    namespace: str, pf_offset: int = 0) -> bool:
+                    namespace: str, pf_offset: int = 0, ram_ceiling: float = 90.0) -> bool:
     for attempt in range(max_retries + 1):
         ep_id = f"episode_{scenario}_{rep:03d}_{_ts()}"
         ep_dir = out_root / ep_id
-        # santé TT avant épisode
+        # santé TT (readiness pods) + RAM nœuds (anti-saturation à 3 runners) avant épisode
         waited = 0
-        while not _tt_healthy(namespace) and waited < 600:
-            print(f"[campaign] TT dégradé, pause 30s ...", flush=True)
+        while (not _tt_healthy(namespace) or not _nodes_ram_ok(ram_ceiling)) and waited < 600:
+            print(f"[campaign] TT dégradé / RAM haute, pause 30s ...", flush=True)
             time.sleep(30); waited += 30
         try:
             # COLLECTE uniquement (pas de build) — Record→Build→Assemble.
@@ -128,6 +156,8 @@ def main() -> None:
     ap.add_argument("--rep-end", type=int, default=None, help="rep de fin exclue (défaut = reps)")
     ap.add_argument("--pf-offset", type=int, default=0, help="décalage ports locaux (multi-runner ; ex. tt=0, tt-b=10)")
     ap.add_argument("--held-out-cap", type=int, default=28, help="reps max pour les scénarios held-out (test-only)")
+    ap.add_argument("--ram-ceiling", type=float, default=90.0,
+                    help="pause si un nœud worker dépasse ce %% de RAM (garde-fou 3 runners)")
     args = ap.parse_args()
     rep_end = args.rep_end if args.rep_end is not None else args.reps
 
@@ -175,7 +205,8 @@ def main() -> None:
                             "--mode", mode, "--namespace", args.namespace,
                             "--cooldown", "30"], cwd=str(V5))
             collect_episode(name, rep, args.out_root, args.address, args.users,
-                            is_bug, held_out, args.max_retries, args.namespace, args.pf_offset)
+                            is_bug, held_out, args.max_retries, args.namespace,
+                            args.pf_offset, args.ram_ceiling)
 
     print("[campaign] terminé.", flush=True)
 

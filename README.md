@@ -178,25 +178,30 @@ Spring Cloud) au lieu d'Online Boutique — système plus riche, base publique, 
 documentés (F1–F22). Tout est dans `v5/` (loadgen, chaos, collect, deploy). Schéma
 **S(t) ∈ ℝ^{T×41×18}** (v5.1). Runbook complet : [`v5/LAUNCH.md`](v5/LAUNCH.md).
 
-Deux namespaces (`tt`, `tt-b`) = 2 runners parallèles (~720 ép, ~11–13 j). Le contexte
-kubectl est **épinglé** (`V5_KUBE_CONTEXT`, défaut `observit-cluster1`) avec préflight bloquant.
+Trois namespaces (`tt`, `tt-b`, `tt-c`) = 3 runners parallèles (~720 ép, **~7–9 j**). Contrainte
+= RAM (workers ~80-87 %, garde-fou `--ram-ceiling`). Contexte kubectl **épinglé**
+(`V5_KUBE_CONTEXT`, défaut `observit-cluster1`) avec préflight bloquant. Runbook : `v5/LAUNCH.md`.
 
 ```bash
 # 0. Pré-vol
 kubectl config current-context                          # observit-cluster1 (sinon export V5_KUBE_CONTEXT=...)
-kubectl get pods -n tt   --no-headers | grep -c 1/1     # 64
-kubectl get pods -n tt-b --no-headers | grep -c 1/1     # 64
+for ns in tt tt-b tt-c; do kubectl get pods -n $ns --no-headers | grep -c 1/1; done  # 64 chacun
+kubectl top nodes | awk '/workers/{print $1,$5}'        # RAM workers < ~85% au repos
 
-# 1. COLLECTE — 2 runners en parallèle (2 terminaux/tmux), Phase 1 (dumps bruts)
+# 1. COLLECTE — 3 runners en parallèle (3 terminaux/tmux), Phase 1 (dumps bruts)
 cd v5
 PYTHONPATH=../src python -m collect.run_campaign \
   --namespace tt   --address http://172.16.203.12:32677 \
-  --rep-start 0  --rep-end 15 --reps 30 --pf-offset 0 \
-  --out-root ../data/raw_v5 --users 12 --reset-every 10 --held-out-cap 28
+  --rep-start 0  --rep-end 10 --reps 30 --pf-offset 0  \
+  --out-root ../data/raw_v5 --users 12 --reset-every 10 --held-out-cap 28 --ram-ceiling 90
 PYTHONPATH=../src python -m collect.run_campaign \
   --namespace tt-b --address http://172.16.203.12:32679 \
-  --rep-start 15 --rep-end 30 --reps 30 --pf-offset 10 \
-  --out-root ../data/raw_v5 --users 12 --reset-every 10 --held-out-cap 28
+  --rep-start 10 --rep-end 20 --reps 30 --pf-offset 10 \
+  --out-root ../data/raw_v5 --users 12 --reset-every 10 --held-out-cap 28 --ram-ceiling 90
+PYTHONPATH=../src python -m collect.run_campaign \
+  --namespace tt-c --address http://172.16.203.12:32681 \
+  --rep-start 20 --rep-end 30 --reps 30 --pf-offset 20 \
+  --out-root ../data/raw_v5 --users 12 --reset-every 10 --held-out-cap 28 --ram-ceiling 90
 # reprise = relancer la même commande (idempotent via episode_meta.json)
 
 # 2. BUILD offline (Phase 2) — rejouable, en parallèle de la collecte

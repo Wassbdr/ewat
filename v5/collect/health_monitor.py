@@ -18,13 +18,34 @@ Usage :
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import time
+
+# Contexte kubectl épinglé (cf. inject.py/probe.py/run_campaign.py).
+_KC = ["kubectl", "--context", os.environ.get("V5_KUBE_CONTEXT", "observit-cluster1")]
+
+
+def _worker_ram() -> str:
+    """RAM max des nœuds workers (str compacte, ou '' si indispo). Observabilité
+    de la contrainte binding à 3 runners — le vrai garde-fou est dans run_campaign."""
+    r = subprocess.run([*_KC, "top", "nodes", "--no-headers"], capture_output=True, text=True)
+    if r.returncode != 0:
+        return ""
+    pcts = []
+    for line in r.stdout.splitlines():
+        c = line.split()
+        if len(c) >= 5 and "workers" in c[0]:
+            try:
+                pcts.append(float(c[4].rstrip("%")))
+            except ValueError:
+                pass
+    return f" ram_max={max(pcts):.0f}%" if pcts else ""
 
 
 def _snapshot(namespace: str) -> dict:
     r = subprocess.run(
-        ["kubectl", "get", "pods", "-n", namespace, "--no-headers"],
+        [*_KC, "get", "pods", "-n", namespace, "--no-headers"],
         capture_output=True, text=True)
     rows = [l.split() for l in r.stdout.splitlines() if l.strip()]
     ready, notready, crashloop = 0, [], []
@@ -59,11 +80,12 @@ def main() -> None:
             cl = ",".join(f"{n}({r})" for n, r in s["crashloop"])
             print(f"CRASHLOOP {cl}", flush=True)
         if state != prev_state:
+            ram = _worker_ram()
             if state == "OK":
-                print(f"{'RECOVERED' if prev_state else 'OK'} ready={s['ready']}/{s['total']}", flush=True)
+                print(f"{'RECOVERED' if prev_state else 'OK'} ready={s['ready']}/{s['total']}{ram}", flush=True)
             else:
                 nr = ",".join(s["notready"][:8])
-                print(f"DEGRADED ready={s['ready']}/{s['total']} notready={nr}", flush=True)
+                print(f"DEGRADED ready={s['ready']}/{s['total']} notready={nr}{ram}", flush=True)
             prev_state = state
         time.sleep(args.interval)
 
