@@ -191,17 +191,32 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
     # Collecte en DIRECT via NodePort (plus de port-forward : cf. probe.nodeport_bases).
     # 3 pulls concurrents. Jaeger : chunks larges (300 s) → ÷5 le nombre d'appels.
     from concurrent.futures import ThreadPoolExecutor
-    timings = {}
 
-    def _timed(name, fn, *a, **k):
-        _t = time.time(); r = fn(*a, **k); timings[name] = round(time.time() - _t, 1); return r
+    def _collect_once():
+        timings = {}
 
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        f_prom = ex.submit(_timed, "prom", probe.pull_prometheus, t_start, t_end, step, namespace)
-        f_jae = ex.submit(_timed, "jaeger", probe.pull_jaeger, t_start, t_end, 300, 1500, namespace)
-        f_loki = ex.submit(_timed, "loki", probe.pull_loki, t_start, t_end, step, namespace)
-        prom, jae, loki = f_prom.result(), f_jae.result(), f_loki.result()
-    print(f"[{scenario}] pull timings: {timings}", flush=True)
+        def _timed(name, fn, *a, **k):
+            _t = time.time(); r = fn(*a, **k); timings[name] = round(time.time() - _t, 1); return r
+
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            f_prom = ex.submit(_timed, "prom", probe.pull_prometheus, t_start, t_end, step, namespace)
+            f_jae = ex.submit(_timed, "jaeger", probe.pull_jaeger, t_start, t_end, 300, 1500, namespace)
+            f_loki = ex.submit(_timed, "loki", probe.pull_loki, t_start, t_end, step, namespace)
+            return f_prom.result(), f_jae.result(), f_loki.result(), timings
+
+    # Retry du COLLECT (pas des 33 min de phases) : sur un cluster instable (nœuds
+    # taintés/drainés, pods qui churent), un blip de quelques s pendant le pull
+    # (timed out / connection reset) faisait perdre tout l'épisode. On ré-essaie le
+    # pull jusqu'à 3× avec pause → on absorbe les blips au lieu de jeter 33 min.
+    prom, jae, loki = {}, {}, {}
+    for attempt in range(3):
+        try:
+            prom, jae, loki, timings = _collect_once()
+            print(f"[{scenario}] pull timings: {timings}", flush=True)
+            break
+        except Exception as e:
+            print(f"[{scenario}] collecte échec essai {attempt + 1}/3 ({e}) — retry 25s", flush=True)
+            time.sleep(25)
     for name, data in [("prometheus", prom), ("jaeger", jae), ("loki", loki)]:
         with gzip.open(out / f"{name}.json.gz", "wt") as f:
             json.dump(data, f)
