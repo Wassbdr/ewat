@@ -23,7 +23,7 @@ Pré-requis (faits) : `tt` + `tt-b` + `tt-c` déployés (64/64, JVM instrumenté
 Prometheus+Loki créés** (`kubectl apply -f v5/deploy/monitoring_nodeports.yaml`, une fois) ;
 stack paramétrée par namespace + contexte épinglé, schéma v5.1, séparation collecte/build.
 
-`NODE_IP=172.16.203.12` · `cd ~/repos/ewat/v5` · `export PYTHONPATH=../src`
+`NODE_IP=<CLUSTER_NODE_IP>` · `cd ~/repos/ewat/v5` · `export PYTHONPATH=../src`
 
 ---
 

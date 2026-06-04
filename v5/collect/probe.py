@@ -39,7 +39,7 @@ _KCTX = os.environ.get("V5_KUBE_CONTEXT", "observit-cluster1")
 #   - Prometheus + Loki : partagés → 1 NodePort chacun (services `*-np` créés dans
 #     monitoring-metrics, mêmes selectors que les originaux ClusterIP).
 #   - Jaeger : par-namespace → NodePort de `jaeger-query` (créé par deploy_runner.sh).
-_NODE_IP = os.environ.get("V5_NODE_IP", "172.16.203.12")
+_NODE_IP = os.environ.get("V5_NODE_IP", "<CLUSTER_NODE_IP>")
 _PROM_NP = os.environ.get("V5_PROM_NODEPORT", "32700")
 _LOKI_NP = os.environ.get("V5_LOKI_NODEPORT", "32701")
 _JAEGER_NP = {"tt": "32688", "tt-b": "32690", "tt-c": "32692"}

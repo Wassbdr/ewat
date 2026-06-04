@@ -116,7 +116,7 @@ introduit des NaN systémiques et dégrade l'agrégation intra-service. Le péri
 
 **Commits** : `2026-04-27`
 
-Premiers datasets complets avec NodePorts opérationnels (node_ip `172.16.203.12`).
+Premiers datasets complets avec NodePorts opérationnels (node_ip `<CLUSTER_NODE_IP>`).
 
 - `data/features/v1/` : signal S(t) ∈ ℝ^{N×17} extrait des dumps bruts
 - `data/datasets/ewat_v1/` : split temporel strict (non stratifié)

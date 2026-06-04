@@ -12,7 +12,7 @@ un épisode conforme par itération. Robuste pour une campagne de plusieurs jour
 
 Usage :
     python -m collect.run_campaign --reps 30 --out-root data/raw_v5 \
-        --address http://172.16.203.12:32677
+        --address http://<CLUSTER_NODE_IP>:32677
     # reprise : relancer la même commande, les épisodes validés sont sautés.
 """
 
@@ -146,7 +146,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="EWAT v5 collection campaign driver")
     ap.add_argument("--reps", type=int, default=30)
     ap.add_argument("--out-root", type=Path, default=REPO / "data" / "raw_v5")
-    ap.add_argument("--address", default="http://172.16.203.12:32677")
+    ap.add_argument("--address", default="http://<CLUSTER_NODE_IP>:32677")
     ap.add_argument("--users", type=int, default=12)
     ap.add_argument("--namespace", default="tt")
     ap.add_argument("--max-retries", type=int, default=1)

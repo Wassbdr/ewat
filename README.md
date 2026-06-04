@@ -12,9 +12,8 @@ l'early warning (Quoi, Dans combien de temps, avant la panne).
 
 ## Cluster
 
-- **observit-cluster1** (Rancher, RKE2 v1.32.7)
-- 9 nœuds (8 Ready, 1 NotReady)
-- Observabilité : Prometheus + Grafana + OTel Collector + Jaeger + Loki (en place)
+- Kubernetes (RKE2), 9 nœuds
+- Observabilité : Prometheus + Grafana + OTel Collector + Jaeger + Loki
 - Accès : namespace-admin sur `ewat`
 
 ## Hypothèses
@@ -180,12 +179,12 @@ documentés (F1–F22). Tout est dans `v5/` (loadgen, chaos, collect, deploy). S
 
 Trois namespaces (`tt`, `tt-b`, `tt-c`) = 3 runners parallèles (~720 ép, **~7–9 j**). Contrainte
 = RAM (workers ~80-87 %, garde-fou `--ram-ceiling`). Contexte kubectl **épinglé**
-(`V5_KUBE_CONTEXT`, défaut `observit-cluster1`) avec préflight bloquant. Collecte **via NodePort,
+(`V5_KUBE_CONTEXT`, défaut `k8s-research-cluster`) avec préflight bloquant. Collecte **via NodePort,
 zéro port-forward** (Prometheus :32700, Loki :32701, Jaeger :32688/90/92). Runbook : `v5/LAUNCH.md`.
 
 ```bash
 # 0. Pré-vol
-kubectl config current-context                          # observit-cluster1 (sinon export V5_KUBE_CONTEXT=...)
+kubectl config current-context                          # k8s-research-cluster (sinon export V5_KUBE_CONTEXT=...)
 kubectl apply -f v5/deploy/monitoring_nodeports.yaml    # NodePort Prometheus+Loki (une fois)
 for ns in tt tt-b tt-c; do kubectl get pods -n $ns --no-headers | grep -c 1/1; done  # 64 chacun
 kubectl top nodes | awk '/workers/{print $1,$5}'        # RAM workers < ~85% au repos
@@ -193,15 +192,15 @@ kubectl top nodes | awk '/workers/{print $1,$5}'        # RAM workers < ~85% au 
 # 1. COLLECTE — 3 runners en parallèle (3 terminaux/tmux), Phase 1 (dumps bruts)
 cd v5
 PYTHONPATH=../src python -m collect.run_campaign \
-  --namespace tt   --address http://172.16.203.12:32677 \
+  --namespace tt   --address http://<CLUSTER_NODE_IP>:32677 \
   --rep-start 0  --rep-end 10 --reps 30 --pf-offset 0  \
   --out-root ../data/raw_v5 --users 12 --reset-every 10 --held-out-cap 28 --ram-ceiling 90
 PYTHONPATH=../src python -m collect.run_campaign \
-  --namespace tt-b --address http://172.16.203.12:32679 \
+  --namespace tt-b --address http://<CLUSTER_NODE_IP>:32679 \
   --rep-start 10 --rep-end 20 --reps 30 --pf-offset 10 \
   --out-root ../data/raw_v5 --users 12 --reset-every 10 --held-out-cap 28 --ram-ceiling 90
 PYTHONPATH=../src python -m collect.run_campaign \
-  --namespace tt-c --address http://172.16.203.12:32681 \
+  --namespace tt-c --address http://<CLUSTER_NODE_IP>:32681 \
   --rep-start 20 --rep-end 30 --reps 30 --pf-offset 20 \
   --out-root ../data/raw_v5 --users 12 --reset-every 10 --held-out-cap 28 --ram-ceiling 90
 # reprise = relancer la même commande (idempotent via episode_meta.json)

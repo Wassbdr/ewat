@@ -6,7 +6,7 @@
 
 - **Train Ticket** dans le namespace `tt` (manifests `k8s-with-jaeger`, 64 deployments,
   41 services + 22 DB + Jaeger). Conforme au schéma FudanSELab.
-- UI : `http://172.16.203.12:32677` — Jaeger : `http://172.16.203.12:32688`
+- UI : `http://<CLUSTER_NODE_IP>:32677` — Jaeger : `http://<CLUSTER_NODE_IP>:32688`
 - Fixes version : `mongo:4.4`, `jaegertracing/all-in-one:1.53`, service `jaeger` en ClusterIP stable.
 
 ## Sources de télémétrie S(t) (endpoints confirmés)
@@ -25,7 +25,7 @@ Jeu de features : **Lean enrichi, 17 features** (cf. `docs/dataset_v5_plan.md` �
 Fork vendorisé de `train-ticket-auto-query` (patché : login sans CAPTCHA).
 ```bash
 # charge nominale (mix pondéré de scénarios métier)
-python -m loadgen.runner --address http://172.16.203.12:32677 --users 12 --duration 600
+python -m loadgen.runner --address http://<CLUSTER_NODE_IP>:32677 --users 12 --duration 600
 # charge ciblée (1 scénario, pour injection bug)
 python -m loadgen.runner --address ... --scenario query_and_cancel --users 20
 ```

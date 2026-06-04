@@ -6,7 +6,7 @@ concurrents. Sert de charge nominale stable pendant les phases baseline /
 pre-injection / recovery d'un épisode, et de charge ciblée pendant l'injection.
 
 Usage :
-    python -m loadgen.runner --address http://172.16.203.12:32677 \
+    python -m loadgen.runner --address http://<CLUSTER_NODE_IP>:32677 \
         --users 10 --duration 600 --rps-log 30
 
     # mode ciblé (charge orientée vers un bug F)
@@ -206,7 +206,7 @@ def run(
 
 def main() -> None:
     p = argparse.ArgumentParser(description="EWAT v5 Train Ticket load generator")
-    p.add_argument("--address", required=True, help="Base URL TT, ex http://172.16.203.12:32677")
+    p.add_argument("--address", required=True, help="Base URL TT, ex http://<CLUSTER_NODE_IP>:32677")
     p.add_argument("--users", type=int, default=10, help="utilisateurs virtuels concurrents")
     p.add_argument("--duration", type=float, default=600, help="durée en secondes")
     p.add_argument("--scenario", default=None, help="scénario unique (mode ciblé)")

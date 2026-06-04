@@ -259,7 +259,7 @@ def main() -> None:
     p.add_argument("--scenario", required=True)
     p.add_argument("--category", default=None)
     p.add_argument("--out", required=True)
-    p.add_argument("--address", default="http://172.16.203.12:32677")
+    p.add_argument("--address", default="http://<CLUSTER_NODE_IP>:32677")
     p.add_argument("--users", type=int, default=12)
     p.add_argument("--step", type=int, default=STEP_S)
     p.add_argument("--bug", action="store_true")

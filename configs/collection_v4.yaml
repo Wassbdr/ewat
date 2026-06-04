@@ -46,7 +46,7 @@ collection:
   loki_limit: 5000
 
   nodeport:
-    node_ip: "172.16.203.12"
+    node_ip: "<CLUSTER_NODE_IP>"
     prometheus_port: 31090
     jaeger_port: 31686
     loki_port: 31100

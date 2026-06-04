@@ -63,7 +63,7 @@ collection:
   #                                    app.kubernetes.io/instance=loki,
   #                                    app.kubernetes.io/name=loki)
   nodeport:
-    node_ip: "172.16.203.12"    # Ready worker node (provisioned 2026-04-27)
+    node_ip: "<CLUSTER_NODE_IP>"    # Ready worker node (provisioned 2026-04-27)
     prometheus_port: 31090
     jaeger_port: 31686
     loki_port: 31100
