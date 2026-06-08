@@ -20,11 +20,33 @@ import argparse
 import gzip
 import json
 import os
+import socket
 import subprocess
 import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+# ───────── Court-circuit DNS pour les IP numériques (fix racine 2026-06-08) ─────────
+# La VM est un pod du cluster : son resolv.conf pointe sur CoreDNS (10.43.0.10).
+# Quand le cluster est stressé, CoreDNS devient lent/injoignable → getaddrinfo
+# timeout → `Name or service not known`, MÊME sur une IP numérique (Python ne pose
+# pas AI_NUMERICHOST, donc l'IP traverse quand même la machinerie NSS/DNS). Or la
+# collecte ne contacte QUE des IP numériques (NodePorts du node). On résout ces IP
+# localement, sans jamais interroger CoreDNS → collecte immunisée contre l'état DNS.
+_REAL_GETADDRINFO = socket.getaddrinfo
+
+
+def _getaddrinfo_numeric_first(host, port, *args, **kwargs):
+    try:
+        socket.inet_aton(host)  # host est une IPv4 littérale ?
+    except (OSError, TypeError):
+        return _REAL_GETADDRINFO(host, port, *args, **kwargs)  # hostname → résolveur normal
+    return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "",
+             (host, int(port) if port else 0))]
+
+
+socket.getaddrinfo = _getaddrinfo_numeric_first
 
 NAMESPACE = "tt"  # défaut mono-runner
 
