@@ -99,9 +99,21 @@ def _prom_queries(ns: str = NAMESPACE) -> dict:
     }
 
 
-def _get(url: str, timeout: float = 30) -> dict:
-    with urllib.request.urlopen(url, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+def _get(url: str, timeout: float = 30, retries: int = 3) -> dict:
+    """GET JSON resilient. Sur la VM (4 CPU), les 3 runners pullant en parallèle
+    saturent ponctuellement le résolveur → `getaddrinfo: Name or service not known`
+    (errno -2), même sur une IP. Vu 2026-06-08 : assez fréquent pour épuiser le
+    retry d'épisode. On retente CHAQUE appel avec backoff → absorbe les blips à la
+    source (protège prom/loki + l'appel Jaeger /services non gardé)."""
+    last = None
+    for i in range(retries):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                return json.loads(r.read().decode())
+        except Exception as e:
+            last = e
+            time.sleep(1.5 * (i + 1))
+    raise last
 
 
 _READY_URL = {
@@ -213,10 +225,10 @@ def pull_jaeger(start: float, end: float, chunk_s: int = 60, limit: int = 1500,
             return []
 
     merged: dict[str, dict] = {}  # traceID -> trace object (dédup)
-    # 16 workers : Jaeger /api/traces est lent par appel (~2-3s même après
-    # drainage) ; le coût est dominé par le NOMBRE d'appels (services × chunks),
-    # donc on parallélise agressivement.
-    with ThreadPoolExecutor(max_workers=16) as ex:
+    # 8 workers : le 16 d'origine datait du port-forward lent ; en NodePort
+    # (rapide) on n'en a plus besoin, et 3 runners × 16 threads saturaient le
+    # résolveur de la VM (getaddrinfo Name or service not known). 8 suffit.
+    with ThreadPoolExecutor(max_workers=8) as ex:
         for traces_chunk in ex.map(_fetch, tasks):
             for tr in traces_chunk:
                 tid = tr.get("traceID", "")
