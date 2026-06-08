@@ -69,6 +69,14 @@ _JAEGER_NP = {"tt": "32688", "tt-b": "32690", "tt-c": "32692"}
 
 def nodeport_bases(ns: str = NAMESPACE) -> dict:
     """URLs de base des 3 sources via NodePort (pas de port-forward)."""
+    # Garde-fou : _NODE_IP est un placeholder par défaut (dataset public → pas
+    # d'IP hardcodée). S'il n'a pas été substitué via V5_NODE_IP, tous les pulls
+    # échouaient en `Name or service not known` (résolution du placeholder) — bug
+    # silencieux vu 2026-06-08 (échecs après restart sans V5_NODE_IP). On crie.
+    if "<" in _NODE_IP or not _NODE_IP:
+        raise RuntimeError(
+            f"V5_NODE_IP non défini (_NODE_IP={_NODE_IP!r}). "
+            "Exporter l'IP du node, ex. `export V5_NODE_IP=172.16.203.12`.")
     jnp = _JAEGER_NP.get(ns)
     if not jnp:
         raise RuntimeError(f"NodePort Jaeger inconnu pour ns={ns} (compléter _JAEGER_NP)")

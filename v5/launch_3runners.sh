@@ -98,7 +98,7 @@ fi
 
 # construit la commande d'un runner (ns port rep_start rep_end offset)
 run_cmd() {
-  echo "cd '$V5' && export PYTHONPATH='$SRC' V5_KUBE_CONTEXT='$KCTX' && python -m collect.run_campaign --namespace $1 --address http://$NODE_IP:$2 --rep-start $3 --rep-end $4 --reps $REPS --pf-offset $5 --out-root '$OUT' --users $USERS --reset-every $RESET --held-out-cap $HELDCAP --ram-ceiling $RAMCEIL 2>&1 | tee -a '$OUT/_campaign_$1.log'"
+  echo "cd '$V5' && export PYTHONPATH='$SRC' V5_KUBE_CONTEXT='$KCTX' V5_NODE_IP='$NODE_IP' && python -m collect.run_campaign --namespace $1 --address http://$NODE_IP:$2 --rep-start $3 --rep-end $4 --reps $REPS --pf-offset $5 --out-root '$OUT' --users $USERS --reset-every $RESET --held-out-cap $HELDCAP --ram-ceiling $RAMCEIL 2>&1 | tee -a '$OUT/_campaign_$1.log'"
 }
 build_cmd="cd '$V5' && export PYTHONPATH='$SRC' V5_KUBE_CONTEXT='$KCTX' && while true; do python -m collect.build_features_v5 --raw-root '$OUT' --workers 2 2>&1 | tee -a '$OUT/_build.log'; sleep 1800; done"
 
