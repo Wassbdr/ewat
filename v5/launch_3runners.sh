@@ -45,11 +45,20 @@ if [ "${1:-}" = "stop" ]; then
   # chaos orphelins : un runner tué en pleine injection laisse le chaos APPLIQUÉ
   # (vu 2026-06-03 : container-kill actif >1h sur tt-b/tt-c) → dégrade le namespace
   # et affame les épisodes suivants. On nettoie tout chaos v5 résiduel.
+  # NB : les CR chaos-mesh ont des finalizers qui BLOQUENT `delete` si le
+  # contrôleur ne peut pas réconcilier (pod cible disparu, nœud qui flappe — vu
+  # 2026-06-08, delete coincé plusieurs minutes). On retire le finalizer AVANT,
+  # puis delete --wait=false (non bloquant). La faute est déjà expirée de toute façon.
   for ns in tt tt-b tt-c; do
-    kubectl --context "$KCTX" delete stresschaos,networkchaos,podchaos,dnschaos,timechaos,iochaos \
-      -n "$ns" --all --ignore-not-found 2>/dev/null
+    for kind in stresschaos networkchaos podchaos dnschaos timechaos iochaos; do
+      for name in $(kubectl --context "$KCTX" get "$kind" -n "$ns" -o name 2>/dev/null); do
+        kubectl --context "$KCTX" patch "$name" -n "$ns" --type=merge \
+          -p '{"metadata":{"finalizers":null}}' 2>/dev/null
+      done
+      kubectl --context "$KCTX" delete "$kind" -n "$ns" --all --ignore-not-found --wait=false 2>/dev/null
+    done
   done
-  echo "  chaos orphelins nettoyés (tt/tt-b/tt-c)"
+  echo "  chaos orphelins nettoyés (tt/tt-b/tt-c, finalizers forcés)"
   echo "fait."
   exit 0
 fi
