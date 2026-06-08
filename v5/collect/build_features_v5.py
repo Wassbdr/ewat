@@ -222,7 +222,7 @@ def build(dump: Path, services: list[str], step: int, aliases: dict | None = Non
     all_ts = [float(v[0]) for s in prom.get("cpu", []) if isinstance(s, dict)
               for v in s.get("values", [])]
     if not all_ts:
-        raise SystemExit("dump Prometheus vide (pas de série cpu)")
+        raise ValueError("dump Prometheus vide (pas de série cpu)")
     t0, t1 = min(all_ts), max(all_ts)
     t_grid = _grid(t0, t1, step)
     T = len(t_grid) - 1
@@ -429,6 +429,8 @@ def _build_one_worker(spec: tuple) -> str | None:
     ep = Path(ep_str)
     if not (ep / "episode_meta.json").exists():
         return None
+    if (ep / ".raw_failed").exists():
+        return None  # collecte échouée : pas de build tant que repull_failed n'a pas corrigé
     if (ep / "signal.npz").exists() and not force:
         return f"skip {ep.name} (déjà buildé)"
     try:

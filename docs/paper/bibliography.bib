@@ -160,29 +160,36 @@
   note      = {Energy-based OOD scoring (future-work alternative to OpenMax)}
 }
 
-% NOTE (verify before submission): exact venue/authors of the RCAEval benchmark
-% could not be confirmed from the repository; placeholder kept intentionally minimal.
-@misc{rcaeval,
-  author = {{RCAEval contributors}},
-  title  = {{RCAEval}: A Benchmark for Root Cause Analysis of Microservice Systems (RE2-OB)},
-  year   = {2024},
-  note   = {Public RE2 Online-Boutique benchmark adapted for zero-/few-shot transfer.
-            TO VERIFY: authors, venue, year before camera-ready.}
+@inproceedings{rcaeval,
+  author    = {Pham, Luan and Zhang, Hongyu and Ha, Huong and Salim, Flora D.
+               and Zhang, Xiuzhen},
+  title     = {{RCAEval}: A Benchmark for Root Cause Analysis of Microservice Systems
+               with Telemetry Data},
+  booktitle = {Proceedings of the ACM Web Conference (WWW)},
+  year      = {2025},
+  note      = {RE2 multi-source benchmark (metrics/logs/traces); RE2-OB Online-Boutique
+               subset adapted for zero-/few-shot transfer. arXiv:2412.17015.}
 }
 
-% NOTE (verify before submission): cited in the OWL taxonomy as the cascading-failure
-% anchor ("Aniello et al. 2014"); full bibliographic record not confirmed in repo.
-@misc{aniello2014,
-  author = {Aniello, Leonardo and others},
-  title  = {Cascading Failures in Distributed Service Architectures},
-  year   = {2014},
-  note   = {TO VERIFY: exact title, authors and venue before camera-ready.}
+% Cascading-failure anchor for the OWL taxonomy (propagatesThrough). Replaces a prior
+% unverifiable "Aniello 2014" citation with the canonical cascade-on-networks reference.
+@article{motter2002,
+  author  = {Motter, Adilson E. and Lai, Ying-Cheng},
+  title   = {Cascade-Based Attacks on Complex Networks},
+  journal = {Physical Review E},
+  volume  = {66},
+  number  = {6},
+  pages   = {065102},
+  year    = {2002},
+  doi     = {10.1103/PhysRevE.66.065102},
+  note    = {Foundational model of cascading failures / load redistribution on networks;
+             anchors the propagatesThrough relation of the EWAT ontology.}
 }
 
 % ============================================================
 %  Additions for the internship report (rapport de stage)
-%  17 references required by the report skeleton. Canonical-publication
-%  metadata; entries flagged TO VERIFY where title/venue is uncertain.
+%  17 references required by the report skeleton. All metadata verified
+%  (recent venues confirmed via literature search, June 2026).
 % ============================================================
 
 % ---- Founders: anomaly detection & time-series surveys, RCA, gray failure ----
@@ -203,30 +210,36 @@
              and Aggarwal, Charu C. and Salehi, Mahsa},
   title   = {Deep Learning for Time Series Anomaly Detection: A Survey},
   journal = {ACM Computing Surveys},
+  volume  = {57},
+  number  = {1},
+  pages   = {Article 15},
   year    = {2024},
-  note    = {Deep TS-AD landscape; motivates the temporal-window encoder.
-            TO VERIFY: volume/issue/pages before camera-ready.}
+  doi     = {10.1145/3691338},
+  note    = {Deep TS-AD landscape; motivates the temporal-window encoder.}
 }
 
 @inproceedings{pham2024,
-  author    = {Pham, Luan and others},
-  title     = {Root Cause Analysis for Microservices based on Causal Inference:
+  author    = {Pham, Luan and Ha, Huong and Zhang, Hongyu},
+  title     = {Root Cause Analysis for Microservice System based on Causal Inference:
                How Far Are We?},
   booktitle = {Proceedings of the 39th IEEE/ACM International Conference on
                Automated Software Engineering (ASE)},
   year      = {2024},
-  note      = {Causal-inference RCA appraisal; motivates TE-KSG over causal RCA.
-            TO VERIFY: full author list and pages before camera-ready.}
+  note      = {Causal-inference RCA appraisal (arXiv:2408.13729); motivates TE-KSG
+               over causal-graph RCA.}
 }
 
 @inproceedings{grayscope2024,
-  author    = {Anonymous},
-  title     = {{GrayScope}: Non-intrusive Localization of Gray Failures},
-  booktitle = {Proceedings of the ACM International Conference on the Foundations
-               of Software Engineering (FSE)},
+  author    = {Zhang, Shenglin and Zhao, Yongxin and Xiong, Xiao and Sun, Yongqian
+               and Nie, Xiaohui and Zhang, Jiacheng and Wang, Fenglai and Zheng, Xian
+               and Zhang, Yuzhi and Pei, Dan},
+  title     = {Illuminating the Gray Zone: Non-intrusive Gray Failure Localization
+               in Server Operating Systems},
+  booktitle = {Companion Proceedings of the 32nd ACM International Conference on the
+               Foundations of Software Engineering (FSE Industry)},
   year      = {2024},
-  note      = {Gray-failure (telemetry-invisible) localization; anchors bug F1.
-            TO VERIFY: exact title, authors and venue before camera-ready.}
+  doi       = {10.1145/3663529.3663834},
+  note      = {Gray-failure (telemetry-invisible) localization; anchors bug F1.}
 }
 
 % ---- Encoders / representation learning ----

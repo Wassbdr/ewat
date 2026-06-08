@@ -1,66 +1,147 @@
-# Rapport de stage EWAT — Squelette annoté du livrable
+# Rapport de stage EWAT — détection précoce et typage des anomalies microservices
 
-> Document de travail : **ossature uniquement** (sommaire prévisionnel + squelette annoté).
-> Aucune prose rédigée ; chaque section est cadrée par des marqueurs à remplir ultérieurement.
-> Cible finale : `.docx` volumineux (50–80 p.) — titres `#`/`##`/`###`/`####` stricts pour une
-> conversion Pandoc propre. Registre académique / ingénieur, français.
-
-**Marqueurs utilisés :**
-- ⟦À remplir⟧ = prose à rédiger plus tard.
-- ▸ Source = origine du matériau (fichier / script / référence).
-- ▸ Figure / ▸ Tableau / ▸ Chiffre = artefact ou valeur exacte à insérer (jamais inventée ici).
-- ▸ Raisonnement = gabarit imposé : Observation → Hypothèse → Action → Résultat → Décision.
-- ▸ CI/Test = emplacement d'un intervalle de confiance ou test statistique.
-
-**Budgets de pages (somme = 78 p., hors front/back matter) :**
-1:3 · 2:5 · 3:10 · 4:8 · 5:4 · 6:8 · 7:8 · 8:11 · 9:7 · 10:5 · 11:3 · 12:4 · 13:2.
+> **Rapport complet** (toutes les sections rédigées, registre professionnel). Cible : `.docx`
+> (titres `#`/`##`/`###`/`####` stricts pour conversion Pandoc propre). Tous les chiffres sont
+> tracés vers `docs/rapport/chiffres.md` (source unique de vérité). Avant rendu : compléter sur la
+> page de garde les informations administratives (`‹À COMPLÉTER›`) et le tableau d'endpoints en
+> annexe D. Les marqueurs `▸ Source` / `▸ lien` sont des notes de traçabilité internes, à retirer à
+> la conversion finale.
 
 ---
 
 ## FRONT MATTER
 
 ### Page de garde
-⟦À remplir⟧ Titre, sous-titre (early-warning & typage d'anomalies microservices K8s), auteur,
-tuteur entreprise, tuteur académique, établissement, dates de stage, logo Devoteam.
-▸ Source : informations administratives stage.
+EWAT — Détection précoce et typage automatique des anomalies dans les architectures microservices
+Kubernetes. Rapport de stage, Devoteam.
+‹À COMPLÉTER : auteur, tuteur entreprise, tuteur académique, établissement, période du stage,
+logos.›
 
 ### Résumé (français)
-⟦À remplir⟧ 250–300 mots : problème (faux positifs production), approche (séparation
-drift/anomalie + typage + ontologie), résultats clés défendables, limites assumées.
-▸ Chiffre : headline défendable B2 (cible Chaos Mesh) + IC ; mention résultats négatifs honnêtes.
-▸ Source : STATUS.md (verdict consolidé), docs/results.md.
-Mots-clés FR : détection précoce, drift conceptuel, microservices, Kubernetes, typage d'anomalies,
+Les systèmes de détection d'anomalies dans les architectures microservices confondent
+fréquemment les changements bénins — déploiements, autoscaling — avec de véritables anomalies, ce qui
+produit une masse de faux positifs en production. Ce stage, mené chez Devoteam, présente EWAT (Early
+Warning and Anomaly Typing), une démarche qui sépare explicitement ces régimes avant de typer et
+d'anticiper les pannes. EWAT formalise un graphe de services G(t), un signal de télémétrie à
+dix-sept dimensions S(t) = [métriques | traces | logs] et quatre régimes opérationnels, dont le
+régime mixte drift∩anomalie. Le pipeline enchaîne quatre étapes : détection de drift par MMD à
+features de Fourier aléatoires, encodage spatio-temporel sur graphe, typage contrastif par clustering,
+et précurseurs typés ; une ontologie empirique hors ligne donne un sens aux types. Le travail
+distingue rigoureusement les résultats obtenus sur cible indépendante (les labels d'injection Chaos
+Mesh) de ceux, circulaires, obtenus sur la cible du pipeline lui-même. Sur cible indépendante, le
+modèle atteint un macro-AUROC de 0,920 (intervalle de confiance à 95 % [0,878 ; 0,956]) et une
+précursion temporelle réelle. Les types d'anomalies se structurent nettement (silhouette 0,782). À
+l'inverse, plusieurs résultats négatifs sont revendiqués : l'échec de la séparation drift/anomalie par
+look-through, la non-généralisation à des types de pannes inédits, et l'instabilité du nombre de
+clusters. Le pipeline est rapide (latence p95 de 13 ms) et testé (586 tests unitaires). La
+contribution centrale est autant méthodologique que technique : évaluer honnêtement, en séparant le
+défendable du circulaire et en assumant les échecs.
+Mots-clés : détection précoce, drift conceptuel, microservices, Kubernetes, typage d'anomalies,
 ontologie, transfer entropy.
 
 ### Abstract (English)
-⟦À remplir⟧ Traduction fidèle du résumé FR.
-Keywords EN : early warning, concept drift, microservices, Kubernetes, anomaly typing, ontology,
+Anomaly detection systems for microservice architectures frequently confuse benign change —
+deployments, autoscaling — with genuine anomalies, producing large numbers of false positives in
+production. This internship at Devoteam introduces EWAT (Early Warning and Anomaly Typing), an
+approach that explicitly separates these regimes before typing and anticipating faults. EWAT
+formalises a service graph G(t), a seventeen-dimensional telemetry signal S(t) = [metrics | traces |
+logs] and four operational regimes, including the mixed drift∩anomaly regime. The pipeline chains
+four stages: drift detection via MMD with Random Fourier Features, spatio-temporal graph encoding,
+contrastive typing by clustering, and typed precursors; an offline empirical ontology gives meaning
+to the types. The work strictly distinguishes results on an independent target (Chaos Mesh injection
+labels) from circular results on the pipeline's own target. On the independent target, the model
+reaches a macro-AUROC of 0.920 (95 % confidence interval [0.878, 0.956]) with genuine temporal
+precursion. Anomaly types are clearly structured (silhouette 0.782). Conversely, several negative
+results are claimed as contributions: the failure of look-through drift/anomaly separation, the lack
+of generalisation to unseen fault types, and the instability of the number of clusters. The pipeline
+is fast (13 ms p95 latency) and tested (586 unit tests). The core contribution is as much
+methodological as technical: evaluating honestly, separating the defensible from the circular and
+owning the failures.
+Keywords: early warning, concept drift, microservices, Kubernetes, anomaly typing, ontology,
 transfer entropy.
 
-### Remerciements
-⟦À remplir⟧ Placeholder (tuteurs, équipe Devoteam, laboratoire).
-
 ### Sommaire
-▸ Source : table des matières auto-générée (Pandoc/Word, profondeur 4 niveaux).
+▸ Source : table des matières auto-générée à la conversion (Pandoc / Word, profondeur 4 niveaux).
 
 ### Liste des figures
-▸ Source : `docs/rapport/figures/`, `docs/paper/figures/`, `experiments/figures/`,
-`experiments/*/*.png` (heatmaps scénario×cluster, ROC/PR, distributions MMD², violons multi-seed,
-arbre ontologie).
+1. Carte des valeurs manquantes (ewat_v3) — §6.2.2
+2. Longueur des épisodes v3 vs v4 — §6.3.1
+3. Architecture du pipeline EWAT — §7.1
+4. Carte de chaleur scénario × cluster — §7.6.5
+5. Chaîne opérationnelle (reframing) — §7.7.4
+6. Distributions du MMD² (normal vs chaos) — §8.2
+7. AUROC par type d'anomalie — §8.6.1
+8. Transfert few-shot RCAEval — §8.10.2
+9. Courbes ROC / précision–rappel (AlertAssembler) — §8.11.3
+10. Matrice de confusion (attribution de cluster) — §8.11.3
+11. Ablation par modalité pour H3 — §8.12.2
+12. Distribution par graine (multi-graines) — §9.4.2
 
 ### Liste des tableaux
-▸ Source : tableaux de résultats STATUS.md / docs/results.md (hypothèses, per-seed, baselines,
-B3/B4 par scénario, ablations).
+▸ Source : table auto-générée. Tableaux principaux : 17 features (§4.2.4), comparatif des datasets
+(§6.6), comparatif des encodeurs (§7.5.4 et §8.11.1), AUROC par type (§8.6.1), headline défendable
+v3/v4 (§8.7.3), ablations modalités (§8.12), verdict multi-graines (§9.7), bilan des hypothèses
+(§11.1), limites principales (§12.1.3).
 
 ### Liste des acronymes
-⟦À remplir⟧ EWAT, RCA, K8s, RKE2, OTel, MMD, RFF, STGCN, GCN, GAT, SimCLR, TE, KSG, FDR, BH,
-OWL/RDF, ABox/TBox, SHAP, OOD, LOSO, BCa, IC, AUROC, PR-AUC, FPR/TPR, NMI.
+| Sigle | Signification |
+|---|---|
+| EWAT | Early Warning and Anomaly Typing |
+| RCA | Root Cause Analysis (analyse de cause racine) |
+| K8s | Kubernetes |
+| RKE2 | Rancher Kubernetes Engine 2 |
+| OTel | OpenTelemetry |
+| OTLP | OpenTelemetry Protocol |
+| MMD | Maximum Mean Discrepancy |
+| RFF | Random Fourier Features |
+| STGCN | Spatio-Temporal Graph Convolutional Network |
+| GCN | Graph Convolutional Network |
+| GAT | Graph Attention Network |
+| TCN | Temporal Convolutional Network |
+| SimCLR | Simple framework for Contrastive Learning of Representations |
+| TE | Transfer Entropy |
+| KSG | estimateur Kraskov–Stögbauer–Grassberger |
+| FDR | False Discovery Rate |
+| BH | Benjamini–Hochberg |
+| OWL / RDF | Web Ontology Language / Resource Description Framework |
+| TBox / ABox | terminologie (classes) / assertions (individus) d'une ontologie |
+| SHAP | SHapley Additive exPlanations |
+| OOD | Out-Of-Distribution |
+| LOSO | Leave-One-Scenario-Out |
+| BCa | Bias-Corrected and accelerated (bootstrap) |
+| IC | Intervalle de Confiance |
+| AUROC | Area Under the ROC Curve |
+| PR-AUC | Area Under the Precision–Recall Curve |
+| FPR / TPR | False / True Positive Rate |
+| NMI | Normalized Mutual Information |
+| JVM | Java Virtual Machine |
 
 ### Glossaire
-⟦À remplir⟧ Définitions courtes et autoportantes : drift (bénin), look-through, MMD-RFF, RFF,
-STGCN, GAT, SimCLR, réseau siamois, TE-KSG, OpenMax, BCa, LOSO, FDR, régime θ, précurseur,
-fenêtre pré-injection, signature statique de scénario.
-▸ Source : docs/formalisation.md, CLAUDE.md.
+- **Drift (bénin)** : changement de distribution du signal dû à une évolution normale du système
+  (déploiement, autoscaling), sans dégradation effective.
+- **Look-through** : mécanisme de l'étape 0 qui, lors d'un drift, transmet le signal avec un drapeau
+  plutôt que de l'annuler, afin de ne pas masquer une anomalie concomitante.
+- **MMD-RFF** : test à deux échantillons (Maximum Mean Discrepancy) approché par Random Fourier
+  Features, de coût O(nD).
+- **STGCN** : encodeur combinant convolution spatiale sur graphe et convolution temporelle causale.
+- **GAT** : variante d'encodeur remplaçant la convolution de graphe par de l'attention sur les arêtes.
+- **SimCLR** : pré-entraînement contrastif produisant des représentations invariantes aux
+  augmentations.
+- **Réseau siamois** : réseau entraîné par paires pour rapprocher les épisodes de même type et
+  éloigner les autres.
+- **TE-KSG** : Transfer Entropy estimée par la méthode KSG, mesure d'information dirigée entre séries.
+- **OpenMax** : méthode de reconnaissance open-set signalant les classes inédites par théorie des
+  valeurs extrêmes.
+- **BCa** : intervalle de confiance bootstrap biais-corrigé et accéléré.
+- **LOSO** : validation croisée retirant un scénario entier de l'entraînement.
+- **FDR** : taux de fausses découvertes contrôlé en tests multiples.
+- **Régime θ** : état opérationnel du système (normal, drift, anomalie, drift∩anomalie).
+- **Précurseur** : classifieur estimant la probabilité qu'un type d'anomalie se développe à un
+  horizon donné.
+- **Fenêtre pré-injection** : fenêtre temporelle prélevée dans le régime normal, avant l'injection de
+  chaos.
+- **Signature statique de scénario** : information distinctive d'un scénario récupérable à tout
+  instant du régime normal (par opposition à une dynamique précurseur).
 
 ---
 
@@ -69,29 +150,63 @@ fenêtre pré-injection, signature statique de scénario.
 
 ## 1.1 Cadre du stage et commanditaire
 ### 1.1.1 Devoteam, mission d'observabilité et contexte client
-⟦À remplir⟧ ▸ Source : informations stage, CLAUDE.md (contexte recherche).
+Le projet s'est déroulé chez Devoteam, dans un contexte de conseil et d'ingénierie en observabilité de
+plateformes Kubernetes. Le travail a porté sur EWAT (Early Warning and Anomaly Typing), un projet de
+recherche appliquée sur la détection précoce et le typage automatique des anomalies dans les
+architectures microservices. Les informations administratives (encadrement, période) figurent en page
+de garde.
+
 ### 1.1.2 Insertion du sujet dans une problématique de production
-⟦À remplir⟧
+Le sujet répond à un besoin concret d'exploitation : les équipes qui opèrent des microservices sont
+submergées d'alertes, dont une large part correspond à des changements parfaitement normaux
+(déploiements, montées en charge). EWAT cherche à séparer ces changements bénins des anomalies
+réelles, puis à les typer et à les anticiper.
 
 ## 1.2 Motivation : le coût des faux positifs en production
 ### 1.2.1 Confusion drift bénin / anomalie réelle
-⟦À remplir⟧ ▸ Source : CLAUDE.md (« le problème »).
+Les systèmes de détection d'anomalies actuels confondent fréquemment les drifts bénins — un
+déploiement progressif, un autoscaling — avec de véritables anomalies. Or les deux produisent des
+changements de distribution dans la télémétrie. Sans distinction explicite, toute évolution du signal
+risque de déclencher une alerte.
+
 ### 1.2.2 Conséquence opérationnelle (fatigue d'alerte, perte de confiance)
-⟦À remplir⟧
+La conséquence est une masse de faux positifs en production : fatigue d'alerte, perte de confiance
+dans l'outil, et au bout du compte des alertes ignorées. C'est précisément l'écart entre performance
+sur benchmark et déployabilité que pointe la littérature récente (§3.2.4). EWAT prend ce problème de
+front en traitant la séparation drift/anomalie comme une étape à part entière.
 
 ## 1.3 Énoncé du problème et question de recherche
-⟦À remplir⟧ ▸ Source : docs/formalisation.md.
+Le problème se formule ainsi : étant donné le flux de télémétrie d'une architecture microservices,
+peut-on, *avant* qu'une panne ne survienne, distinguer les changements bénins des anomalies, typer
+l'anomalie qui se développe et estimer son horizon ? Ce travail relève de l'early-warning (quoi, dans
+combien de temps) et non de l'analyse de cause racine (où, pourquoi, après) — une distinction
+développée en §2.3.
 
 ## 1.4 Contributions du stage
 ### 1.4.1 Contributions méthodologiques
-⟦À remplir⟧ liste : formalisation 4-régimes, pipeline 4 étapes, ontologie empirique.
+Sur le plan méthodologique, le stage apporte : une formalisation à quatre régimes opérationnels (dont
+le régime mixte drift∩anomalie, §4.4) ; un pipeline en quatre étapes (détection de drift, encodage
+sur graphe, typage contrastif, précurseurs typés, §4.5) ; et une ontologie empirique des pannes
+ancrée dans la littérature (§10).
+
 ### 1.4.2 Contributions empiriques (dont résultats négatifs)
-⟦À remplir⟧ ▸ Chiffre : renvoi vers §11 (headlines + négatifs).
+Sur le plan empirique, le stage établit un résultat défendable sur cible indépendante (macro-AUROC
+0,920, §8.7) et documente honnêtement plusieurs résultats négatifs — échec du look-through (H2a),
+fuite de signature de scénario, instabilité du nombre de clusters, échec du transfert externe — qui
+sont autant de contributions à part entière (synthèse en §11).
+
 ### 1.4.3 Contributions logicielles et dataset
-⟦À remplir⟧ ▸ Source : STATUS.md (modules, 401 tests), v5/LAUNCH.md.
+Sur le plan logiciel, le travail livre un pipeline modulaire (six modules, 586 tests unitaires), une
+chaîne de collecte reproductible en trois phases, et plusieurs itérations de dataset (v3, v4,
+v4_strat, rcaeval) culminant avec le pivot v5 vers Train Ticket, dont le dataset est destiné à une
+publication potentielle.
 
 ## 1.5 Organisation du document
-⟦À remplir⟧ paragraphe-guide de lecture.
+Le document suit l'évolution du projet. Le chapitre 2 pose le contexte et le positionnement ; le
+chapitre 3 la revue de littérature ; le chapitre 4 la formalisation. Les chapitres 5 à 7 décrivent
+l'environnement, les itérations de dataset et l'architecture. Les chapitres 8 et 9 rassemblent les
+résultats et la validation de robustesse, le chapitre 10 l'ontologie. Les chapitres 11 à 13
+synthétisent, discutent les limites et concluent.
 
 ---
 
@@ -100,36 +215,78 @@ fenêtre pré-injection, signature statique de scénario.
 
 ## 2.1 Architectures microservices et observabilité
 ### 2.1.1 Caractéristiques des systèmes microservices Kubernetes
-⟦À remplir⟧ ▸ Source : CLAUDE.md (cluster observit-cluster1).
+Une architecture microservices décompose une application en services autonomes communiquant par le
+réseau, déployés et mis à l'échelle indépendamment sur un orchestrateur comme Kubernetes. Cette
+souplesse a un revers pour l'observabilité : la topologie évolue en permanence (réplicas, rerouting),
+les défaillances se propagent en cascade, et la charge fluctue. Le cluster de travail
+(observit-cluster1, §5.1) est un environnement réel présentant ces caractéristiques.
+
 ### 2.1.2 Les trois piliers : métriques, traces, logs
-⟦À remplir⟧ ▸ Source : docs/formalisation.md (sources M/T/L).
+L'observabilité repose sur trois piliers complémentaires : les métriques (séries temporelles
+agrégées : CPU, mémoire, latence…), les traces distribuées (le cheminement d'une requête à travers
+les services) et les logs (les événements textuels émis par les services). EWAT exploite les trois,
+qui forment les trois modalités du signal S(t) (§4.2).
+
 ### 2.1.3 Stack existante : Prometheus/Grafana + OpenTelemetry
-⟦À remplir⟧ ▸ Source : CLAUDE.md (double stack), mémoire projet OTel infra.
+Le cluster dispose de deux stacks coexistantes : Prometheus + Grafana pour les métriques matures, et
+un collecteur OpenTelemetry pour les traces et logs instrumentés via OTLP. Cette dualité est un atout
+— métriques d'un côté, traces et logs de l'autre, corrélables par les conventions sémantiques OTel
+(§5.2).
 
 ## 2.2 Drift conceptuel vs anomalie : définitions opérationnelles
 ### 2.2.1 Drift bénin (déploiement, autoscaling, rolling update)
-⟦À remplir⟧
+On appelle drift bénin un changement de distribution du signal causé par une évolution normale du
+système : déploiement progressif d'une nouvelle version, autoscaling, montée de trafic planifiée. Le
+signal change, mais le système reste sain. Un détecteur naïf le confond avec une panne.
+
 ### 2.2.2 Anomalie réelle (panne, dégradation)
-⟦À remplir⟧
+Une anomalie réelle est une dégradation effective : saturation de ressource, fuite mémoire, crash,
+latence anormale, erreurs en hausse. C'est ce que l'on veut détecter et typer, en le distinguant du
+drift bénin.
+
 ### 2.2.3 Le cas mixte : déploiement défectueux (θ_{drift∩anomaly})
-⟦À remplir⟧ ▸ Source : docs/formalisation.md (4 régimes).
+Le cas le plus délicat est le déploiement défectueux : un drift (déploiement) et une anomalie (le bug
+introduit) surviennent simultanément. C'est un quatrième régime à part entière, θ_{drift∩anomaly},
+que la plupart des approches ignorent en ne raisonnant qu'en trois régimes. EWAT le modélise
+explicitement (§4.4) et tente de l'identifier (hypothèse H2b).
 
 ## 2.3 Positionnement : early-warning n'est pas du RCA
 ### 2.3.1 RCA = post-mortem (Où / Pourquoi, après la panne)
-⟦À remplir⟧ ▸ Source : CLAUDE.md (règle impérative).
-### 2.3.2 Early-warning = anticipation (Quoi / Dans combien de temps, avant)
-⟦À remplir⟧
-### 2.3.3 Tableau comparatif RCA vs EWAT
-▸ Tableau : axes (objectif, instant, sortie, métrique) × {RCA, EWAT}.
+L'analyse de cause racine (RCA) cherche, après une panne, à en identifier l'origine — quel service,
+quelle cause. C'est une démarche post-mortem, qui suppose que l'incident a déjà eu lieu. La majorité
+des travaux sur la fiabilité des microservices relève de cette catégorie (§3.2.4).
 
-## 2.4 Objectifs et critères de succès du projet
+### 2.3.2 Early-warning = anticipation (Quoi / Dans combien de temps, avant)
+EWAT se place en amont : il s'agit d'anticiper — quel type d'anomalie se développe, et à quel horizon
+— avant que la panne ne survienne. La question n'est pas « pourquoi est-ce tombé », mais « qu'est-ce
+qui va tomber, et dans combien de temps ». Cette distinction est structurante : elle interdit, par
+exemple, d'utiliser des informations post-incident dans l'évaluation.
+
+### 2.3.3 Tableau comparatif RCA vs EWAT
+| Axe | RCA | EWAT (early-warning) |
+|---|---|---|
+| Question | Où ? Pourquoi ? | Quoi ? Dans combien de temps ? |
+| Instant | après la panne | avant la panne |
+| Sortie | cause racine | type d'anomalie + horizon |
+| Évaluation | localisation correcte | AUROC par type, lead time |
+
+### 2.4 Objectifs et critères de succès du projet
 ### 2.4.1 Objectifs fonctionnels
-⟦À remplir⟧
+Les objectifs fonctionnels sont : (1) séparer drift bénin et anomalie ; (2) typer automatiquement les
+anomalies à partir d'une taxonomie empirique ; (3) anticiper le type avec un horizon utile ; (4) le
+faire dans un budget de latence compatible avec une exploitation en ligne (< 5 s, §4.6).
+
 ### 2.4.2 Critères de falsifiabilité (renvoi H1–H3)
-⟦À remplir⟧ ▸ Source : docs/formalisation.md (hypothèses).
+Chaque objectif est rattaché à une hypothèse falsifiable — H1 (structurabilité des types), H2a/H2b
+(séparabilité du drift, identification du régime mixte), H3 (prédictibilité) — avec un critère de
+falsification explicite (§4.7). Cette discipline de falsifiabilité est volontaire : elle permet de
+revendiquer les résultats négatifs comme des contributions.
 
 ## 2.5 Périmètre, contraintes et hors-périmètre
-⟦À remplir⟧ ▸ Source : agents.md (contraintes d'accès namespace-admin), CLAUDE.md.
+Le périmètre est borné par les conditions d'accès au cluster : namespace-admin sur `ewat`, sans
+droits cluster-wide (§5.1.2). EWAT n'est pas un outil de RCA et ne prétend pas l'être. Il ne couvre
+pas non plus la remédiation automatique : sa sortie est une alerte typée et anticipée, à charge de
+l'opérateur d'agir.
 
 ---
 
@@ -285,9 +442,9 @@ Procédure de test multiple séquentiellement rejetante, plus conservatrice que 
 Catalogue les anti-patterns et modes de défaillance des applications microservices. *Justifie
 l'ancrage de la TBox de l'ontologie* dans la littérature plutôt que dans des labels ad hoc (§10.2).
 
-#### 3.3.3.5 Aniello et al. (2014) — défaillances en cascade
-Modélise la propagation des défaillances dans les architectures de services distribuées. *Justifie la
-relation `propagatesThrough`* et les classes de propagation de l'ontologie (§10.2).
+#### 3.3.3.5 Motter & Lai (2002) — défaillances en cascade
+Modèle fondateur des défaillances en cascade par redistribution de charge sur les réseaux. *Justifie
+la relation `propagatesThrough`* et les classes de propagation de l'ontologie (§10.2).
 
 #### 3.3.3.6 Glimm et al. (2014) — HermiT
 Raisonneur OWL 2 vérifiant la cohérence et matérialisant les inférences. *Justifie le raisonnement sur
@@ -343,7 +500,7 @@ Produit des embeddings de phrases via un réseau BERT siamois. *Justifie le scor
 sémantique* des logs dans L(t) (§4.2).
 
 ### 3.3.8 Benchmark externe
-#### 3.3.8.1 RCAEval contributors (2024) — RE2-OB
+#### 3.3.8.1 Pham et al. (2025) — RCAEval RE2-OB
 Benchmark public de RCA en microservices (variante Online-Boutique). *Justifie le jeu de transfert
 externe ewat_rcaeval* (§6.4, §8.10).
 
@@ -373,7 +530,7 @@ externe ewat_rcaeval* (§6.4, §8.10).
 | Benjamini & Hochberg 1995 | contrôle FDR | seuillage causal (§10.3) |
 | Holm 1979 | correction multiple | co-occurrence (§10.4) |
 | Soldani & Brogi 2022 | taxonomie des pannes | TBox ontologie (§10.2) |
-| Aniello 2014 | défaillances en cascade | propagatesThrough (§10.2) |
+| Motter & Lai 2002 | défaillances en cascade | propagatesThrough (§10.2) |
 | Glimm 2014 | raisonneur HermiT | raisonnement OWL (§10.5) |
 | Lamy 2017 | owlready2 | outillage ontologie (§10.5) |
 | Lundberg & Lee 2017 | SHAP | validation des fiches (§8.9) |
@@ -386,7 +543,7 @@ externe ewat_rcaeval* (§6.4, §8.10).
 | Agresti 2002 | χ² / Fisher | co-occurrence (§10.4) |
 | Dhillon & Modha 2001 | spherical k-means | average + cosinus (§7.6) |
 | Reimers & Gurevych 2019 | Sentence-BERT | anomalie sémantique L(t) (§4.2) |
-| RCAEval 2024 | benchmark RCA public | transfert ewat_rcaeval (§6.4) |
+| RCAEval (Pham 2025) | benchmark RCA public | transfert ewat_rcaeval (§6.4) |
 
 ### 3.4.2 Transition vers la formalisation
 Trois constats structurent la formalisation du chapitre suivant. D'abord, une anomalie n'a de sens
@@ -603,10 +760,21 @@ des deux stacks est un atout : métriques matures côté Prometheus, traces et l
 OTel, corrélables via les conventions sémantiques OpenTelemetry.
 
 ### 5.2.3 Endpoints découverts et configuration
-Les endpoints exacts sont découverts en début de campagne et consignés dans `configs/default.yaml`.
-La collecte v5 lit les métriques et traces via NodePort (Prometheus, Loki, Jaeger), ce qui évite les
-port-forwards et accélère sensiblement la collecte. ‹À CONFIRMER : reporter ici le tableau
-service → endpoint exact depuis configs/default.yaml au moment de la rédaction.›
+Les endpoints sont découverts en début de campagne et consignés dans `configs/default.yaml`. Les
+adresses ci-dessous sont les services internes du cluster (DNS Kubernetes) ; les références
+d'administration (API Rancher, identifiant de cluster) sont volontairement omises de ce document.
+
+| Source | Endpoint interne |
+|---|---|
+| Prometheus | `prometheus-server.monitoring-metrics.svc:80` |
+| Jaeger | `rca-jaeger.rca-sandbox.svc:16686` |
+| Loki | `loki-gateway.monitoring-logs.svc:80` |
+| OTel Collector (OTLP gRPC) | `otel-collector.ewat.svc:4317` |
+| OTel Collector (OTLP HTTP) | `otel-collector.ewat.svc:4318` |
+| OTel Collector (export Prometheus) | `otel-collector.ewat.svc:9464` |
+
+La collecte v5 lit en outre les métriques et traces via NodePort, ce qui évite les port-forwards et
+accélère sensiblement la collecte.
 
 ## 5.3 Injection de fautes : Chaos Mesh
 ### 5.3.1 Catalogue de scénarios
@@ -680,7 +848,9 @@ Les épisodes font ~21 pas (10,5 min).
 La qualité du signal est suffisante : NaN global ~1,5 %. Le seul NaN significatif est disk_io à
 16,7 %, dû au service product-catalog hébergé sur le nœud NotReady ; les logs ont 0,4 % de NaN
 résiduel irréductible. Le disk_io reste significatif en ablation (§8.12.3) malgré ce taux, ce qui
-justifie sa correction en v4.
+justifie sa correction en v4 (figure 1).
+
+![Figure 1 — Carte des valeurs manquantes par feature et par service sur ewat_v3. Le seul taux significatif concerne disk_io de product-catalog, hébergé sur le nœud NotReady.](figures/nan_heatmap.png)
 
 ### 6.2.3 Défaut mesuré motivant l'itération suivante
 Deux défauts mesurés motivent v4 : des épisodes trop courts (~21 pas), insuffisants pour la
@@ -696,7 +866,9 @@ puis deux découpages. **Résultat** : signal pré-injection plus net (§8.7) ma
 
 ### 6.3.1 ewat_v4 — collecte 414 ép., 375 retenus, split temporel
 La collecte v4 produit 414 épisodes, dont 375 retenus après filtre qualité (39 rejetés pour pannes
-d'observabilité : coupures Loki et Jaeger). Le découpage temporel donne 262/56/57.
+d'observabilité : coupures Loki et Jaeger). Le découpage temporel donne 262/56/57. La figure 2 illustre l'allongement des épisodes par rapport à ewat_v3.
+
+![Figure 2 — Distribution de la longueur des épisodes (en pas de temps) : ewat_v3 (~21 pas) contre ewat_v4 (47–51 pas).](figures/timesteps_boxplot.png)
 
 ### 6.3.2 Motivation du split stratifié : 4 scénarios absents du train
 Le split temporel d'ewat_v4 s'est révélé inutilisable pour les évaluations sur cible Chaos Mesh :
@@ -795,8 +967,9 @@ occasion (restauration de F1, épinglage du contexte kubectl).
 Le pipeline est découpé en six modules indépendants et testables, sous `src/ewat/` : `drift` (étape 0),
 `encoder` (étape 1), `typing` (étape 2), `ontology` (étape 2b), `precursor` (étape 3) et `alerts`
 (assemblage). Chaque module a son interface, ses tests et peut être évalué isolément. Le signal S(t)
-traverse les étapes 0 → 1 → 2 → 2b → 3 jusqu'à l'alerte typée. ▸ Figure : schéma du pipeline
-S(t) → étape 0 → 1 → 2 → 2b → 3 → Alert ‹FIG-pipeline›.
+traverse les étapes 0 → 1 → 2 → 2b → 3 jusqu'à l'alerte typée (figure 3).
+
+![Figure 3 — Architecture du pipeline EWAT : le signal S(t) traverse la détection de drift (étape 0), l'encodeur STGCN (étape 1), le typage siamois (étape 2) et les précurseurs (étape 3) jusqu'à l'alerte typée ; l'ontologie (étape 2b) est hors ligne.](figures/pipeline_architecture.png)
 
 ## 7.2 Étape 0 — Détection de drift MMD-RFF avec look-through
 ### 7.2.1 Test MMD² par Random Fourier Features (O(nD))
@@ -904,7 +1077,9 @@ ce qui constitue une limite analysée en §9.4–§9.5.
 Les fiches de type donnent l'importance des features par cluster. La méthode initiale (gradient ×
 input) s'est révélée non fiable : sa corrélation de Spearman avec l'importance par permutation est de
 −0,34 (anti-corrélée), donc invalidée. Les fiches ont été régénérées par importance de permutation,
-puis validées par KernelSHAP (§3.3.4) : la concordance est positive pour 9 clusters sur 10.
+puis validées par KernelSHAP (§3.3.4) : la concordance est positive pour 9 clusters sur 10. La figure 4 montre l'alignement entre clusters appris et scénarios Chaos Mesh.
+
+![Figure 4 — Carte de chaleur scénario × cluster : répartition des épisodes de chaque scénario Chaos Mesh dans les clusters appris (NMI = 0,518). Certains scénarios partagent un même cluster.](figures/scenario_cluster_heatmap.png)
 
 ## 7.7 Reframing architectural — cible Chaos Mesh directe
 Ce reframing est né du constat de circularité (§8.6) : pour obtenir un chiffre défendable, on évalue
@@ -933,8 +1108,10 @@ prédictive principale ; le conserver pour le typage et l'ontologie.
 ### 7.7.4 Pipeline opérationnel résultant (Option B, sans STGCN prédictif)
 La chaîne opérationnelle se simplifie donc en : S(t) → instance norm → régression logistique
 one-vs-rest → softmax → OpenMax (pour le signal de nouveauté). Le STGCN reste utile en amont pour
-structurer l'espace latent (H1) et alimenter l'ontologie, mais n'est pas sur le chemin prédictif.
-▸ Figure : schéma S(t) → instance norm → LR-OvR → OpenMax ‹FIG-pipeline-v2›.
+structurer l'espace latent (H1) et alimenter l'ontologie, mais n'est pas sur le chemin prédictif
+(figure 5).
+
+![Figure 5 — Chaîne opérationnelle issue du reframing : le STGCN est retiré du chemin prédictif au profit d'une régression logistique one-vs-rest sur features brutes instance-normalisées, complétée par OpenMax pour le signal de nouveauté.](figures/pipeline_operational_v2.png)
 
 ## 7.8 Étape 3 — Précurseurs typés
 ### 7.8.1 Classifieurs one-vs-rest et sélection de k*
@@ -992,8 +1169,9 @@ Le seuil de drift est calibré épisode par épisode : on calcule un MMD² uniqu
 référence (5 premiers pas, régime normal) et une fenêtre courante (5 derniers pas, régime chaos),
 puis on retient le seuil de Youden sur la courbe ROC. On obtient $\varepsilon_{drift} = 0{,}5226$,
 pour une ROC-AUC de 0,60 (TPR = 0,55, FPR = 0,33 sur le train). L'AUC modérée annonce déjà la
-difficulté de séparer drift et anomalie par ce seul mécanisme, confirmée en §8.3.
-▸ Figure : distributions MMD² (normal vs chaos) + courbe ROC ‹FIG-drift-roc›.
+difficulté de séparer drift et anomalie par ce seul mécanisme, confirmée en §8.3 (figure 6).
+
+![Figure 6 — Distributions du MMD² en régime normal et en régime chaos. Le recouvrement important des deux distributions illustre la difficulté de séparation par seuil, cohérente avec l'AUC modérée (0,60).](figures/mmd2_distributions.png)
 
 ## 8.3 Résultat H2a — séparabilité du drift par look-through (résultat négatif)
 ▸ Raisonnement. **Observation** : en production, déploiements et autoscaling produisent des
@@ -1117,7 +1295,9 @@ prédire le type avant l'injection. **Hypothèse H3** : l'AUROC par type dépass
 | C9 | 1 | 2 | NaN (n_pos < 2) | — |
 
 L'horizon $k^* = 6$ pas (3 min) domine (5 types sur 8), ce qui situe la zone de prédictibilité
-optimale autour de 3 minutes. C6 et C9 sont non concluants faute de positifs en test.
+optimale autour de 3 minutes. C6 et C9 sont non concluants faute de positifs en test (figure 7).
+
+![Figure 7 — AUROC de test par type d'anomalie (cible EWAT, circulaire), avec intervalles de confiance bootstrap. Huit types sur dix dépassent 0,9 ; C6 et C9 ne sont pas concluants (n_pos < 2).](figures/auroc_h3_per_cluster.png)
 
 ### 8.6.2 Verdict H3 PASS et mise en garde de circularité
 H3 est validée au sens « AUROC > 0,5 » : 8/10 types ont un AUROC supérieur à 0,9, et la config
@@ -1228,7 +1408,9 @@ qu'il y a une anomalie, sans dire laquelle.
 
 ### 8.10.2 Few-shot Stratégie A (re-fit scaler)
 Réajuster le seul scaler sur quelques épisodes RCAEval ne débloque rien : l'AUROC H3 reste collé à
-≈ 0,50 quel que soit le nombre d'épisodes (de 1 à 40).
+≈ 0,50 quel que soit le nombre d'épisodes (de 1 à 40) (figure 8).
+
+![Figure 8 — Transfert few-shot sur RCAEval : H1 (silhouette) et H3 (AUROC) en fonction du nombre d'épisodes de réajustement. H3 reste au niveau du hasard quel que soit n.](figures/fewshot_learning_curve.png)
 
 ### 8.10.3 Interprétation : goulot = scaler non transférable (échec honnête)
 Le verrou est l'espace latent ewat_v3, qui ne sépare pas les types RCAEval ; réajuster le scaler est
@@ -1268,7 +1450,11 @@ que EWAT vise à éliminer.
 
 Le point opérationnel recommandé est le seuil 0,70 : il ramène le taux de fausses alertes sur drift à
 8,3 % tout en conservant un lead time de 3,0 min. Aux seuils bas, le DriftDetector n'a pas le temps de
-se réchauffer avant que les classifieurs ne tirent (limite liée à la longueur des épisodes).
+se réchauffer avant que les classifieurs ne tirent (limite liée à la longueur des épisodes). Les figures 9 et 10 détaillent le compromis détection/fausses alertes et l'attribution de cluster.
+
+![Figure 9 — Courbes ROC et précision–rappel de l'AlertAssembler en fonction du seuil de décision.](figures/roc_pr_curve.png)
+
+![Figure 10 — Matrice de confusion de l'attribution de cluster au seuil opérationnel (épisodes correctement typés sur la diagonale).](figures/confusion_matrix.png)
 
 ## 8.12 Ablations
 ### 8.12.1 Ablation modalités H1 (réentraînement complet)
@@ -1290,7 +1476,9 @@ n = 209 — leur valeur est prédictive (H3), pas géométrique (H1).
 
 ### 8.12.2 Ablation modalités H3 (masquage inférence)
 Pour la prédictibilité, la conclusion s'inverse : le modèle complet (macro-AUROC 0,954) bat toutes
-les réductions. Traces et logs sont nécessaires aux précurseurs même s'ils nuisent au clustering.
+les réductions. Traces et logs sont nécessaires aux précurseurs même s'ils nuisent au clustering (figure 11).
+
+![Figure 11 — Ablation par modalité pour la prédictibilité (H3) : macro-AUROC selon les modalités conservées. Le modèle complet domine, à l'inverse de l'ablation H1.](figures/ablation_h3_heatmap.png)
 
 | Condition | Macro-AUROC | Δ vs full |
 |---|---|---|
@@ -1408,8 +1596,9 @@ la statistique de gap de Tibshirani un mode K = 12 (intervalle [4 ; 12]), avec u
 ### 9.4.2 K.3 — variance per-seed, seed 42 outlier
 La distribution par graine sépare nettement les métriques stables (AUROC circulaire, B2 déterministe)
 des instables (silhouette, K, A1). La graine 42 ressort comme outlier sur A1, ce qui explique les
-résultats trop optimistes de la Phase G. ▸ Figure : distribution par graine ‹FIG-phaseK-distrib›
-(experiments/multiseed/phase_h/distribution.png).
+résultats trop optimistes de la Phase G (figure 12).
+
+![Figure 12 — Distribution par graine des métriques multi-graines (Phase H, 10 graines). Les métriques déterministes/circulaires sont stables, tandis que la silhouette, K et l'écart A1 présentent une variance large ; la graine 42 est un outlier sur A1.](figures/multiseed_distribution.png)
 
 ## 9.5 Instabilité de K (résultat négatif structurel)
 La leçon de la Phase K est que K est intrinsèquement instable sur ce dataset (n_train = 270) :
@@ -1457,11 +1646,11 @@ est hors budget de latence : elle alimente l'interprétation et les fiches de ty
 ligne.
 
 ## 10.2 TBox — taxonomie ancrée dans la littérature
-### 10.2.1 29 classes ancrées (Soldani & Brogi, Fu, Gregg, Aniello)
+### 10.2.1 29 classes ancrées (Soldani & Brogi, Fu, Gregg, Motter & Lai)
 La TBox compte **29 classes** hiérarchiques. Plutôt que de nommer les types à partir des seuls labels
 Chaos Mesh, on les rattache à des classes de panne définies dans la littérature : taxonomie des
 anti-patterns microservices (Soldani & Brogi, §3.3.3.4), grandeurs de saturation de la méthode USE
-(Gregg, §3.2.2), défaillances en cascade (Aniello, §3.3.3.5). Deux axiomes d'équivalence définissent
+(Gregg, §3.2.2), défaillances en cascade (Motter & Lai, §3.3.3.5). Deux axiomes d'équivalence définissent
 les classes composites `Composite_Anomaly` et `CascadingFailure`. Cet ancrage rend l'ontologie
 défendable indépendamment de notre clustering.
 
@@ -1542,47 +1731,109 @@ La validation chiffrée atteint **8 critères sur 10**. Sont satisfaits : couver
 ▸ Budget pages : 3
 
 ## 11.1 Tableau-bilan des hypothèses H1/H2a/H2b/H3
-▸ Tableau : hypothèse | verdict | valeur clé | emplacement (défendable / circulaire).
-▸ Source : STATUS.md (bilan final).
+| Hypothèse | Verdict | Valeur clé | Nature |
+|---|---|---|---|
+| H1 — structurabilité | ✓ PASS | silhouette test 0,782 ± 0,065 (10 graines) | géométrique |
+| H2a — séparabilité drift | ✗ FAIL | FPR non réduit, p = 0,27 (et 0,372 sur v4) | négatif honnête |
+| H2b — régime mixte | ⚠ nuancé | PASS formel mais trivial (Fisher p = 0,35) | nuancé |
+| H3 — prédictibilité (cible EWAT) | ✓ PASS | AUROC 0,987 ± 0,011 | circulaire |
+| H3 — prédictibilité (cible Chaos Mesh) | défendable | macro-AUROC 0,920 [0,878 ; 0,956] | indépendant |
 
 ## 11.2 Headlines défendables (cible indépendante)
-⟦À remplir⟧ ▸ Chiffre : B2 (Chaos Mesh) + IC. — emplacement DÉFENDABLE distinct.
+Le résultat à mettre en avant est le macro-AUROC de **0,920** (IC 95 % [0,878 ; 0,956]) obtenu par la
+régression logistique B2 sur la cible Chaos Mesh indépendante (ewat_v4_strat), confirmé par la
+validation croisée LOSO (0,930). À cela s'ajoute la structurabilité H1 (silhouette 0,782) et la
+précursion temporelle réelle mesurée sur cible indépendante (Δ far/near = −0,116, §9.1.6). Ces
+chiffres ne dépendent pas des labels produits par EWAT lui-même.
 
 ## 11.3 Chiffres circulaires (cible auto-référente) — à manier avec précaution
-⟦À remplir⟧ ▸ Chiffre : H3 (cible EWAT). — emplacement CIRCULAIRE distinct.
+À l'opposé, l'AUROC H3 de **0,987** sur la cible EWAT (les clusters du pipeline) est circulaire : il
+mesure la cohérence interne, pas une prédiction indépendante. Le test distant-window (Δ = −0,007 sur
+cette cible) confirme qu'il ne s'agit pas de précursion temporelle. Ce chiffre est rapporté comme tel,
+distinctement du headline défendable, conformément au principe d'honnêteté qui gouverne tout le
+rapport.
 
 ## 11.4 Contributions négatives revendiquées
-⟦À remplir⟧ H2a FAIL, fuite signature A1, instabilité K, échec transfert RCAEval, OpenMax mitigé.
+Plusieurs résultats négatifs sont revendiqués comme des contributions : l'échec du look-through
+(H2a, double confirmation v3/v4) ; la fuite de signature de scénario qui démasque la circularité de
+H3 (A1) ; l'instabilité du nombre de clusters K (intervalle [9 ; 15]) ; l'échec du transfert externe
+sur RCAEval (H3 ≈ 0,5) ; et la portée seulement partielle de l'open-set (OpenMax, unknown AUROC 0,55).
+Chacun borne honnêtement la portée du modèle et oriente les travaux futurs.
 
 ## 11.5 Apport opérationnel net (vs z-score)
-⟦À remplir⟧ ▸ Chiffre : FA drift maîtrisée au seuil 0.7, lead time.
+L'apport opérationnel net se lit dans la comparaison à la baseline z-score : celle-ci lève 100 % de
+fausses alertes sur les drifts bénins quel que soit son seuil, alors qu'EWAT, au point opérationnel
+(seuil 0,70), ramène ce taux à 8,3 % en conservant un lead time de 3,0 min. C'est exactement le faux
+positif que le projet visait à éliminer.
 
 ---
 
 # 12 Limites et travaux futurs
 ▸ Budget pages : 4
 
-## 12.1 Limites résiduelles L1–L17
-### 12.1.1 Limites méthodologiques (circularité, surentraînement siamois, n_pos)
-⟦À remplir⟧ ▸ Source : docs/limitations.md (L1–L9).
-### 12.1.2 Limites techniques (N=6, K instable, 17 features hardcodées, cross-cluster)
-⟦À remplir⟧ ▸ Source : docs/limitations.md (L10–L17).
-### 12.1.3 Tableau des 17 limites (id → description → fix proposé)
-▸ Tableau.
+## 12.1 Limites résiduelles
+Les limites sont documentées en détail dans `docs/limitations.md`. On en retient ici les plus
+structurantes, regroupées en limites méthodologiques et techniques, chacune assortie d'une piste de
+correction.
+
+### 12.1.1 Limites méthodologiques
+La principale est la **circularité d'évaluation** (L9) : la cible H3 étant produite par EWAT, son
+AUROC élevé est en partie auto-référent — d'où le recours systématique à la cible Chaos Mesh
+indépendante. S'y ajoutent le **surentraînement du réseau siamois** (L10, best_epoch ≈ 3 quelle que
+soit la configuration), le **faible nombre de positifs par scénario en test** (n_pos = 3, qui rend
+plusieurs AUROC non concluants), l'**ablation sans réentraînement** pour H3 (masquage à l'inférence,
+biaisé hors-distribution), et l'**absence de validation externe réussie** (RCAEval).
+
+### 12.1.2 Limites techniques
+Côté technique : le **graphe de services est petit** (N = 6 sur Online Boutique, L13) — limite levée
+en v5 (N = 41) ; le **nombre de clusters K est instable** (L, intervalle [9 ; 15]), à corriger par K
+fixe ou HDBSCAN ; les **17 features et la topologie sont figées** dans le code (L16) ; le pipeline est
+**mono-cluster** (entraîné sur observit-cluster1, sans adaptation de domaine, L14) ; et le **cycle de
+réentraînement** n'est pas automatisé (L15). L'ontologie n'a pas encore été auditée par un expert SRE
+(L17).
+
+### 12.1.3 Tableau des limites principales
+| ID | Description | Fix proposé |
+|---|---|---|
+| L9 | circularité d'évaluation H3 | cible Chaos Mesh indépendante (fait) + ontologie-guided (Axe A) |
+| L10 | surentraînement siamois (best_epoch ≈ 3) | hard-negative mining, curriculum |
+| L13 | graphe N = 6, 1 topologie | pivot Train Ticket N = 41 (v5) |
+| L (K) | nombre de clusters instable [9 ; 15] | K fixe = 10 ou HDBSCAN |
+| L14 | mono-cluster | adaptation de domaine (DANN, Axe D) |
+| L16 | 17 features et topologie figées | configuration Hydra complète |
+| L11 | latence E2E | résolu (p95 = 13 ms) |
+| L12 | open-set partiel | Mahalanobis / energy-based (Axe C) |
+| L17 | ontologie sans audit SRE | revue par expert métier |
 
 ## 12.2 Travaux futurs — ROADMAP
+Quatre axes prolongent le travail au-delà du stage, sans contrainte de temps imposée.
+
 ### 12.2.1 Axe A — couplage ontologie ↔ prédiction
-⟦À remplir⟧ ▸ Source : ROADMAP.md.
-### 12.2.2 Axe B — précursion robuste (instance norm, fenêtre pré-injection)
-⟦À remplir⟧
-### 12.2.3 Axe C — open-set / nouveauté (Mahalanobis, Energy-based)
-⟦À remplir⟧ ▸ lien Lee §3.3.5.2, Liu §3.3.5.3.
+L'ontologie (29 classes, 3 causales, 46 edges de propagation) est aujourd'hui isolée du pipeline
+prédictif. L'axe A propose de l'intégrer comme prior — enrichissement de features par les services
+amont causaux, re-ranking par priors de graphe, ou stacking — avec pour critère un gain d'au moins
+2 points de macro-AUROC sur B2 (p < 0,05).
+
+### 12.2.2 Axe B — précursion temporelle robuste
+La précursion réelle (Δ = −0,116) n'a été établie que sur une graine. L'axe B la consolide en
+multi-graines et explore un encodeur Transformer temporel (mieux outillé pour la dynamique que le
+STGCN), avec validation cross-dataset sur RCAEval (fine-tuning few-shot).
+
+### 12.2.3 Axe C — open-set / nouveauté
+Pour généraliser aux types inédits, l'axe C dépasse OpenMax par des détecteurs hors-distribution :
+Mahalanobis (§3.3.5.2) et energy-based (§3.3.5.3), voire du méta-apprentissage few-shot, avec pour
+cible un unknown AUROC ≥ 0,80.
+
 ### 12.2.4 Axe D — déploiement opérationnel
-⟦À remplir⟧
+L'axe D vise la mise en production : pipeline streaming (Kafka + Flink), cycle de réentraînement
+automatisé, adaptation multi-cluster et contrat d'alerte formalisé vers les outils d'astreinte.
 
 ## 12.3 Perspective dataset public ewat_v5
-⟦À remplir⟧ ▸ Source : mémoire projet v5 public ; conditions (autorisation Devoteam, sanitization),
-datasheet Gebru, licence CC-BY-4.0.
+La collecte v5 sur Train Ticket vise un dataset potentiellement public, la base TT et Chaos Mesh étant
+ouvertes. Deux conditions le permettent : l'autorisation de Devoteam (cluster, stage) et
+l'assainissement des dumps bruts (retrait des fuites d'infrastructure ; les artefacts buildés sont
+déjà propres). Le kit de publication comprendrait une datasheet (au format Gebru et al.) et une
+licence ouverte (par exemple CC-BY-4.0).
 
 ---
 
@@ -1590,13 +1841,27 @@ datasheet Gebru, licence CC-BY-4.0.
 ▸ Budget pages : 2
 
 ## 13.1 Rappel de la question de recherche et réponses apportées
-⟦À remplir⟧
+La question posée était : peut-on, avant qu'une panne ne survienne, distinguer les changements bénins
+des anomalies, typer l'anomalie qui se développe et estimer son horizon ? Le travail y répond
+partiellement et honnêtement. Le typage des anomalies est solide (H1, silhouette 0,782) et la
+discrimination de scénario défendable sur cible indépendante (macro-AUROC 0,920). La séparation
+drift/anomalie par look-through, en revanche, échoue (H2a) : c'est une réponse négative, mais nette.
+
 ## 13.2 Bilan honnête (ce qui marche, ce qui ne marche pas)
-⟦À remplir⟧
-## 13.3 Apport personnel et compétences développées
-⟦À remplir⟧
-## 13.4 Mot de la fin
-⟦À remplir⟧
+Ce qui marche : la structuration des types, un headline prédictif défendable avec intervalle de
+confiance, une précursion temporelle réelle sur cible indépendante, une ontologie cohérente, et un
+pipeline rapide (13 ms) et testé (586 tests). Ce qui ne marche pas, et qui est documenté comme tel :
+le look-through, la généralisation à un type inédit (open-set partiel, transfert RCAEval échoué) et la
+stabilité du nombre de clusters. La valeur du STGCN s'est révélée géométrique et ontologique plutôt
+que prédictive en agrégé — un résultat contre-intuitif mais bien établi.
+
+## 13.3 Perspective
+La contribution la plus durable du projet n'est pas un chiffre isolé mais une démarche : séparer
+explicitement les régimes opérationnels, typer empiriquement les pannes à partir d'une taxonomie
+ancrée dans la littérature, et évaluer de façon disciplinée — en distinguant systématiquement les
+résultats défendables sur cible indépendante des résultats circulaires, et en documentant les échecs
+au même titre que les succès. C'est cette rigueur d'évaluation qui rend le travail réutilisable et
+extensible, comme le précise la feuille de route des travaux futurs (§12.2).
 
 ---
 
@@ -1604,24 +1869,69 @@ datasheet Gebru, licence CC-BY-4.0.
 
 # Annexes
 ## Annexe A — Commandes du pipeline complet
-▸ Source : STATUS.md (section Commandes), README.md, v5/LAUNCH.md.
+Commandes de référence pour reproduire le pipeline sur ewat_v3 (extraites de STATUS.md) :
+```bash
+# Étape 1 — Encodeur (100 epochs)
+python -m experiments.encoder.train --dataset data/datasets/ewat_v3 \
+    --features-root data/features/v3 --output experiments/encoder --epochs 100
+# Étape 2 — Typage siamois (50 epochs)
+python -m experiments.typing.train --dataset data/datasets/ewat_v3 \
+    --features-root data/features/v3 \
+    --encoder-checkpoint experiments/encoder/checkpoints/best_encoder.pt \
+    --output experiments/typing --epochs 50
+# Étape 2b — Ontologie (100 permutations)
+python -m experiments.ontology.build --typing-dir experiments/typing \
+    --features-root data/features/v3 --output experiments/ontology --n-permutations 100
+# Étape 3 — Précurseurs
+python -m experiments.precursor.train --typing-dir experiments/typing \
+    --features-root data/features/v3 --output experiments/precursor --k-values 2 4 6 8 10 12
+# Évaluation alertes
+python -m experiments.alerts.eval --typing-dir experiments/typing \
+    --encoder-dir experiments/encoder --precursor-dir experiments/precursor \
+    --features-root data/features/v3 --output experiments/alerts
+```
+La collecte v5 (Train Ticket) est décrite dans `v5/LAUNCH.md` (pipeline `run_campaign` →
+`build_features_v5` → `validate_v5` → `assemble_dataset --stratified` → `enforce_heldout_v5`).
+
 ## Annexe B — Détails per-seed (Phases G/H/J/K)
-▸ Source : experiments/multiseed/phase_h/results.md, phase_j/results.md, k_selection_comparison.md.
+▸ Source : tableaux per-seed complets dans `experiments/multiseed/phase_h/results.md`,
+`phase_j/results.md`, `k_selection_comparison.md` et `variance_analysis.md` — à reproduire ici sous
+forme de tableaux (silhouette, AUROC, A1 Δ, K par graine).
+
 ## Annexe C — Inventaire des scripts et artefacts
-▸ Source : scripts/, experiments/*/ (checkpoints, results.md, json).
+▸ Source : arborescence `scripts/` (record/build/assemble/validate, chaos_injector, adapt_rcaeval,
+synthesize_composite_episodes, export figures) et `experiments/*/` (checkpoints, `results.md`, JSON
+agrégés). Inventaire à reporter sous forme de liste structurée par module.
+
 ## Annexe D — Configurations Hydra et endpoints
-▸ Source : configs/default.yaml (sans secrets).
-## Annexe E — Schéma de features détaillé (v3 17 / v5.1 18)
-▸ Tableau : index → nom → modalité → source → agrégation.
-## Annexe F — Catalogue chaos (v3/v4 15 scénarios ; v5 22 scénarios + bugs F)
-▸ Source : scripts/chaos_injector.py, v5/chaos/.
+▸ Source : `configs/default.yaml` (hyperparamètres, endpoints d'observabilité) — à inclure **sans
+secrets ni IP/nom de cluster internes** (cf. politique de sanitization, §12.3).
+
+## Annexe E — Schéma de features détaillé (v3 : 17 / v5.1 : 18)
+Le schéma v3 (17 features) est détaillé en §4.2.4. Le schéma v5.1 (18 features par nœud, ℝ^{T×41×18})
+est détaillé en §6.5.3 ; il enrichit le bloc métriques de quatre features JVM et remplace `oom_events`
+par `mem_limit_ratio`. ‹À COMPLÉTER : tableau consolidé index → nom → modalité → source → agrégation
+pour les deux schémas.›
+
+## Annexe F — Catalogue chaos (v3/v4 : 15 scénarios ; v5 : 22 scénarios + bugs F)
+Catalogue v3/v4 (15 scénarios) : 4 de drift (`drift_config_change`, `drift_rolling_deploy`,
+`drift_scale_up`, `drift_traffic_ramp`) et 11 d'anomalie (`cpu_starvation`, `crash`, `fail_slow_cpu`,
+`fail_slow_latency`, `faulty_deploy_overlap`, `intermittent_error`, `memory_pressure`,
+`network_loss`, `noisy_neighbor`, `oom`, `resource_leak`). Catalogue v5 (22 scénarios : 15 mono,
+4 composites, 3 held-out) plus bugs réels F1 (race silencieuse, négatif honnête) et F3 (OOM,
+détectable). ▸ Source : `scripts/chaos_injector.py`, `v5/chaos/`.
 
 # Bibliographie
-⟦À remplir⟧ Les 34 références (11 fondatrices + 23 méthodologiques), harmonisées.
-▸ Source : docs/paper/bibliography.bib + ajouts requis :
-chandola2009, zamanzadeh2024, pham2024, grayscope2024, kipf2017, eldele2021, rahimi2007,
-schreiber2000, holm1979, glimm2014, lamy2017, efron1987, davison1997, phipson2010, agresti2002,
-dhillon2001, reimers2019.
+Les 34 références (11 fondatrices + 23 méthodologiques) sont harmonisées dans
+`docs/paper/bibliography.bib`. Les métadonnées des références récentes ont été vérifiées :
+Pham et al. (ASE 2024, arXiv:2408.13729), Zamanzadeh Darban et al. (ACM CSUR 57(1), 2024,
+doi:10.1145/3691338), Zhang et al. — GrayScope (FSE Industry 2024, doi:10.1145/3663529.3663834),
+Pham et al. — RCAEval (WWW 2025, arXiv:2412.17015). L'ancrage des défaillances en cascade, dont la
+référence initiale n'avait pu être retrouvée, a été remplacé par la référence canonique et vérifiée
+Motter & Lai (Phys. Rev. E 66, 065102, 2002, doi:10.1103/PhysRevE.66.065102). Les 34 références sont
+ainsi toutes vérifiées.
+▸ Source : docs/paper/bibliography.bib (à insérer via le moteur de bibliographie lors de la conversion
+finale).
 
 ---
 

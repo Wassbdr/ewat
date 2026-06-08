@@ -230,7 +230,7 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
         "episode_id": episode_id, "scenario": scenario, "category": category,
         "targets": targets, "chaos_resource": (f"v5-{scenario}" if not is_bug else f"bug-{scenario}"),
         "is_bug": is_bug, "bug_id": (scenario if is_bug else None),
-        "held_out": held_out, "step": step, "ramp_s": dur["ramp"], "t_start": t_start,
+        "held_out": held_out, "namespace": namespace, "step": step, "ramp_s": dur["ramp"], "t_start": t_start,
         "boundaries_rel": {  # secondes relatives au début de la fenêtre de collecte
             "baseline_start": boundaries.get("baseline_start", 0.0),
             "injection_start": boundaries["injection_start"],
