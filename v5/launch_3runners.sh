@@ -108,9 +108,13 @@ if command -v tmux >/dev/null 2>&1; then
     echo "  $ns → fenêtre $w (démarrage +${stag}s)"
     i=$((i+1))
   done
-  tmux new-window -t ewat -n build
-  tmux send-keys -t ewat:build "$build_cmd" Enter
-  echo "  build → fenêtre build"
+  if [ "${V5_NO_BUILD:-0}" = "1" ]; then
+    echo "  build → DÉSACTIVÉ (V5_NO_BUILD=1) : collecte seule, build+validate à la fin"
+  else
+    tmux new-window -t ewat -n build
+    tmux send-keys -t ewat:build "$build_cmd" Enter
+    echo "  build → fenêtre build"
+  fi
   echo "== lancé. Attache : tmux attach -t ewat  (Ctrl-b n = fenêtre suivante, Ctrl-b d = détacher) =="
 else
   echo "-- tmux absent → nohup --"
@@ -121,7 +125,11 @@ else
     nohup bash -c "$cmd" >/dev/null 2>&1 &
     echo "  $ns lancé (nohup, démarrage +${stag}s)"
   done
-  nohup bash -c "$build_cmd" >/dev/null 2>&1 &
+  if [ "${V5_NO_BUILD:-0}" = "1" ]; then
+    echo "  build → DÉSACTIVÉ (V5_NO_BUILD=1) : collecte seule, build+validate à la fin"
+  else
+    nohup bash -c "$build_cmd" >/dev/null 2>&1 &
+  fi
   disown -a
   echo "== lancé en nohup. Logs : $OUT/_campaign_*.log =="
 fi
