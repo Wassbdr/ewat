@@ -74,6 +74,40 @@ def _tt_healthy(namespace: str) -> bool:
     return ready / total >= 0.90  # ≥90% pods prêts
 
 
+def _backends_scraping(namespace: str) -> bool:
+    """Pré-check télémétrie AVANT un épisode : Prometheus scrape-t-il vraiment ce
+    namespace, et Loki répond-il ? Cause racine de la perte du 6-7 juin (incident
+    jnk2v) : Prometheus restait `/-/ready` mais ne scrapait plus les pods tt évincés
+    → 33 min collectées pour `prom=0`. On vérifie la PRÉSENCE de séries cAdvisor
+    fraîches (pas juste la readiness), et la readiness Loki. Fail-open sur erreur
+    réseau (un blip ne doit pas stopper une campagne de plusieurs jours)."""
+    import urllib.parse
+    import urllib.request
+
+    node = os.environ.get("V5_NODE_IP", "172.16.203.12")
+    prom = f"http://{node}:{os.environ.get('V5_PROM_NODEPORT', '32700')}"
+    loki = f"http://{node}:{os.environ.get('V5_LOKI_NODEPORT', '32701')}"
+    # 1) Prometheus scrape-t-il le namespace ? (≥1 série cpu cAdvisor)
+    q = f'count(container_cpu_usage_seconds_total{{namespace="{namespace}",container!=""}})'
+    try:
+        url = f"{prom}/api/v1/query?{urllib.parse.urlencode({'query': q})}"
+        with urllib.request.urlopen(url, timeout=8) as r:
+            res = json.load(r).get("data", {}).get("result", [])
+        if not (res and float(res[0]["value"][1]) > 0):
+            print(f"[campaign] Prometheus ne scrape pas {namespace} (0 série cpu) — pause", flush=True)
+            return False
+    except Exception as e:
+        print(f"[campaign] check Prometheus {namespace} échec ({e}) — fail-open", flush=True)
+        return True
+    # 2) Loki répond-il ? (loki-0 Pending pendant l'incident → logs=0)
+    try:
+        urllib.request.urlopen(f"{loki}/ready", timeout=8)
+    except Exception:
+        print(f"[campaign] Loki ne répond pas ({loki}) — pause", flush=True)
+        return False
+    return True
+
+
 def _nodes_ram_ok(ceiling: float = 90.0) -> bool:
     """Garde-fou RAM — contrainte *binding* à 3 runners (CPU large, RAM tendue :
     1 runner ≈ 20 GB JVM+mongos). Retourne False si un nœud worker dépasse
@@ -119,8 +153,9 @@ def collect_episode(scenario: str, rep: int, out_root: Path, address: str,
         ep_dir = out_root / ep_id
         # santé TT (readiness pods) + RAM nœuds (anti-saturation à 3 runners) avant épisode
         waited = 0
-        while (not _tt_healthy(namespace) or not _nodes_ram_ok(ram_ceiling)) and waited < 600:
-            print(f"[campaign] TT dégradé / RAM haute, pause 30s ...", flush=True)
+        while (not _tt_healthy(namespace) or not _nodes_ram_ok(ram_ceiling)
+               or not _backends_scraping(namespace)) and waited < 600:
+            print(f"[campaign] TT dégradé / RAM haute / backend KO, pause 30s ...", flush=True)
             time.sleep(30); waited += 30
         try:
             # COLLECTE uniquement (pas de build) — Record→Build→Assemble.
