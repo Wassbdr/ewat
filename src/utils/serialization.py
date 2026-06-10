@@ -136,6 +136,15 @@ def _build_metadata_contract(
     metadata_out["dataset_schema_version"] = DATASET_SCHEMA_VERSION
     metadata_out["signal_feature_names"] = FEATURE_NAMES
     metadata_out["signal_dim_expected"] = SIGNAL_DIM
+    # D12 (audit 2026-06): build provenance. The Phase 2 builder leaves NaN in
+    # place ("none"); any later imputation pass (scripts/impute_features.py)
+    # overwrites this block so the strategy is auditable per episode.
+    metadata_out["provenance"] = {
+        "builder": metadata.get("builder", "scripts.build_features"),
+        "grid_step_s": metadata.get("grid_step_s"),
+        "imputation": "none",
+        **(metadata.get("provenance") or {}),
+    }
     metadata_out["artifacts"] = {
         "signal": {
             "path": "signal.npz",

@@ -254,6 +254,22 @@ def main() -> None:
         with np.load(sig_path) as z:
             other_arrays = {k: v for k, v in z.items() if k != "signal"}
         np.savez_compressed(sig_path, signal=imputed, **other_arrays)
+
+        # D12 (audit 2026-06): record the imputation strategy in the episode
+        # metadata so the provenance of imputed feature roots is auditable.
+        if meta:
+            provenance = dict(meta.get("provenance") or {})
+            provenance["imputation"] = {
+                "script": "scripts.impute_features",
+                "strategy": {
+                    "ffill_bfill_dims": sorted(_FFILL_DIMS),
+                    "median_dims": sorted(_MEDIAN_DIMS),
+                    "fallback": "train-set median per (service, scenario)",
+                },
+                "split_json": str(split_json),
+            }
+            meta["provenance"] = provenance
+            meta_path.write_text(json.dumps(meta, indent=2))
         n_imputed += 1
 
     logger.info("imputed %d episodes → %s", n_imputed, output_root)
