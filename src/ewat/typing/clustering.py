@@ -116,6 +116,8 @@ def cluster_embeddings(
     linkage: str = "ward",
     metric: str = "euclidean",
     k_selection_method: str = "silhouette",
+    fixed_k: int | None = None,
+    hdbscan_min_cluster_size: int = 5,
 ) -> ClusterResult:
     """Agglomerative clustering with automatic K selection.
 
@@ -130,13 +132,26 @@ def cluster_embeddings(
     metric:       Distance metric. ``"euclidean"`` (default) or
                   ``"cosine"``. Ward only accepts Euclidean.
     k_selection_method:
-        Step 6 fix 6.4 (audit 2026-05-26). One of:
+        Step 6 fix 6.4 (audit 2026-05-26) + M8 (audit 2026-06). One of:
 
         - ``"silhouette"`` (default, backward compat): K = argmax silhouette
           across ``k_range``. Fragile when the silhouette curve is flat.
         - ``"gap_tibshirani"``: K = smallest K such that
           ``gap(K) >= gap(K+1) - s(K+1)`` (Tibshirani et al. 2001). Falls back
           to silhouette argmax if no K satisfies the criterion.
+        - ``"hdbscan"``: density-based clustering (sklearn HDBSCAN). K is
+          determined by the algorithm; noise points are reassigned to the
+          nearest cluster centroid so downstream code never sees label −1.
+          With ``metric="cosine"``, embeddings are L2-normalised and clustered
+          in Euclidean space (monotonically equivalent on the unit sphere).
+    fixed_k:
+        M8 (audit 2026-06): when set, SHORT-CIRCUITS K selection entirely —
+        a single agglomerative clustering is fit at ``fixed_k``. Phase K
+        showed K-selection is intrinsically unstable on n≈270 (range [9, 15]
+        across seeds, silhouette/Tibshirani agree 4/10); fixing K is the
+        recommended setting for multi-seed comparability.
+    hdbscan_min_cluster_size:
+        Minimum cluster size for ``k_selection_method="hdbscan"``.
 
     Returns
     -------
@@ -148,15 +163,41 @@ def cluster_embeddings(
     If ``N_ep < max(k_range)``, k_range is automatically clipped to
     ``N_ep - 1``.
     """
-    if k_selection_method not in ("silhouette", "gap_tibshirani"):
+    if k_selection_method not in ("silhouette", "gap_tibshirani", "hdbscan"):
         raise ValueError(
-            f"k_selection_method must be 'silhouette' or 'gap_tibshirani', "
-            f"got {k_selection_method!r}"
+            f"k_selection_method must be 'silhouette', 'gap_tibshirani' or "
+            f"'hdbscan', got {k_selection_method!r}"
         )
-    _validate_linkage_metric(linkage, metric)
     n = len(z)
     if n < 2:
         raise ValueError(f"Need at least 2 samples; got {n}")
+
+    # HDBSCAN n'utilise pas le linkage agglomératif — validé séparément.
+    if k_selection_method == "hdbscan" and fixed_k is None:
+        return _hdbscan_cluster(z, metric=metric,
+                                min_cluster_size=hdbscan_min_cluster_size)
+
+    _validate_linkage_metric(linkage, metric)
+
+    if fixed_k is not None:
+        if not (2 <= fixed_k <= n - 1):
+            raise ValueError(f"fixed_k={fixed_k} out of range [2, {n - 1}]")
+        model = _build_clusterer(fixed_k, linkage=linkage, metric=metric)
+        labels = model.fit_predict(z)
+        sil = (
+            float(silhouette_score(z, labels, metric=_silhouette_metric_arg(metric)))
+            if len(set(labels)) >= 2 else -1.0
+        )
+        return ClusterResult(
+            labels=labels,
+            k_optimal=fixed_k,
+            silhouette_scores={fixed_k: sil},
+            gap_stats={},
+            gap_se={},
+            linkage=linkage,
+            metric=metric,
+            k_selection_method="fixed",
+        )
 
     max_k = min(max(k_range), n - 1)
     min_k = max(min(k_range), 2)
@@ -211,6 +252,57 @@ def cluster_embeddings(
         linkage=linkage,
         metric=metric,
         k_selection_method=k_selection_method,
+    )
+
+
+def _hdbscan_cluster(
+    z: np.ndarray,
+    metric: str = "euclidean",
+    min_cluster_size: int = 5,
+) -> ClusterResult:
+    """Density-based clustering (M8, audit 2026-06).
+
+    HDBSCAN chooses K itself; noise points (label −1) are reassigned to the
+    nearest cluster centroid so the labelling is total, as the downstream
+    typing/precursor pipeline expects. ``metric="cosine"`` is handled by
+    L2-normalising and clustering in Euclidean space (the project geometry:
+    L2-normalised projections on the unit sphere).
+    """
+    from sklearn.cluster import HDBSCAN
+
+    x = z
+    if metric == "cosine":
+        norms = np.linalg.norm(z, axis=1, keepdims=True)
+        x = z / np.clip(norms, 1e-12, None)
+
+    labels = HDBSCAN(min_cluster_size=min_cluster_size).fit_predict(x)
+
+    cluster_ids = sorted(set(labels) - {-1})
+    if not cluster_ids:
+        # Tout est bruit : un seul cluster trivial (diagnostic, pas un crash).
+        labels = np.zeros(len(x), dtype=int)
+        cluster_ids = [0]
+    else:
+        centroids = np.stack([x[labels == c].mean(axis=0) for c in cluster_ids])
+        noise = np.where(labels == -1)[0]
+        for i in noise:
+            d = np.linalg.norm(centroids - x[i], axis=1)
+            labels[i] = cluster_ids[int(np.argmin(d))]
+
+    k_found = len(cluster_ids)
+    sil = (
+        float(silhouette_score(x, labels))
+        if k_found >= 2 else -1.0
+    )
+    return ClusterResult(
+        labels=np.asarray(labels),
+        k_optimal=k_found,
+        silhouette_scores={k_found: sil},
+        gap_stats={},
+        gap_se={},
+        linkage="hdbscan",
+        metric=metric,
+        k_selection_method="hdbscan",
     )
 
 
