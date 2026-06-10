@@ -56,15 +56,29 @@ class _SpatialGCNLayer(nn.Module):
     timestep, producing one (B, T, N, out_features) tensor.
     """
 
-    def __init__(self, in_features: int, out_features: int, n_adj_channels: int = 3) -> None:
+    def __init__(self, in_features: int, out_features: int, n_adj_channels: int = 3,
+                 use_self_loops: bool = False) -> None:
         super().__init__()
         self.linear = nn.Linear(in_features, out_features, bias=False)
         self.bias = nn.Parameter(torch.zeros(out_features))
         self.ch_weights = nn.Parameter(torch.ones(n_adj_channels) / n_adj_channels)
+        # M4 (audit 2026-06): without self-loops, an isolated node (deg=0 —
+        # frequent in early/sparse G(t) windows) receives a ZERO message and
+        # loses its own features in the spatial conv (only the bias survives).
+        # Â = D̃^{-1/2}(A+I)D̃^{-1/2} (Kipf & Welling) preserves node identity:
+        # the unit self-loop dominates for isolated nodes and is negligible
+        # against high-volume edges. Default False: the flag is not encoded in
+        # the state_dict, so old checkpoints must keep the trained behaviour
+        # (cf. the 6543c69 LayerNorm post-training regression).
+        self.use_self_loops = bool(use_self_loops)
 
     def _normalised_adj(self, adj: torch.Tensor) -> torch.Tensor:
         ch_w = F.softmax(self.ch_weights, dim=0)  # (C,)
         a = (adj * ch_w).sum(dim=-1)              # (..., N, N)
+        if self.use_self_loops:
+            n = a.shape[-1]
+            eye = torch.eye(n, dtype=a.dtype, device=a.device)
+            a = a + eye
         deg = a.sum(dim=-1, keepdim=True).clamp(min=1e-6)  # (..., N, 1)
         d_inv_sqrt = deg.pow(-0.5)
         return d_inv_sqrt * a * d_inv_sqrt.transpose(-1, -2)
@@ -159,6 +173,12 @@ class STGCNEncoder(nn.Module):
     use_layer_norm:
         Apply LayerNorm in each TCN block after GELU. Disabled by default
         for backward compatibility with v3 checkpoints. Enable for new runs.
+    use_self_loops:
+        M4 (audit 2026-06): use ``Â = D̃^{-1/2}(A+I)D̃^{-1/2}`` in the spatial
+        conv so isolated nodes (sparse early G(t) windows) aggregate their own
+        features instead of a zero message. Disabled by default — the flag has
+        no state_dict footprint, so old checkpoints must keep their trained
+        behaviour. Enable for new runs (cf. ``--use-self-loops``).
     """
 
     def __init__(
@@ -174,6 +194,7 @@ class STGCNEncoder(nn.Module):
         dropout: float = 0.1,
         dynamic_graph: bool = True,
         use_layer_norm: bool = False,
+        use_self_loops: bool = False,
     ) -> None:
         super().__init__()
 
@@ -181,7 +202,8 @@ class STGCNEncoder(nn.Module):
 
         gcn_dims = [d_hidden] * (n_gcn_layers + 1)
         self.gcn_layers = nn.ModuleList([
-            _SpatialGCNLayer(gcn_dims[i], gcn_dims[i + 1], n_adj_ch)
+            _SpatialGCNLayer(gcn_dims[i], gcn_dims[i + 1], n_adj_ch,
+                             use_self_loops=use_self_loops)
             for i in range(n_gcn_layers)
         ])
         self.gcn_norms = nn.ModuleList([
@@ -209,6 +231,7 @@ class STGCNEncoder(nn.Module):
         self._d_embed = d_embed
         self._dynamic_graph = bool(dynamic_graph)
         self._use_layer_norm = bool(use_layer_norm)
+        self._use_self_loops = bool(use_self_loops)
 
     @property
     def embedding_dim(self) -> int:
@@ -240,6 +263,19 @@ class STGCNEncoder(nn.Module):
         -------
         z_e : ``(B, d_embed)``
         """
+        # M5 (audit 2026-06): a signal/adjacency (T, N) mismatch used to
+        # broadcast or crash opaquely deep in the GCN matmul.
+        if signal.dim() != 4 or adjacency.dim() != 5:
+            raise ValueError(
+                f"expected signal (B,T,N,d) and adjacency (B,T,N,N,C), got "
+                f"{tuple(signal.shape)} / {tuple(adjacency.shape)}"
+            )
+        if signal.shape[:3] != adjacency.shape[:3] or \
+                adjacency.shape[2] != adjacency.shape[3]:
+            raise ValueError(
+                f"signal {tuple(signal.shape)} incompatible with adjacency "
+                f"{tuple(adjacency.shape)} (B/T/N must match, adjacency square)"
+            )
         B, T, N, _ = signal.shape
 
         h = self.input_proj(signal)  # (B, T, N, d_hidden)

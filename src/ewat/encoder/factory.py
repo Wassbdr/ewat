@@ -95,12 +95,19 @@ def build_encoder_from_checkpoint(
     """
     state_dict = checkpoint[state_dict_key]
     arch_meta = checkpoint.get(arch_key) or {}
-    use_ln = detect_use_layer_norm(state_dict)
-    return build_encoder(
-        arch_meta.get("architecture", default_architecture),
+    architecture = arch_meta.get("architecture", default_architecture)
+    kwargs: dict[str, Any] = dict(
         d_feat=int(arch_meta.get("d_feat", 17)),
         n_nodes=int(arch_meta.get("n_nodes", 6)),
         d_hidden=int(arch_meta.get("d_hidden", 64)),
         d_embed=int(arch_meta.get("d_embed", 64)),
-        use_layer_norm=use_ln,
     )
+    # STGCN-only flags: STGAT's constructor accepts neither (passing them
+    # unconditionally was a latent TypeError for stgat checkpoints).
+    # M4 (audit 2026-06): use_self_loops has no state_dict footprint — it must
+    # come from the checkpoint arch metadata. Legacy checkpoints (no key)
+    # default to False, preserving the trained forward exactly.
+    if architecture.lower() == "stgcn":
+        kwargs["use_layer_norm"] = detect_use_layer_norm(state_dict)
+        kwargs["use_self_loops"] = bool(arch_meta.get("use_self_loops", False))
+    return build_encoder(architecture, **kwargs)
