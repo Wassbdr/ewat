@@ -1,0 +1,67 @@
+"""Tests du registre de schémas de features (D1, audit 2026-06)."""
+
+from __future__ import annotations
+
+import pytest
+
+from telemetry.feature_names import (
+    AGGREGATION_RULE,
+    FEATURE_NAMES,
+    FEATURE_NAMES_V4,
+    FEATURE_NAMES_V5_1,
+    MODALITY_SLICES,
+    SCHEMA_V4,
+    SCHEMA_V5_1,
+    SCHEMAS,
+    SIGNAL_DIM,
+    get_schema,
+    schema_for_dim,
+    signal_dim,
+)
+
+
+def test_v4_schema_unchanged_backward_compat():
+    assert FEATURE_NAMES_V4 is FEATURE_NAMES
+    assert signal_dim(SCHEMA_V4) == SIGNAL_DIM == 17
+    assert get_schema(SCHEMA_V4) == FEATURE_NAMES
+    # Toutes les features v4 ont une règle d'agrégation
+    assert set(FEATURE_NAMES_V4) == set(AGGREGATION_RULE)
+
+
+def test_v5_1_schema_dimensions():
+    assert signal_dim(SCHEMA_V5_1) == 18
+    names = get_schema(SCHEMA_V5_1)
+    assert len(names) == len(set(names)), "noms dupliqués dans v5.1"
+    # Features structurantes du schéma v5.1
+    assert names[6] == "mem_limit_ratio"
+    assert "jvm_heap_ratio" in names and "restart_count" in names
+    # Features v4 retirées en v5.1
+    for dropped in ("span_dur_p99", "retry_rate", "queue_depth", "log_warn_rate"):
+        assert dropped not in names
+
+
+def test_modality_slices_cover_schema():
+    for version, names in SCHEMAS.items():
+        sl = MODALITY_SLICES[version]
+        assert sl["M"].start == 0
+        assert sl["M"].stop == sl["T"].start
+        assert sl["T"].stop == sl["L"].start
+        assert sl["L"].stop == len(names)
+
+
+def test_schema_for_dim_roundtrip():
+    for version in SCHEMAS:
+        assert schema_for_dim(signal_dim(version)) == version
+
+
+def test_unknown_schema_raises():
+    with pytest.raises(KeyError):
+        get_schema("v99")
+    with pytest.raises(KeyError):
+        schema_for_dim(5)
+
+
+def test_get_schema_returns_copy():
+    names = get_schema(SCHEMA_V4)
+    names.append("mutant")
+    assert get_schema(SCHEMA_V4) != names

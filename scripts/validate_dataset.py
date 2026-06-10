@@ -17,7 +17,10 @@ Validate a full assembled dataset::
 
 Checks
 ------
-- ``shape``           : signal is (T, N, 17), adjacency is (T, N, N, 3), matching services.json.
+- ``shape``           : signal is (T, N, d) with d matching the episode's feature
+                        schema (17 for v3/v4, 18 for v5.1 — resolved from
+                        ``metadata.signal_feature_names`` or the registry),
+                        adjacency is (T, N, N, 3), matching services.json.
 - ``nan_ratios``      : per-modality NaN ratios below the supplied thresholds.
 - ``labels``          : labels.parquet covers every timestep; regime values are valid.
 - ``graph_non_empty`` : fraction of graph snapshots with at least one edge ≥ threshold.
@@ -39,6 +42,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+_SRC = Path(__file__).resolve().parents[1] / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+from telemetry.feature_names import SCHEMAS, SIGNAL_DIM  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -81,16 +90,38 @@ def _load_episode(ep_dir: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _expected_signal_dim(ep: dict) -> int:
+    """Resolve the expected feature dimension for this episode.
+
+    Priority: ``metadata.signal_feature_names`` (written by v5+ builders, and
+    cross-checked against the schema registry) → legacy default
+    ``SIGNAL_DIM`` (17, v3/v4 episodes whose metadata predates the field).
+    """
+    names = ep["meta"].get("signal_feature_names")
+    if names is not None:
+        registered = {tuple(v) for v in SCHEMAS.values()}
+        if tuple(names) not in registered:
+            logger.warning(
+                "%s: signal_feature_names (%d noms) ne correspond à aucun "
+                "schéma du registre telemetry.feature_names",
+                ep["path"].name, len(names),
+            )
+        return len(names)
+    return SIGNAL_DIM
+
+
 def check_shape(ep: dict) -> CheckResult:
     sig = ep["signal"]
     adj = ep["adjacency"]
     n = len(ep["services"])
+    d_expected = _expected_signal_dim(ep)
     if sig.ndim != 3:
         return CheckResult("shape", False, f"signal.ndim={sig.ndim} (expected 3)")
     if sig.shape[1] != n:
         return CheckResult("shape", False, f"signal.shape[1]={sig.shape[1]} ≠ N={n}")
-    if sig.shape[2] != 17:
-        return CheckResult("shape", False, f"signal.shape[2]={sig.shape[2]} ≠ 17")
+    if sig.shape[2] != d_expected:
+        return CheckResult("shape", False,
+                           f"signal.shape[2]={sig.shape[2]} ≠ {d_expected}")
     if adj.ndim != 4:
         return CheckResult("shape", False, f"adjacency.ndim={adj.ndim} (expected 4)")
     if adj.shape[0] != sig.shape[0]:

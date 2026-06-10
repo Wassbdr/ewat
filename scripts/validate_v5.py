@@ -26,9 +26,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+_SRC = Path(__file__).resolve().parents[1] / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+from telemetry.feature_names import SCHEMA_V5_1, get_schema, signal_dim  # noqa: E402
+
 VALID_REGIMES = {"normal", "injection", "recovery", "drift_anomaly"}
 N_CANON = 41
-N_FEATURES = 18
+N_FEATURES = signal_dim(SCHEMA_V5_1)
+FEATURE_NAMES = get_schema(SCHEMA_V5_1)
 
 
 def _check_episode(ep: Path, max_raw_nan: float, trace_floor: int,
@@ -47,6 +54,18 @@ def _check_episode(ep: Path, max_raw_nan: float, trace_floor: int,
         fails.append(f"adjacency {adj.shape} != ({T},{N},{N},3)")
     if len(services) != N:
         fails.append(f"services.json={len(services)} != N={N}")
+
+    # Schéma de features : les noms écrits par le builder doivent correspondre
+    # au registre (telemetry.feature_names, D1 audit 2026-06).
+    meta_path = ep / "metadata.json"
+    if meta_path.exists():
+        meta = json.load(open(meta_path))
+        names = meta.get("signal_feature_names")
+        if names is not None and list(names) != FEATURE_NAMES:
+            fails.append(
+                f"signal_feature_names ≠ registre {SCHEMA_V5_1} "
+                f"(metadata: {len(names)} noms)"
+            )
 
     nan_imp = float(np.isnan(sig).mean())
     if nan_imp > 0.0:

@@ -57,6 +57,11 @@ class EpisodeDataset(Dataset):
         Saved in checkpoint metadata for reproducibility at inference time.
     """
 
+    # v4 schema (17 features) — legacy default. If the feature store was
+    # written by a v5+ builder, the effective schema is resolved per-dataset
+    # from ``metadata.signal_feature_names`` of the first episode (see
+    # ``feature_names`` attribute), so this class works unchanged on
+    # 18-feature v5.1 episodes (D1, audit 2026-06).
     FEATURE_NAMES: list[str] = [
         "cpu_util", "ram_util", "latency_p99", "error_rate_http",
         "net_sat", "disk_io", "queue_depth",
@@ -92,6 +97,17 @@ class EpisodeDataset(Dataset):
         if split not in index:
             raise ValueError(f"Unknown split '{split}'; available: {list(index)}")
         self.episode_ids: list[str] = index[split]
+
+        # Resolve the effective feature schema from the first episode's
+        # metadata (v5+ builders write ``signal_feature_names``); fall back to
+        # the legacy v4 class constant. ``__getitem__`` enforces it.
+        self.feature_names: list[str] = list(self.FEATURE_NAMES)
+        if self.episode_ids:
+            meta_path = self.features_root / self.episode_ids[0] / "metadata.json"
+            if meta_path.exists():
+                names = json.loads(meta_path.read_text()).get("signal_feature_names")
+                if names:
+                    self.feature_names = list(names)
 
     # ------------------------------------------------------------------
     # Scaler helpers
@@ -178,9 +194,16 @@ class EpisodeDataset(Dataset):
         ep_id = self.episode_ids[idx]
         ep_dir = self.features_root / ep_id
 
-        # Load signal (T, N, 17) and adjacency (T, N, N, 3)
+        # Load signal (T, N, d) and adjacency (T, N, N, 3)
         signal = np.load(ep_dir / "signal.npz")["signal"].astype(np.float32)
         adjacency = np.load(ep_dir / "adjacency.npz")["adjacency"].astype(np.float32)
+
+        if signal.shape[-1] != len(self.feature_names):
+            raise ValueError(
+                f"{ep_id}: signal has {signal.shape[-1]} features but the "
+                f"dataset schema declares {len(self.feature_names)} "
+                f"(mixed feature stores?)"
+            )
 
         # Step 4 fix 4.2 (audit 2026-05-26): instance_normalize and global scaler
         # are MUTUALLY EXCLUSIVE — they are two competing normalisations.

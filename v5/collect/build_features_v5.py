@@ -57,30 +57,28 @@ from telemetry.extractors.traces_file import (  # noqa: E402
     compute_graph_for_window,
     parse_jaeger_dump,
 )
+from telemetry.feature_names import (  # noqa: E402
+    MODALITY_SLICES,
+    SCHEMA_V5_1,
+    get_schema,
+    signal_dim,
+)
 
 try:
     from graph.diagnostics import compute_stats as _graph_stats
 except Exception:  # diagnostics optionnel
     _graph_stats = None
 
-# Schéma v5.1 (18 features). Évolution vs v5.0 : suppression de span_dur_p99
-# (≡ latency_p99, ρ=1.0) et retry_rate (structurellement mort sur TT) ; ajout de
-# 3 features JVM (le signal manquant pour un système Spring Boot + bugs F).
-# M[6] : mem_limit_ratio remplace oom_events (container_oom_events_total lit 0
-# partout sur observit-cluster1 — vérifié 2026-06-02 ; saturation mémoire utile).
-FEATURE_NAMES = [
-    # M(t) infra + JVM (0-9)
-    "cpu_util", "ram_util", "latency_p99", "error_rate_http", "net_sat",
-    "disk_io", "mem_limit_ratio", "jvm_heap_ratio", "jvm_gc_util", "jvm_threads_blocked",
-    # T(t) traces (10-13)
-    "abnormal_span_rate", "trace_depth", "fan_out", "latency_cv",
-    # L(t) logs (14-17)
-    "log_error_rate", "restart_count", "semantic_anomaly", "lexical_entropy",
-]
-N_FEATURES = 18
-SCHEMA_VERSION = "v5.1"
+# Schéma v5.1 (18 features) — source de vérité : telemetry.feature_names
+# (registre versionné, D1 audit 2026-06). Rationale du schéma (suppression
+# span_dur_p99/retry_rate, ajout JVM + mem_limit_ratio) documentée là-bas.
+SCHEMA_VERSION = SCHEMA_V5_1
+FEATURE_NAMES = get_schema(SCHEMA_VERSION)
+N_FEATURES = signal_dim(SCHEMA_VERSION)
 # Tranches modales (pour quality_snapshot et l'analyse)
-M_SLICE, T_SLICE, L_SLICE = slice(0, 10), slice(10, 14), slice(14, 18)
+M_SLICE = MODALITY_SLICES[SCHEMA_VERSION]["M"]
+T_SLICE = MODALITY_SLICES[SCHEMA_VERSION]["T"]
+L_SLICE = MODALITY_SLICES[SCHEMA_VERSION]["L"]
 
 _LEVEL_RE = re.compile(r'"s":"E"|\bERROR\b|\bSEVERE\b|\bFATAL\b')
 

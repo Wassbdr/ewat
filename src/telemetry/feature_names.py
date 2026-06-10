@@ -1,10 +1,17 @@
-"""Feature index constants for the 17-dimensional signal S(t) ∈ ℝ^{N×17}.
+"""Feature schema registry for the telemetry signal S(t).
 
-S(t) = [M(t) | T(t) | L(t)]
+Two schemas coexist:
 
-M(t) ∈ ℝ^{N×7}  — Prometheus metrics
-T(t) ∈ ℝ^{N×6}  — OTel trace features
-L(t) ∈ ℝ^{N×4}  — OTel log features
+- ``"v4"`` (a.k.a. v3/v4 datasets, Online Boutique): S(t) ∈ ℝ^{N×17},
+  M(t) ∈ ℝ^{N×7} | T(t) ∈ ℝ^{N×6} | L(t) ∈ ℝ^{N×4}.
+- ``"v5.1"`` (Train Ticket): S(t) ∈ ℝ^{N×18},
+  M(t) ∈ ℝ^{N×10} | T(t) ∈ ℝ^{N×4} | L(t) ∈ ℝ^{N×4}.
+
+The module-level constants (``FEATURE_NAMES``, ``SIGNAL_DIM``, the index
+constants and slices) describe the **v4 schema** and are kept for backward
+compatibility. New code should resolve a schema explicitly via
+:func:`get_schema` / :func:`signal_dim`, or infer it from an array with
+:func:`schema_for_dim`.
 """
 
 from __future__ import annotations
@@ -97,3 +104,84 @@ AGGREGATION_RULE: dict[str, str] = {
     "semantic_anomaly": "median",
     "lexical_entropy": "median",
 }
+
+# ---------------------------------------------------------------------------
+# Schema registry (D1, audit 2026-06)
+# ---------------------------------------------------------------------------
+# Single source of truth for every signal schema in the project. The v5.1
+# names were previously duplicated in v5/collect/build_features_v5.py and
+# scripts/validate_v5.py; both now import from here.
+
+SCHEMA_V4 = "v4"
+SCHEMA_V5_1 = "v5.1"
+
+FEATURE_NAMES_V4: list[str] = FEATURE_NAMES
+
+# v5.1 (Train Ticket, 2026-06): vs v4 — span_dur_p99 dropped (≡ latency_p99,
+# ρ=1.0 when latency is trace-sourced), retry_rate dropped (structurally dead
+# on TT), queue_depth dropped (no Istio/Envoy), +mem_limit_ratio (replaces
+# oom_events: container_oom_events_total reads 0 on observit-cluster1),
+# +3 JVM features (Spring Boot signal), log_warn_rate → restart_count.
+FEATURE_NAMES_V5_1: list[str] = [
+    # M(t) infra + JVM (0-9)
+    "cpu_util", "ram_util", "latency_p99", "error_rate_http", "net_sat",
+    "disk_io", "mem_limit_ratio", "jvm_heap_ratio", "jvm_gc_util", "jvm_threads_blocked",
+    # T(t) traces (10-13)
+    "abnormal_span_rate", "trace_depth", "fan_out", "latency_cv",
+    # L(t) logs (14-17)
+    "log_error_rate", "restart_count", "semantic_anomaly", "lexical_entropy",
+]
+
+SCHEMAS: dict[str, list[str]] = {
+    SCHEMA_V4: FEATURE_NAMES_V4,
+    SCHEMA_V5_1: FEATURE_NAMES_V5_1,
+}
+
+MODALITY_SLICES: dict[str, dict[str, slice]] = {
+    SCHEMA_V4: {"M": slice(0, 7), "T": slice(7, 13), "L": slice(13, 17)},
+    SCHEMA_V5_1: {"M": slice(0, 10), "T": slice(10, 14), "L": slice(14, 18)},
+}
+
+assert all(len(SCHEMAS[v]) == MODALITY_SLICES[v]["L"].stop for v in SCHEMAS)
+
+
+def get_schema(version: str) -> list[str]:
+    """Return the ordered feature names for a schema version.
+
+    Parameters
+    ----------
+    version: One of ``"v4"`` or ``"v5.1"``.
+
+    Raises
+    ------
+    KeyError: If ``version`` is not a registered schema.
+    """
+    if version not in SCHEMAS:
+        raise KeyError(
+            f"unknown feature schema {version!r}; registered: {sorted(SCHEMAS)}"
+        )
+    return list(SCHEMAS[version])
+
+
+def signal_dim(version: str) -> int:
+    """Return the signal dimensionality (number of features) for a schema."""
+    return len(get_schema(version))
+
+
+def schema_for_dim(dim: int) -> str:
+    """Infer the schema version from a signal's last-axis dimension.
+
+    Useful for consumers that only see the array (e.g. validators on legacy
+    episodes whose metadata predates ``signal_feature_names``).
+
+    Raises
+    ------
+    KeyError: If no registered schema has ``dim`` features.
+    """
+    for version, names in SCHEMAS.items():
+        if len(names) == dim:
+            return version
+    raise KeyError(
+        f"no registered feature schema with {dim} features; "
+        f"registered dims: { {v: len(n) for v, n in SCHEMAS.items()} }"
+    )
