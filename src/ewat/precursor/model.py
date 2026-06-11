@@ -175,6 +175,30 @@ class PrecursorClassifier:
             results[c] = float(roc_auc_score(y, proba[:, c]))
         return results
 
+    def pr_auc_per_type(
+        self, z: np.ndarray, labels: np.ndarray
+    ) -> dict[int, float]:
+        """Compute PR-AUC (average precision) for each cluster type.
+
+        E3 (audit 2026-06): with n_pos = 3-8 positives per cluster on the
+        test split, AUROC alone is optimistic (cf. M-6: per-scenario PR-AUC
+        spans [0.166, 1.000] where macro-AUROC reads 0.920). Report both.
+
+        Returns {cluster_id → PR-AUC}, NaN under the same support rule as
+        :meth:`auroc_per_type`.
+        """
+        from sklearn.metrics import average_precision_score
+
+        proba = self.predict_proba(z)
+        results: dict[int, float] = {}
+        for c in range(self.n_clusters):
+            y = (labels == c).astype(int)
+            if y.sum() < 2 or (len(y) - y.sum()) < 2:
+                results[c] = float("nan")
+                continue
+            results[c] = float(average_precision_score(y, proba[:, c]))
+        return results
+
     def save(self, path: Path) -> None:
         with open(path, "wb") as f:
             pickle.dump(self, f)
