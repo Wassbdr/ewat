@@ -62,6 +62,44 @@ Split **stratifié** par scénario Chaos Mesh (15 scénarios × ~3 épisodes tes
 
 **Message clé** : M_only bat full en silhouette (H1) ; full bat M_only en AUROC précurseur (H3) — la géométrie latente et la prédictibilité ne dépendent pas des mêmes modalités.
 
+## Stress tests — robustesse et détection de fuites (A1–A5)
+
+Protocole officiel (audit 2026-06, E12) — ces tests étaient exécutés
+(`experiments/h3_robustness/`) mais documentés seulement dans leurs results.md.
+Ils constituent l'épine dorsale de l'argumentaire d'honnêteté : tout chiffre
+H3 doit être lu à travers eux.
+
+| ID | Question | Protocole | Verdict si échec |
+|---|---|---|---|
+| **A1** — Distant-window | L'AUROC mesure-t-il une précursion temporelle ? | Même pipeline, fenêtre déplacée dans le régime normal (`last`/`middle`/`first`). Δ(far−near) ≈ 0 ⇒ le classifieur lit une signature statique du scénario, pas une dynamique. | `LEAK_CONFIRMED` si Δ > −0.04 |
+| **A2** — LOSO | Le modèle généralise-t-il à un type inédit ? | Leave-one-scenario-out sur le précurseur ; top-1 sur le scénario retiré. | Pas de généralisation si top-1 ≈ 0 |
+| **A3** — Permutation | Y a-t-il un signal réel ? | 100 permutations des labels train → distribution nulle de l'AUROC test. | Signal absent si AUROC observé ≤ p95(null) |
+| **A4** — Filtre n_pos | L'AUROC est-il statistiquement reportable ? | Clusters avec n_pos_test < 5 marqués « non concluant » (power analysis C-5). | — |
+| **A5** — Paired Δ | L'encodeur ajoute-t-il de la discriminabilité ? | Bootstrap paired (mêmes indices) sur Δ(B4−B3) → IC sur Δ. | Neutralité si l'IC contient 0 |
+
+Scripts : `experiments/h3_robustness/{distant_window,loso_cv,permutation_test,filter_npos,paired_delta_b4_b3}.py`.
+
+## Cadre des tests statistiques (E7, audit 2026-06)
+
+Avant l'audit, les comparaisons mélangeaient Student/Wilcoxon/Fisher/bootstrap
+selon l'expérience. Cadre unifié pour toute nouvelle comparaison :
+
+| Situation | Test | Ne pas utiliser |
+|---|---|---|
+| Comparaison appariée de décisions binaires (même test set) | **McNemar** | Student sur indicatrices (L3.6) |
+| Comparaison appariée de scores scalaires (AUROC, silhouette, par graine/fold) | **Wilcoxon signed-rank** ; bootstrap paired sur Δ pour l'IC (protocole A5) | t-test si n < 20 sans vérif. de normalité |
+| Deux groupes indépendants | **Mann-Whitney U** | — |
+| Proportions 2×2 à petits effectifs | **Fisher exact** (χ² Yates si tous les attendus ≥ 5) | χ² brut |
+| IC sur une métrique unique | **Bootstrap BCa** (n ≥ 1000) ; percentile si BCa instable | IC normal asymptotique sur AUROC |
+| Signal vs hasard | **Test de permutation** (≥ 500 perms depuis l'audit — résolution p = 1/(n+1), Phipson–Smyth) | — |
+
+Multiplicité : ≤ 5 tests → Holm-Bonferroni ; > 5 tests → Benjamini-Hochberg
+(FDR). Toujours reporter p brut ET p ajusté. Les p-values de permutation
+utilisent (1+k)/(1+M), jamais 0.
+
+Modèles nuls obligatoires : silhouette sous labels permutés (M9, intégré à
+`experiments/typing/train.py`) ; AUROC sous labels permutés (A3).
+
 ## Reproduction
 
 ```bash
