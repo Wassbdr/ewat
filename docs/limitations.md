@@ -806,6 +806,60 @@ Brièvement documentées pour transparence méthodologique :
 - Séparation `collectors/` online vs `extractors/` offline — bonne abstraction.
 - Scope graphe (6 services) explicitement assumé, pas un oubli.
 
+## 9. Limites révélées ou levées par l'audit 2026-06
+
+_Section ajoutée le 2026-06-11. Réfs : `docs/audit_2026_06.md` (40 points),
+`experiments/audit2026/` (résultats), `docs/evaluation_protocol_v5.md`._
+
+### Levées (quantifiées ou corrigées)
+
+| Limite | Avant | Après audit 2026-06 |
+|---|---|---|
+| L2/L6.1 — variance inter-split jamais mesurée | Ouverte | **Quantifiée (E5)** : B2 = 0.969 ± 0.011 sur 5 splits shuffled vs 0.920 temporel — le split officiel est *conservateur* |
+| Sensibilité aux NaN inconnue | Ouverte | **Quantifiée (E9)** : −1.3 pp AUROC à 20 % de NaN injectés, −8.3 pp à 50 % — robuste |
+| Pas de borne supérieure | Ouverte | **Oracle (E6)** : fit-on-all = 1.0 → le gap 0.920→1.0 est rattrapable (pas de chevauchement irréductible) ; borne légale train+val = 0.962 |
+| Pas de baseline publiée | Ouverte | **USAD (E1)** implémenté + évalué au protocole B2 (`experiments/sota/usad`) |
+| K instable [9,15] | Ouverte (Phase K) | **K=10 fixe** (`fixed_k`) + HDBSCAN disponible (M8) |
+| 17 features en dur | L5.1 partielle | **Registre versionné** v4/v5.1 (D1) + garde-fous de shape |
+
+### Nouvelles limites (à assumer dans le rapport)
+
+**L9.1 — PR-AUC du headline = 0.587.** Le macro-AUROC B2 (0.920) masque une
+précision médiocre à n_pos = 3/scénario : macro-PR-AUC = 0.587 sur le split
+temporel (0.80–0.91 sur splits shuffled — le décalage temporel pénalise
+surtout la précision). Les deux chiffres doivent être reportés ensemble (E3).
+
+**L9.2 — Probabilités des précurseurs non calibrées.** ECE = 0.120 sur le
+pipeline retrainé (E2) : le point opérationnel « seuil 0.7 » de l'ancien
+rapport n'est pas transférable. La recalibration isotonique (fittée sur val)
+ramène l'ECE à 0.021 — prérequis de toute table seuil/FA/lead. Constat
+associé : sur le pipeline retrainé v4_strat, FA drift = 100 % à tous les
+seuils avec lead ≈ 14,5 min ≈ toute la phase pré-injection — l'« alerte » se
+comporte en identificateur de scénario dès les premiers steps (cohérent A1),
+pas en précurseur temporel.
+
+**L9.3 — Le contrastif n'améliore pas la géométrie (≥ v4_strat).** Avec la
+sélection de checkpoint sur silhouette val (M6), le meilleur checkpoint est
+**l'époque 1** quelle que soit la marge (sweep 1.5/1.8/2.0) ; la silhouette
+se dégrade ensuite (0.816 → 0.666 → 0.613 → 0.466). L10 (« best_epoch~3 »)
+sous-estimait le phénomène : la géométrie vient de l'encodeur pré-entraîné
+(+ self-loops M4), le siamois n'y ajoute au mieux qu'une époque d'ajustement.
+À re-tester sur v5 ; si reproduit, le siamois devient optionnel.
+
+**L9.4 — Drift falsifié au niveau calibration.** Recalibrations v4_strat :
+AUC = 0.315 (fenêtres 10/10) et 0.284 (5/5) — pires que le hasard (les
+anomalies décalent la distribution PLUS que les drifts bénins). H2a n'est pas
+un problème de réglage ; critère de sortie défini dans le protocole v5 §3.
+
+**L9.5 — Couverture des clusters en test avec K=10.** Sur la graine 42
+retrainée, 4 clusters sur 10 n'ont aucun positif test (assignation
+nearest-centroid concentrée) — le filtre reportable n_pos ≥ 5 (E8) ne laisse
+que 4 clusters reportables. Conséquence du couple (K fixe, n_test = 45).
+
+**L9.6 — La missingness n'apporte pas de gain en features (D3).** Δ AUROC
+= +0.0005, IC paired contient 0 : l'imputation à 0 post-instance-norm code
+déjà la missingness pour le LR. Résultat négatif propre.
+
 ### Recommandation pour le rapport de stage
 
 Présenter ce document comme la section « Limites et perspectives » du rapport. Chaque limite est une contribution indirecte : elle définit le **périmètre de validité** des résultats EWAT et oriente les travaux futurs. Les résultats négatifs (H2, ontologie vide) sont plus informatifs qu'un succès non questionné.

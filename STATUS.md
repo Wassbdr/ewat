@@ -1,10 +1,44 @@
 # EWAT — État courant du projet
 
-_Mis à jour : 2026-06-03 (v5 — pipeline collecte Train Ticket prêt + vérifié, GO lancement VM ; analyses H1-K sur v4_strat)_
+_Mis à jour : 2026-06-11 (Phase L — correctifs audit 2026-06 + évaluation renforcée sur v4_strat, pendant la collecte v5)_
 
 > Résultats détaillés et interprétation scientifique → [docs/results.md](docs/results.md)
 > **Évolution post-stage planifiée → [ROADMAP.md](ROADMAP.md)** (axes A: couplage onto/pred, B: précursion robuste, C: open-set, D: déploiement)
 > Mémo défense (1 page A4) → [docs/defense_memo.md](docs/defense_memo.md)
+> Nomenclature des datasets → [docs/datasets.md](docs/datasets.md) · Protocole v5 figé → [docs/evaluation_protocol_v5.md](docs/evaluation_protocol_v5.md)
+
+---
+
+## Phase L — Audit 2026-06 : correctifs + évaluation renforcée (2026-06-11)
+
+Audit complet data→modèle→résultats ([docs/audit_2026_06.md](docs/audit_2026_06.md), 40 points) puis
+plan d'action exécuté pendant la collecte v5. Branche `audit-fixes-2026-06` (11 commits, 739 tests verts).
+
+### Correctifs appliqués (sélection)
+
+| Couche | Fixes |
+|---|---|
+| Pipeline v5 (P0) | Registre features versionné v4/v5.1 (D1) ; `assemble_dataset` stratifié par défaut + held-out test-only intégré + erreur scénario absent (D4+D5) ; test golden build→validate→assemble sur mini-dump (D6, 10 tests) ; provenance metadata (D12) |
+| Modèle | Self-loops STGCN Â=D̃^{-1/2}(A+I)D̃^{-1/2} (M4) + validation shapes (M5) ; checkpoint siamois sélectionné sur **silhouette val** (M6) ; K=10 fixe + HDBSCAN (M8/T3) ; `sigma_policy=keep` à la recalibration drift (M2) ; ε jamais en dur, calibration requise (M1) ; garde-fou TE T≥5d en erreur + 500 permutations (M11) ; k* parcimonieux (M12) ; empreinte sha256 du scaler dans les checkpoints (M15) |
+| Évaluation | PR-AUC partout (E3) + filtre reportable n_pos≥5 (E8) ; calibration Brier/ECE/reliability (E2) ; IC lead-time (E4) ; robustesse NaN (E9) ; variance inter-split (E5) ; oracle (E6) ; null model silhouette (M9) ; tests edge cases (E10) ; **USAD** (KDD 2020) première baseline publiée (E1) |
+
+### Résultats nouveaux (v4_strat — `experiments/audit2026/`, `experiments/sota/usad/`)
+
+| Mesure | Valeur | Lecture |
+|---|---|---|
+| **B2 PR-AUC** (à côté du headline AUROC 0.920) | **0.587** | l'AUROC seule était optimiste (n_pos=3/scénario) — reporter les deux (L9.1) |
+| **Variance inter-split** (E5, 5 splits shuffled) | 0.969 ± 0.011 vs **0.920 temporel** | le split officiel est conservateur ; le décalage temporel pénalise surtout la précision (PR 0.59 vs 0.80-0.91) |
+| **Oracle** (E6) | fit-on-all = 1.000 ; train+val = 0.962 | gap 0.920→1.0 entièrement rattrapable, pas de chevauchement irréductible |
+| **Robustesse NaN** (E9) | −1.3 pp AUROC à 20 % NaN, −8.3 pp à 50 % | argument production solide |
+| **Calibration** (E2) | B2 ECE=0.037 ✓ ; précurseurs **ECE=0.120 ✗** → isotonique 0.021 | le « seuil 0.7 » historique exige une recalibration (L9.2) |
+| **Missingness en features** (D3) | Δ=+0.0005, IC ∋ 0 | négatif propre — l'imputation à 0 post-instance-norm code déjà le masque |
+| **Drift recalibré v4_strat** | AUC **0.315** (w10) / 0.284 (w5) | pire que le hasard — H2a falsifiée au niveau calibration, pas un réglage (L9.4) |
+| **USAD (typage, latents+LR)** | 0.878 / PR 0.505 | **B2 0.920 / 0.587 bat la baseline publiée** à protocole constant |
+| **Sanity retrain graine 42** (self-loops + checkpoint-sil + K=10) | sil_test **0.880** (vs 0.838 Phase G, 0.691±0.115 Phase H) | gain net ; mais best_epoch=**1** à toute marge (sweep 1.5/1.8/2.0) → le contrastif n'améliore pas la géométrie de l'encodeur (L9.3) |
+| Alerte opérationnelle (pipeline retrainé) | FA drift 100 % à tous seuils, lead ≈ 14,5 min | l'alerte = identificateur de scénario dès les 1ers steps (cohérent A1) — table seuils à refaire post-recalibration |
+
+**Phase H-bis (10 graines, K=10, fixes actifs) : EN COURS** — `experiments/multiseed/phase_h2/`.
+Nouvelles limites L9.1–L9.6 documentées dans [docs/limitations.md](docs/limitations.md) §9.
 
 ---
 
