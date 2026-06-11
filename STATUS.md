@@ -34,6 +34,7 @@ plan d'action exécuté pendant la collecte v5. Branche `audit-fixes-2026-06` (1
 | **Missingness en features** (D3) | Δ=+0.0005, IC ∋ 0 | négatif propre — l'imputation à 0 post-instance-norm code déjà le masque |
 | **Drift recalibré v4_strat** | AUC **0.315** (w10) / 0.284 (w5) | pire que le hasard — H2a falsifiée au niveau calibration, pas un réglage (L9.4) |
 | **USAD (typage, latents+LR)** | 0.878 / PR 0.505 | **B2 0.920 / 0.587 bat la baseline publiée** à protocole constant |
+| **USAD (détection, tâche native)** | 0.703 vs z-score max 0.495 | USAD bat la baseline naïve (au hasard post-instance-norm) — détecteur d'appoint crédible, pas un classifieur de types |
 | **Sanity retrain graine 42** (self-loops + checkpoint-sil + K=10) | sil_test **0.880** (vs 0.838 Phase G, 0.691±0.115 Phase H) | gain net ; mais best_epoch=**1** à toute marge (sweep 1.5/1.8/2.0) → le contrastif n'améliore pas la géométrie de l'encodeur (L9.3) |
 | Alerte opérationnelle (pipeline retrainé) | FA drift 100 % à tous seuils, lead ≈ 14,5 min | l'alerte = identificateur de scénario dès les 1ers steps (cohérent A1) — table seuils à refaire post-recalibration |
 

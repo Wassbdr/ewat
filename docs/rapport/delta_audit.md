@@ -26,19 +26,29 @@ Réfs : `experiments/audit2026/{oracle,split_variance}/results.md`.
 
 ## 2. Positionnement — nouvelle sous-section « Comparaison à l'état de l'art »
 
-Le rapport n'avait AUCUNE baseline publiée. Ajouter :
+Le rapport n'avait AUCUNE baseline publiée. Ajouter (deux volets) :
+
+**Typage 15 scénarios (tâche EWAT) :**
 
 | Méthode | macro-AUROC | macro-PR-AUC |
 |---|---|---|
 | **EWAT B2** (LR-OvR fenêtres brutes) | **0.920** | **0.587** |
 | USAD (Audibert et al., KDD 2020), latents + LR | 0.878 | 0.505 |
 
+**Détection binaire normal/injection (tâche native d'USAD, fenêtres k=6) :**
+
+| Méthode | AUROC | PR-AUC |
+|---|---|---|
+| USAD (score reconstruction adversariale) | 0.703 | 0.419 |
+| z-score max (baseline naïve du rapport) | 0.495 | 0.269 |
+
 Formulation : « À protocole et featurisation strictement identiques (fenêtres
 pré-injection instance-normalisées), la représentation non supervisée d'USAD
 porte moins d'information de type que les features brutes — B2 reste devant
-de 4,2 pp AUROC / 8,2 pp PR-AUC. USAD étant un détecteur, ce volet mesure sa
-représentation, pas sa tâche native (limite documentée). »
-Réf : `experiments/sota/usad/results.md`.
+de 4,2 pp AUROC / 8,2 pp PR-AUC. Sur sa tâche native (détection), USAD bat
+nettement le z-score naïf (0.703 vs 0.495, ce dernier au niveau du hasard
+après instance norm), ce qui en fait un détecteur d'appoint crédible mais
+pas un classifieur de types. » Réf : `experiments/sota/usad/results.md`.
 
 ## 3. Bornes — nouvelle figure/paragraphe « lecture du gap »
 
