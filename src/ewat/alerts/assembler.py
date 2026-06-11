@@ -39,6 +39,7 @@ passe ``episode_id=""`` aux deux premiers appels.
 from __future__ import annotations
 
 import json
+import logging
 import pickle
 from collections import defaultdict
 from pathlib import Path
@@ -54,8 +55,15 @@ from ewat.drift.mmd import RFFKernel
 from ewat.precursor.model import PrecursorClassifier
 from ewat.typing.siamese import SiameseTyper
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_STEP_SECONDS = 30.0
-DEFAULT_DRIFT_EPSILON = 0.5226
+# M1 (audit 2026-06): plus de DEFAULT_DRIFT_EPSILON en dur. L'ancienne valeur
+# 0.5226 était la calibration Youden d'ewat_v3 (AUC=0.60) recopiée depuis
+# configs/default.yaml (L7.3) — appliquée silencieusement à n'importe quel
+# dataset. ε doit venir d'une calibration explicite (drift_calibration.json,
+# produit par experiments/drift_separation) ; sans calibration, pas de
+# DriftDetector.
 DEFAULT_DRIFT_RFF_DIM = 256
 DEFAULT_DRIFT_WINDOW_REF = 5
 DEFAULT_DRIFT_WINDOW_CUR = 5
@@ -145,7 +153,11 @@ class AlertAssembler:
         L'instance retournée groupe automatiquement les classifiers par ``k*``
         au moment de :meth:`predict`.
         """
-        from ewat.encoder.stgcn import STGCNEncoder
+        # M4 (audit 2026-06): construction via la factory — détecte
+        # use_layer_norm depuis le state_dict et use_self_loops depuis arch.
+        # La construction manuelle précédente ignorait les deux flags (même
+        # classe de bug que la régression 5.3 : forward ≠ entraînement).
+        from ewat.encoder.factory import build_encoder_from_checkpoint
 
         enc_ckpt = torch.load(
             encoder_dir / "checkpoints" / "best_encoder.pt",
@@ -154,25 +166,7 @@ class AlertAssembler:
         )
 
         arch = enc_ckpt.get("arch") or {}
-        d_feat = int(arch.get("d_feat", 17))
-        n_nodes = int(arch.get("n_nodes", 6))
-        d_hidden = int(arch.get("d_hidden", 64))
-        d_embed = int(arch.get("d_embed", 64))
-        n_gcn_layers = int(arch.get("n_gcn_layers", 2))
-        tcn_kernel = int(arch.get("tcn_kernel", 3))
-        tcn_layers = int(arch.get("tcn_layers", 2))
-        n_adj_ch = int(arch.get("n_adj_ch", 3))
-
-        encoder = STGCNEncoder(
-            d_feat=d_feat,
-            n_nodes=n_nodes,
-            d_hidden=d_hidden,
-            d_embed=d_embed,
-            n_gcn_layers=n_gcn_layers,
-            tcn_kernel=tcn_kernel,
-            tcn_layers=tcn_layers,
-            n_adj_ch=n_adj_ch,
-        )
+        encoder = build_encoder_from_checkpoint(enc_ckpt)
         encoder.load_state_dict(enc_ckpt["encoder_state"])
 
         typer_ckpt = torch.load(
@@ -212,23 +206,36 @@ class AlertAssembler:
             with open(scaler_path, "rb") as fh:
                 scaler = pickle.load(fh)
 
-        # Drift calibration (loaded from JSON if available, else defaults).
+        # M1 (audit 2026-06): le DriftDetector n'est construit que si une
+        # calibration explicite fournit epsilon_drift. Sans calibration, mieux
+        # vaut pas de détecteur (drift_flag absent) qu'un seuil calibré sur un
+        # autre dataset appliqué silencieusement.
         drift_cfg: dict[str, Any] = {}
         cal_path = drift_calibration_path or encoder_dir / "drift_calibration.json"
         if cal_path.exists():
             drift_cfg = json.loads(Path(cal_path).read_text())
 
-        kernel = RFFKernel(
-            rff_dim=int(drift_cfg.get("rff_dim", DEFAULT_DRIFT_RFF_DIM)),
-            seed=int(drift_cfg.get("seed", 42)),
-        )
-        drift_detector = DriftDetector(
-            kernel=kernel,
-            epsilon_drift=float(drift_cfg.get("epsilon_drift", DEFAULT_DRIFT_EPSILON)),
-            window_ref_size=int(drift_cfg.get("window_ref_size", DEFAULT_DRIFT_WINDOW_REF)),
-            window_cur_size=int(drift_cfg.get("window_cur_size", DEFAULT_DRIFT_WINDOW_CUR)),
-            post_drift_window_s=int(drift_cfg.get("post_drift_window_s", DEFAULT_DRIFT_POST)),
-        )
+        drift_detector: DriftDetector | None = None
+        if "epsilon_drift" in drift_cfg:
+            kernel = RFFKernel(
+                rff_dim=int(drift_cfg.get("rff_dim", DEFAULT_DRIFT_RFF_DIM)),
+                seed=int(drift_cfg.get("seed", 42)),
+            )
+            drift_detector = DriftDetector(
+                kernel=kernel,
+                epsilon_drift=float(drift_cfg["epsilon_drift"]),
+                window_ref_size=int(drift_cfg.get("window_ref_size", DEFAULT_DRIFT_WINDOW_REF)),
+                window_cur_size=int(drift_cfg.get("window_cur_size", DEFAULT_DRIFT_WINDOW_CUR)),
+                post_drift_window_s=int(drift_cfg.get("post_drift_window_s", DEFAULT_DRIFT_POST)),
+                sigma_policy=str(drift_cfg.get("sigma_policy", "keep")),
+            )
+        else:
+            logger.warning(
+                "AlertAssembler: pas de drift_calibration.json avec "
+                "epsilon_drift (%s) → DriftDetector DÉSACTIVÉ. Calibrer via "
+                "experiments/drift_separation sur le dataset courant.",
+                cal_path,
+            )
 
         step_seconds = float(arch.get("step_seconds", DEFAULT_STEP_SECONDS))
 

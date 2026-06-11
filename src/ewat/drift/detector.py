@@ -55,6 +55,17 @@ class DriftDetector:
     post_drift_window_s:
         Number of timesteps to observe after a putative drift before
         confirming DRIFT vs. RECALIBRATE.
+    sigma_policy:
+        M2 (audit 2026-06): what happens to the RFF bandwidth σ when the
+        reference window is recalibrated.
+
+        - ``"keep"`` (default): σ and the RFF projections are kept — the MMD²
+          scale stays comparable to the calibrated ε_drift across
+          recalibrations. Recommended: ε was calibrated under one σ; re-fitting
+          σ silently changes the meaning of the threshold.
+        - ``"refit"``: legacy behaviour — σ is re-fitted on the next MMD² from
+          the new reference window (the MMD² scale may jump while ε stays
+          fixed).
     """
 
     def __init__(
@@ -64,7 +75,10 @@ class DriftDetector:
         window_ref_size: int = 300,
         window_cur_size: int = 60,
         post_drift_window_s: int = 120,
+        sigma_policy: Literal["keep", "refit"] = "keep",
     ) -> None:
+        if sigma_policy not in ("keep", "refit"):
+            raise ValueError(f"sigma_policy must be 'keep' or 'refit', got {sigma_policy!r}")
         self._kernel = kernel
         self._epsilon_drift = epsilon_drift
         self._ref_buf: deque[npt.NDArray[np.float64]] = deque(maxlen=window_ref_size)
@@ -73,6 +87,7 @@ class DriftDetector:
         self._window_ref_size = window_ref_size
         self._window_cur_size = window_cur_size
         self._post_drift_window_s = post_drift_window_s
+        self._sigma_policy = sigma_policy
         # State machine
         self._pending_drift: bool = False
 
@@ -187,7 +202,12 @@ class DriftDetector:
         for row in self._cur_buf:
             self._ref_buf.append(row)
         self._post_buf.clear()
-        # Invalidate cached RFF projections so they are re-drawn for new σ
-        self._kernel._W = None
-        self._kernel._b = None
-        self._kernel._sigma = None
+        # M2 (audit 2026-06): with sigma_policy="keep" (default), σ and the
+        # RFF projections survive the recalibration so the MMD² scale stays
+        # comparable to the calibrated ε_drift. "refit" restores the legacy
+        # hard reset (σ re-fitted on the new reference → scale jump while ε
+        # stays fixed).
+        if self._sigma_policy == "refit":
+            self._kernel._W = None
+            self._kernel._b = None
+            self._kernel._sigma = None
