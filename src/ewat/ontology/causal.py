@@ -242,7 +242,7 @@ def compute_causal_relations(
     n_clusters: int,
     lag: int = 1,
     k_knn: int = 5,
-    n_permutations: int = 100,
+    n_permutations: int = 500,
     p_threshold: float = 0.05,
     min_support: int = 5,
     max_episodes_per_cluster: int = 20,
@@ -251,6 +251,7 @@ def compute_causal_relations(
     te_method: Literal["univariate_sum", "multivariate"] = "multivariate",
     correction: Literal["holm", "bh", "none"] = "bh",
     regime: str | None = None,
+    allow_unreliable: bool = False,
 ) -> list[OntologyRelation]:
     """Compute TE-KSG causal relations between cluster type pairs.
 
@@ -267,7 +268,9 @@ def compute_causal_relations(
     k_knn:
         KSG nearest-neighbour count.
     n_permutations:
-        Permutation test iterations.
+        Permutation test iterations. M11 (audit 2026-06): default raised
+        100 → 500 — with 100 permutations the p-value resolution is 1/101,
+        too coarse for BH-FDR at the p<0.05/K(K−1) scale.
     p_threshold:
         Maximum *adjusted* p-value to emit a relation.
     min_support:
@@ -287,6 +290,11 @@ def compute_causal_relations(
         If given, only timesteps whose ``regime`` column equals this value are
         used for TE estimation.  Filtering happens before spatial averaging to
         avoid mixing recovery/normal steps into the anomaly signal.
+    allow_unreliable:
+        M11 (audit 2026-06): multivariate KSG-1 with
+        ``min_series_length < 5·d`` (85 for d=17) now raises instead of
+        warning — the estimates are noise (Kraskov 2004 rule). Set ``True``
+        to restore the legacy warning-only behaviour.
 
     Returns
     -------
@@ -298,19 +306,24 @@ def compute_causal_relations(
     if te_method not in ("univariate_sum", "multivariate"):
         raise ValueError(f"unknown te_method: {te_method!r}")
 
-    # Step 7 fix 7.2 (audit 2026-05-26): in multivariate mode the KSG-1
-    # estimator requires T >= 5·d for numerical stability (Kraskov 2004 rule of
-    # thumb). With 17 features, that means T >= 85. The historical default
-    # min_series_length=30 produces unreliable TE estimates for the 17-D joint
-    # state. We log a warning when the caller passes the legacy default.
+    # Step 7 fix 7.2 (audit 2026-05-26) + M11 (audit 2026-06): in multivariate
+    # mode the KSG-1 estimator requires T >= 5·d for numerical stability
+    # (Kraskov 2004 rule of thumb). With 17 features, that means T >= 85. The
+    # historical default min_series_length=30 produces unreliable TE estimates
+    # for the 17-D joint state — this is now a hard error unless the caller
+    # explicitly opts into noise via allow_unreliable=True.
     if te_method == "multivariate" and min_series_length < 85:
-        import logging
-        logging.getLogger(__name__).warning(
-            "compute_causal_relations: te_method='multivariate' with "
-            "min_series_length=%d < 5*17=85. Kraskov 2004 KSG-1 estimator may "
-            "be unreliable. Pass min_series_length>=85 for d=17 joint states "
-            "or expect noisy TE values.", min_series_length,
+        msg = (
+            f"compute_causal_relations: te_method='multivariate' with "
+            f"min_series_length={min_series_length} < 5*17=85. Kraskov 2004 "
+            f"KSG-1 estimates are unreliable below this length. Pass "
+            f"min_series_length>=85, or allow_unreliable=True to proceed "
+            f"anyway (legacy behaviour)."
         )
+        if not allow_unreliable:
+            raise ValueError(msg)
+        import logging
+        logging.getLogger(__name__).warning("%s", msg)
     if k_knn < 3 or k_knn > 10:
         import logging
         logging.getLogger(__name__).warning(

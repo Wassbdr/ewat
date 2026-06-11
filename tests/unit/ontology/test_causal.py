@@ -122,6 +122,7 @@ def test_causal_returns_list():
             n_permutations=5,
             min_support=2,
             min_series_length=10,
+            allow_unreliable=True,
         )
     assert isinstance(rels, list)
 
@@ -136,6 +137,7 @@ def test_causal_relation_type():
             n_permutations=5,
             min_support=2,
             min_series_length=10,
+            allow_unreliable=True,
         )
     for r in rels:
         assert r.relation_type == "causal"
@@ -151,6 +153,7 @@ def test_causal_strength_nonnegative():
             n_permutations=5,
             min_support=2,
             min_series_length=10,
+            allow_unreliable=True,
         )
     for r in rels:
         assert r.strength >= 0.0
@@ -167,6 +170,7 @@ def test_causal_p_value_in_range():
             p_threshold=1.0,  # accept all
             min_support=2,
             min_series_length=10,
+            allow_unreliable=True,
         )
     for r in rels:
         assert r.p_value is not None
@@ -183,6 +187,7 @@ def test_causal_insufficient_support_returns_empty():
             n_permutations=5,
             min_support=10,  # impossible
             min_series_length=5,
+            allow_unreliable=True,
         )
     assert rels == []
 
@@ -197,6 +202,7 @@ def test_causal_series_too_short_skips():
             n_permutations=5,
             min_support=2,
             min_series_length=50,  # longer than data
+            allow_unreliable=True,
         )
     assert rels == []
 
@@ -259,6 +265,7 @@ def test_causal_method_multivariate_runs():
             n_permutations=5,
             min_support=2,
             min_series_length=10,
+            allow_unreliable=True,
             te_method="multivariate",
         )
     for r in rels:
@@ -290,6 +297,7 @@ def test_causal_holm_more_conservative_than_bh():
             p_threshold=0.5,
             min_support=2,
             min_series_length=10,
+            allow_unreliable=True,
             correction="bh",
         )
         rels_holm = compute_causal_relations(
@@ -300,6 +308,23 @@ def test_causal_holm_more_conservative_than_bh():
             p_threshold=0.5,
             min_support=2,
             min_series_length=10,
+            allow_unreliable=True,
             correction="holm",
         )
     assert len(rels_holm) <= len(rels_bh)
+
+
+def test_multivariate_short_series_raises_without_optin():
+    """M11 (audit 2026-06): multivariate + min_series_length < 5·d = erreur."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manifest = _make_signal_store(Path(tmpdir))
+        with pytest.raises(ValueError, match="allow_unreliable"):
+            compute_causal_relations(
+                cluster_manifest=manifest,
+                features_root=Path(tmpdir),
+                n_clusters=3,
+                n_permutations=5,
+                min_support=2,
+                min_series_length=10,
+                te_method="multivariate",
+            )

@@ -188,28 +188,42 @@ class PrecursorClassifier:
 def find_optimal_k(
     auroc_table: dict[int, dict[int, float]],
     n_clusters: int,
+    parsimony_tol: float = 0.02,
 ) -> dict[int, int]:
     """Find optimal horizon k per cluster type.
+
+    M12 (audit 2026-06): the plain argmax was unstable on flat AUROC(k)
+    curves (k* jumped ±1-2 steps between retrains, std ≈ 0.7 per the
+    bootstrap stability check). The rule is now *parsimonious*: pick the
+    SMALLEST k whose AUROC is within ``parsimony_tol`` of the max — shorter
+    windows are more stable across retrains and operationally preferable
+    (smaller inference window).
 
     Parameters
     ----------
     auroc_table: {k_steps → {cluster_id → AUROC}}
     n_clusters:  Total number of cluster types.
+    parsimony_tol:
+        Tolerance below the per-cluster max AUROC within which a shorter k
+        is preferred. ``0.0`` restores the legacy strict argmax.
 
     Returns
     -------
-    {cluster_id → k_optimal} — k with highest AUROC per type.
+    {cluster_id → k_optimal} — smallest k within tolerance of the best AUROC.
     """
     k_values = sorted(auroc_table.keys())
     result: dict[int, int] = {}
     for c in range(n_clusters):
-        best_k, best_auroc = k_values[0], -1.0
-        for k in k_values:
-            auc = auroc_table[k].get(c, float("nan"))
-            if not np.isnan(auc) and auc > best_auroc:
-                best_auroc = auc
-                best_k = k
-        result[c] = best_k
+        aucs = {
+            k: auroc_table[k].get(c, float("nan"))
+            for k in k_values
+            if not np.isnan(auroc_table[k].get(c, float("nan")))
+        }
+        if not aucs:
+            result[c] = k_values[0]
+            continue
+        best_auroc = max(aucs.values())
+        result[c] = min(k for k, a in aucs.items() if a >= best_auroc - parsimony_tol)
     return result
 
 

@@ -206,6 +206,22 @@ class AlertAssembler:
             with open(scaler_path, "rb") as fh:
                 scaler = pickle.load(fh)
 
+        # M15 (audit 2026-06): vérifie que le scaler chargé est bien celui de
+        # l'entraînement de l'encodeur (le pickle vit hors checkpoint — un
+        # re-fit ou un mauvais répertoire passait inaperçu).
+        expected_fp = enc_ckpt.get("scaler_sha256")
+        if scaler is not None and expected_fp:
+            from ewat.utils.fingerprint import scaler_fingerprint
+
+            actual_fp = scaler_fingerprint(scaler)
+            if actual_fp != expected_fp:
+                logger.warning(
+                    "AlertAssembler: scaler %s ne correspond PAS au scaler "
+                    "d'entraînement de l'encodeur (sha256 %s… ≠ %s…) — les "
+                    "embeddings seront hors distribution.",
+                    scaler_path, actual_fp[:12], expected_fp[:12],
+                )
+
         # M1 (audit 2026-06): le DriftDetector n'est construit que si une
         # calibration explicite fournit epsilon_drift. Sans calibration, mieux
         # vaut pas de détecteur (drift_flag absent) qu'un seuil calibré sur un
