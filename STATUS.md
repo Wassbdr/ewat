@@ -36,6 +36,8 @@ plan d'action exécuté pendant la collecte v5. Branche `audit-fixes-2026-06` (1
 | **USAD (typage, latents+LR)** | 0.878 / PR 0.505 | **B2 0.920 / 0.587 bat la baseline publiée** à protocole constant |
 | **USAD (détection, tâche native)** | 0.703 vs z-score max 0.495 | USAD bat la baseline naïve (au hasard post-instance-norm) — détecteur d'appoint crédible, pas un classifieur de types |
 | **Sanity retrain graine 42** (self-loops + checkpoint-sil + K=10) | sil_test **0.880** (vs 0.838 Phase G, 0.691±0.115 Phase H) | gain net ; mais best_epoch=**1** à toute marge (sweep 1.5/1.8/2.0) → le contrastif n'améliore pas la géométrie de l'encodeur (L9.3) |
+| **NMI externe clusters vs scénarios** (10 graines) | **0.738 ± 0.052** vs 0.518 (v3) | le gain des fixes est aussi SÉMANTIQUE, pas que géométrique — métrique indépendante, présentable (ARI 0.31, pureté 0.42 plafonnée par K=10<15) |
+| **Table opérationnelle calibrée** (typage avec abstention) | top-1 0.444 @100 % couverture ; **0.733 @33 %** | remplace la table seuils invalide ; l'AUROC mesure le rang, pas la décision |
 | Alerte opérationnelle (pipeline retrainé) | FA drift 100 % à tous seuils, lead ≈ 14,5 min | l'alerte = identificateur de scénario dès les 1ers steps (cohérent A1) — table seuils à refaire post-recalibration |
 
 ### Phase H-bis — multi-graines avec fixes (TERMINÉE 2026-06-12, 10 graines)

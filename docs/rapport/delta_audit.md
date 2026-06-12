@@ -149,3 +149,36 @@ inchangée et attendue : elle motive l'évaluation sur cible indépendante (B2,
 C2) et le protocole v5. » Le H3 circulaire (≈ 1.0) ne doit PAS être
 présenté comme headline — étiqueter « by design, cf. L9 ».
 Réf : `experiments/multiseed/phase_h2/results.md`.
+
+## 12. Tri final : présentable vs circulaire (à appliquer partout)
+
+**Règle de présentation** : un chiffre n'entre dans le corps du rapport que
+s'il est mesuré contre une cible indépendante (scénarios Chaos Mesh, bugs F)
+ou une référence externe (baseline publiée, modèle nul). Les métriques
+internes/circulaires vont en annexe « diagnostics », étiquetées comme telles.
+
+### Colonne « présentable » (cible indépendante)
+
+| Résultat | Valeur | Réf |
+|---|---|---|
+| Typage supervisé B2 | AUROC 0.920 [0.878, 0.956] / PR-AUC 0.587 | `audit2026/oracle` |
+| **Typage non supervisé — NMI externe clusters vs scénarios** | **0.738 ± 0.052** (10 graines) vs 0.518 (v3) — **+22 pts sur métrique indépendante** ; ARI 0.31 ± 0.08, pureté 0.42 (plafond structurel ≈ 0.67 avec K=10 < 15 scénarios) | `audit2026/external_clusters` |
+| **Décision opérationnelle (calibrée, avec abstention)** | top-1 = 0.444 à couverture 100 % (vs 0.067 hasard, ×6.7) ; **0.733 à couverture 33 %** ; 0.833 à 13 % | `audit2026/operating_table` |
+| vs USAD (KDD 2020) | typage : B2 0.920/0.587 > latents USAD 0.878/0.505 ; détection native : USAD 0.703 > z-score 0.495 | `sota/usad` |
+| Précursion temporelle réelle | C2 : Δ(far−near) = −0.116 (cible Chaos Mesh) — seul résultat d'early-warning défendable ; rerun avec encodeur corrigé en cours | `architecture_v2/` |
+| Bornes, variance, robustesse, calibration | oracle 1.0 / train+val 0.962 ; inter-split 0.969 ± 0.011 ; NaN −1.3 pp à 20 % ; ECE 0.037 (B2) | `audit2026/*` |
+
+### Colonne « diagnostics internes » (annexe uniquement)
+
+| Métrique | Valeur | Pourquoi pas présentable |
+|---|---|---|
+| H1 silhouette | 0.843 ± 0.063 | métrique interne : géométrie des embeddings, ne valide pas le sens des clusters — c'est le NMI externe qui le fait |
+| H3 AUROC/PR | 0.999 / 0.992 | cible auto-référente (le modèle prédit ses propres labels) |
+| A1 Δ | −0.013, LEAK 10/10 | diagnostic de fuite, pas une performance |
+| Alerte v4 (table seuils) | FA 100 %, lead 14,5 min | identificateur de scénario, pas un précurseur ; remplacée par la table opérationnelle calibrée ci-dessus |
+
+**La phrase d'honnêteté pour le rapport** : « En classification top-1 sur 15
+types, le système calibré route correctement 44 % des incidents à couverture
+totale (6,7 % au hasard), et 73 % lorsqu'il s'autorise l'abstention sur les
+deux tiers les moins confiants. L'AUROC de 0.92 mesure le rang, pas la
+décision — les deux chiffres doivent coexister. »
