@@ -38,8 +38,22 @@ plan d'action exécuté pendant la collecte v5. Branche `audit-fixes-2026-06` (1
 | **Sanity retrain graine 42** (self-loops + checkpoint-sil + K=10) | sil_test **0.880** (vs 0.838 Phase G, 0.691±0.115 Phase H) | gain net ; mais best_epoch=**1** à toute marge (sweep 1.5/1.8/2.0) → le contrastif n'améliore pas la géométrie de l'encodeur (L9.3) |
 | Alerte opérationnelle (pipeline retrainé) | FA drift 100 % à tous seuils, lead ≈ 14,5 min | l'alerte = identificateur de scénario dès les 1ers steps (cohérent A1) — table seuils à refaire post-recalibration |
 
-**Phase H-bis (10 graines, K=10, fixes actifs) : EN COURS** — `experiments/multiseed/phase_h2/`.
-Nouvelles limites L9.1–L9.6 documentées dans [docs/limitations.md](docs/limitations.md) §9.
+### Phase H-bis — multi-graines avec fixes (TERMINÉE 2026-06-12, 10 graines)
+
+`experiments/multiseed/phase_h2/{aggregate.json,results.md}` — comparaison directe avec Phase H :
+
+| Métrique | Phase H (avant fixes) | **Phase H-bis (fixes actifs)** |
+|---|---|---|
+| **H1 sil_test** | 0.691 ± 0.115, range [0.521, 0.839] | **0.843 ± 0.063**, range [0.708, 0.920] |
+| K_optimal | 11.8 ± 2.1, range [9, 15] | **10 constant** (fixe par design, T3) |
+| best_epoch siamois | ~3 | **1.5 ± 0.7** — confirme L9.3 sur 10 graines |
+| H3 AUROC (circulaire) | 0.990 ± 0.012 | 0.999 ± 0.003 (PR 0.992 ± 0.021) — by design, cf. L9 |
+| A1 Δ(far−near) | −0.012 ± 0.022, LEAK 9/10 | −0.013 ± 0.010, **LEAK 10/10** (structurel sur cible circulaire) |
+
+**Lecture** : +15 pp de silhouette moyenne, variance ÷2, le MINIMUM de H-bis (0.708) dépasse
+le maximum hors-outlier de Phase H ; la variance K disparaît par construction. La fuite A1 sur
+labels EWAT est confirmée 10/10 — inchangée et attendue (la précursion honnête se mesure sur
+cible Chaos Mesh : C2, et v5). Nouvelles limites L9.1–L9.6 → [docs/limitations.md](docs/limitations.md) §9.
 
 ---
 

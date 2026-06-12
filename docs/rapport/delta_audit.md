@@ -5,9 +5,7 @@ _2026-06-11. Mode d'emploi : chaque entrée dit QUOI changer dans
 Les références pointent vers les artefacts (`experiments/audit2026/*`,
 `experiments/sota/usad/`, STATUS §Phase L, limitations §9)._
 
-> ⚠ Phase H-bis (retrain 10 graines avec les correctifs) en cours — les
-> entrées marquées 🕐 seront complétées à l'agrégation. Tout le reste est
-> final.
+> ✅ Phase H-bis terminée (2026-06-12) — toutes les entrées sont finales.
 
 ---
 
@@ -93,9 +91,11 @@ critère de sortie défini pour v5). » Réf : `audit2026/drift_calibration_v4st
 
 ## 7. Typage — mise à jour des chiffres et du récit
 
-- 🕐 H1 multi-graines : remplacer 0.691 ± 0.115 (Phase H) par l'agrégat
-  Phase H-bis (graine 42 : sil_test **0.880**, K=10 fixe). K n'est plus
-  sélectionné (instabilité Phase K actée) : « K = 10 fixé par design ».
+- H1 multi-graines : remplacer 0.691 ± 0.115 (Phase H) par
+  **0.843 ± 0.063** (Phase H-bis, 10 graines, range [0.708, 0.920]) — le
+  minimum dépasse le maximum hors-outlier de Phase H. K n'est plus
+  sélectionné (instabilité Phase K actée) : « K = 10 fixé par design »,
+  variance K nulle par construction.
 - **Nouveau constat à assumer (L9.3)** : avec la sélection de checkpoint sur
   la silhouette val, le meilleur checkpoint est **l'époque 1** quelle que
   soit la marge (sweep 1.5/1.8/2.0 : 0.819/0.669/0.880). Formulation : « le
@@ -131,10 +131,21 @@ critère de sortie défini pour v5). » Réf : `audit2026/drift_calibration_v4st
 - Mentionner la branche `audit-fixes-2026-06` (12+ commits) comme cycle de
   durcissement post-audit.
 
-## 🕐 11. À compléter après Phase H-bis (agrégation 10 graines)
+## 11. Tableau multi-graines final (Phase H-bis, 2026-06-12)
 
-- Tableau multi-graines H1/H3/A1 (mean ± std, K=10 constant par design).
-- Comparaison Phase H vs Phase H-bis (impact agrégé des fixes).
-- Si sil_test moyen ≥ 0.75 : « les correctifs d'audit (self-loops,
-  sélection sur silhouette, K fixe) déplacent la moyenne multi-graines de
-  +X pp et suppriment la variance due à K ».
+| Métrique | Phase H (avant) | **Phase H-bis (après fixes)** |
+|---|---|---|
+| H1 sil_test (10 graines) | 0.691 ± 0.115 | **0.843 ± 0.063** (min 0.708) |
+| K_optimal | 11.8 ± 2.1 (instable) | **10 constant** |
+| best_epoch siamois | ~3 | 1.5 ± 0.7 (L9.3 confirmée ×10) |
+| H3 AUROC / PR-AUC (circulaire) | 0.990 ± 0.012 / — | 0.999 ± 0.003 / 0.992 ± 0.021 |
+| A1 Δ(far−near) | −0.012 ± 0.022, LEAK 9/10 | −0.013 ± 0.010, LEAK 10/10 |
+
+Formulation : « les correctifs d'audit (self-loops, sélection du checkpoint
+sur la silhouette val, K = 10 fixe) déplacent la silhouette multi-graines de
+**+15 pp** et divisent la variance par deux, en supprimant par construction
+l'instabilité de K. La fuite A1 sur cible auto-référente persiste 10/10 —
+inchangée et attendue : elle motive l'évaluation sur cible indépendante (B2,
+C2) et le protocole v5. » Le H3 circulaire (≈ 1.0) ne doit PAS être
+présenté comme headline — étiqueter « by design, cf. L9 ».
+Réf : `experiments/multiseed/phase_h2/results.md`.
