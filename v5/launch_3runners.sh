@@ -39,8 +39,8 @@ RUNNERS_ALL=(
 SEL_NS="${V5_NS:-tt tt-b tt-c}"
 RUNNERS=()
 for r in "${RUNNERS_ALL[@]}"; do
-  set -- $r
-  case " $SEL_NS " in *" $1 "*) RUNNERS+=("$r");; esac
+  rns="${r%% *}"   # 1er champ (ns) SANS `set --` : ne clobber pas $1 (sinon casse le bloc `stop`)
+  case " $SEL_NS " in *" $rns "*) RUNNERS+=("$r");; esac
 done
 [ "${#RUNNERS[@]}" -gt 0 ] || { echo "ABORT: V5_NS='$SEL_NS' ne sélectionne aucun runner connu (tt/tt-b/tt-c)"; exit 1; }
 
