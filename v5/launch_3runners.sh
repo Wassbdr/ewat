@@ -29,11 +29,20 @@ HELDCAP="${V5_HELDOUT_CAP:-28}"
 RAMCEIL="${V5_RAM_CEILING:-90}"
 
 # ns  port  rep_start rep_end pf_offset stagger_s  window
-RUNNERS=(
+RUNNERS_ALL=(
   "tt   32677 0  10 0  0   runA"
   "tt-b 32679 10 20 10 240 runB"
   "tt-c 32681 20 30 20 480 runC"
 )
+# V5_NS : sous-ensemble de namespaces à lancer (ex. "tt tt-b" pour ignorer tt-c).
+# Vide ⇒ les 3. Filtre les RUNNERS et le préflight de façon rétrocompatible.
+SEL_NS="${V5_NS:-tt tt-b tt-c}"
+RUNNERS=()
+for r in "${RUNNERS_ALL[@]}"; do
+  set -- $r
+  case " $SEL_NS " in *" $1 "*) RUNNERS+=("$r");; esac
+done
+[ "${#RUNNERS[@]}" -gt 0 ] || { echo "ABORT: V5_NS='$SEL_NS' ne sélectionne aucun runner connu (tt/tt-b/tt-c)"; exit 1; }
 
 # ---------- stop ----------
 if [ "${1:-}" = "stop" ]; then
@@ -68,8 +77,27 @@ echo "repo=$REPO  contexte=$KCTX  node=$NODE_IP  users=$USERS  ram_ceiling=$RAMC
 
 # ---------- préflight ----------
 echo "-- préflight --"
-kubectl --context "$KCTX" get ns tt tt-b tt-c >/dev/null 2>&1 \
-  || { echo "ABORT: contexte '$KCTX' ne voit pas tt/tt-b/tt-c (kubectl config get-contexts ?)"; exit 1; }
+# 1) le contexte existe-t-il seulement dans le kubeconfig ?
+kubectl config get-contexts "$KCTX" >/dev/null 2>&1 \
+  || { echo "ABORT: contexte '$KCTX' absent du kubeconfig (kubectl config get-contexts)"; exit 1; }
+# 2) l'auth marche-t-elle ? distinguer un token expiré/révoqué d'un namespace manquant.
+#    Un token Rancher périmé renvoie 403 'system:unauthenticated' sur TOUT appel —
+#    sans cette branche le message blâme à tort le contexte (vu 2026-06-18). On
+#    sonde avec un `get ns tt ...` réel et on CLASSE sa stderr : 'auth whoami'
+#    n'est pas fiable ici (exit 0 + selfsubjectreviews désactivé sur ce cluster).
+nsprobe=$(kubectl --context "$KCTX" get ns $SEL_NS 2>&1)
+if [ $? -ne 0 ]; then
+  if echo "$nsprobe" | grep -qiE "unauthenticated|unauthorized|401|invalid bearer token|must authenticate"; then
+    echo "ABORT: auth refusée sur '$KCTX' — token expiré/révoqué (system:unauthenticated)."
+    echo "  → Rancher → observit-cluster1 → Account & API Keys (ou « Download Kubeconfig »)"
+    echo "  → kubectl config set-credentials $KCTX --token='<NOUVEAU_TOKEN>'"
+  elif echo "$nsprobe" | grep -qiE "NotFound|not found"; then
+    echo "ABORT: auth OK mais namespaces '$SEL_NS' absents sur '$KCTX' (déploiement TT manquant ?)"
+  else
+    echo "ABORT: contexte '$KCTX' inutilisable : $(echo "$nsprobe" | grep -v '^E[0-9]' | head -1)"
+  fi
+  exit 1
+fi
 fail=0
 for r in "${RUNNERS[@]}"; do
   set -- $r; ns=$1; port=$2
