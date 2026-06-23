@@ -22,6 +22,17 @@ for part in part1 part2 part3; do
   kubectl apply -n "$NS" -f "$TT_MANIFESTS/ts-deployment-${part}.yml" >/dev/null 2>&1
 done
 
+echo "--- fix imagePullPolicy: Always -> IfNotPresent (les manifests TT forcent Always) ---"
+# Always = re-pull du registry à CHAQUE démarrage de pod, même si l'image est en
+# cache local. Sur un node pool au réseau lent (collection-pool : ~20 min pour 32 Mo),
+# ça re-pull en boucle, fait timeouter le kubelet et laisse des réservations de noms
+# de conteneurs orphelines -> CreateContainerError en cascade (vu 2026-06-23).
+# IfNotPresent = pull une seule fois puis cache -> démarrage instantané ensuite.
+for d in $(kubectl get deploy -n "$NS" --no-headers 2>/dev/null | awk '{print $1}'); do
+  kubectl patch deploy -n "$NS" "$d" --type=json \
+    -p '[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"IfNotPresent"}]' >/dev/null 2>&1
+done
+
 echo "--- fix MongoDB 4.4 (la v7 supprime OP_QUERY, casse le driver Java TT) ---"
 for d in $(kubectl get deploy -n "$NS" --no-headers 2>/dev/null | awk '{print $1}' | grep -- '-mongo$'); do
   kubectl set image -n "$NS" "deploy/$d" "$d=mongo:4.4" >/dev/null 2>&1
