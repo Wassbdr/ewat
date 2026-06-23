@@ -6,6 +6,12 @@ __pycache__/
 dist/
 build/
 
+# Clone git imbriqué accidentel (4.8 Go, contient les dumps) — JAMAIS committer
+/ewat/
+
+# Documents Word binaires (régénérables depuis les .md trackés)
+*.docx
+
 # Data artifacts — never commit large binary data
 data/raw/
 data/raw_new/
