@@ -44,7 +44,8 @@ def main() -> None:
         kept = []
         for eid in split.get(bucket, []):
             if _is_heldout(eps_dir / eid):
-                test.add(eid); moved.append((bucket, eid))
+                test.add(eid)
+                moved.append((bucket, eid))
             else:
                 kept.append(eid)
         split[bucket] = kept
@@ -54,7 +55,8 @@ def main() -> None:
     print(f"held-out déplacés vers test : {len(moved)}")
     for b, e in moved:
         print(f"  {b} → test : {e}")
-    print(f"split final : train={len(split['train'])} val={len(split['val'])} test={len(split['test'])}")
+    print(f"split final : train={len(split['train'])} val={len(split['val'])} "
+          f"test={len(split['test'])}")
 
 
 if __name__ == "__main__":

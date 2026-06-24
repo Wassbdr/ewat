@@ -120,7 +120,7 @@ class OpenMax:
         return 1.0 - x_n @ c_n.T
 
     # ------------------------------------------------------------------- fit
-    def fit(self, activations: np.ndarray, labels: np.ndarray) -> "OpenMax":
+    def fit(self, activations: np.ndarray, labels: np.ndarray) -> OpenMax:
         """Fit class means + per-class Weibull on training activations.
 
         Parameters

@@ -14,7 +14,6 @@ lint:
   stage: quality
   script:
     - python -m ruff check src scripts tests
-  allow_failure: true   # lint informatif — géré manuellement, ne bloque pas la CI
 
 unit-tests:
   stage: quality

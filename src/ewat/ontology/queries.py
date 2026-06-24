@@ -16,7 +16,6 @@ from typing import Any
 
 from owlready2 import World
 
-
 PREFIXES = """
 PREFIX ewat: <http://ewat.devoteam.com/ontology#>
 PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>

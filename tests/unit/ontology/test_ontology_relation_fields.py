@@ -5,7 +5,6 @@ Covers fixes 7.3 (is_from_synthetic) and 7.4 (p_raw vs p_value separation).
 
 import json
 
-import pytest
 
 from ewat.ontology.graph import OntologyGraph, OntologyRelation
 from ewat.ontology.causal import ServiceCausalRelation

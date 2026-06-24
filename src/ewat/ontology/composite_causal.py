@@ -27,7 +27,6 @@ from ewat.ontology.cooccurrence import benjamini_hochberg
 from ewat.ontology.graph import OntologyRelation
 from ewat.ontology.synthesis import load_episode
 
-
 log = logging.getLogger(__name__)
 
 

@@ -29,7 +29,6 @@ from typing import Any
 
 from ewat.ontology.owl_export import ABoxArtefact
 
-
 DEFAULT_UBIQUITY_THRESHOLD = 0.5  # keep edges present in < 50% of active clusters
 
 

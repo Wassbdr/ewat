@@ -1,7 +1,6 @@
 """Tests for Step 8 audit fixes on PrecursorClassifier + k_stability_check."""
 
 import numpy as np
-import pytest
 
 from ewat.precursor.model import (
     PrecursorClassifier,
@@ -82,7 +81,7 @@ def test_k_stability_check_stable_when_one_k_dominates():
     """If only one k can fit (because the other has degenerate embeddings),
     k_star_mode should be that k consistently."""
     rng = np.random.default_rng(0)
-    n_ep, d, n_clusters = 30, 8, 3
+    n_ep, d = 30, 8
     # k=4 has clean separation; k=2 has identical noise (k=2 cannot separate)
     sep = np.concatenate([rng.normal(0, 1, size=(n_ep // 2, d)),
                           rng.normal(5, 1, size=(n_ep // 2, d))])
