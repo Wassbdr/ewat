@@ -73,7 +73,7 @@ class MahalanobisOOD:
                 f"threshold_mode must be 'none' or 'calibrated', got {self.threshold_mode!r}"
             )
 
-    def fit(self, activations: np.ndarray, labels: np.ndarray) -> "MahalanobisOOD":
+    def fit(self, activations: np.ndarray, labels: np.ndarray) -> MahalanobisOOD:
         """Fit class means + tied covariance.
 
         Parameters

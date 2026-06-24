@@ -12,10 +12,11 @@ from ewat.ontology.owl_export import (
     build_abox,
     export_ontology,
 )
-from ewat.ontology.service_propagation import (
-    PropagationReport,
-    ServiceEdge,
-    enrich_with_service_propagation,
+from ewat.ontology.owl_schema import (
+    DEFAULT_IRI,
+    TBoxArtefact,
+    build_tbox,
+    export_tbox,
 )
 from ewat.ontology.queries import CANONICAL_QUERIES, run_query
 from ewat.ontology.reasoning import (
@@ -27,6 +28,11 @@ from ewat.ontology.reasoning import (
     extract_entailment_diff,
     run_reasoner,
 )
+from ewat.ontology.service_propagation import (
+    PropagationReport,
+    ServiceEdge,
+    enrich_with_service_propagation,
+)
 from ewat.ontology.synthesis import (
     EpisodeBundle,
     RealismCheck,
@@ -36,12 +42,6 @@ from ewat.ontology.synthesis import (
     overlay_episodes,
     realism_envelope,
     write_episode,
-)
-from ewat.ontology.owl_schema import (
-    DEFAULT_IRI,
-    TBoxArtefact,
-    build_tbox,
-    export_tbox,
 )
 from ewat.ontology.temporal import compute_temporal_relations
 

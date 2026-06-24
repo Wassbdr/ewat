@@ -173,10 +173,10 @@ def test_window_position_middle_is_centered():
         ds_last = PrecursorDataset(
             manifest, Path(tmpdir), k=k, split=None, window_position="last"
         )
-        m, f, l = ds_middle[0]["signal"], ds_first[0]["signal"], ds_last[0]["signal"]
+        m, f, last_sig = ds_middle[0]["signal"], ds_first[0]["signal"], ds_last[0]["signal"]
     assert m.shape == (k, 6, 17)
     assert not (m == f).all().item()
-    assert not (m == l).all().item()
+    assert not (m == last_sig).all().item()
 
 
 def test_window_position_invalid_raises():

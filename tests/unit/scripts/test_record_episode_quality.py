@@ -8,7 +8,6 @@ Covers Step 1 fixes (audit 2026-05-26):
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS_DIR = REPO_ROOT / "scripts"

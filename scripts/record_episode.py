@@ -788,6 +788,7 @@ def main() -> None:  # noqa: C901 - single-process orchestrator
     # (telemetry truncation, load profile generation, etc.) read this seed.
     if args.seed is not None:
         import random
+
         import numpy as np
         random.seed(args.seed)
         np.random.seed(args.seed)

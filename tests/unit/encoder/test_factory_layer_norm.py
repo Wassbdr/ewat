@@ -7,7 +7,6 @@ import torch
 import pytest
 
 from ewat.encoder.factory import (
-    build_encoder,
     build_encoder_from_checkpoint,
     detect_use_layer_norm,
 )

@@ -42,7 +42,6 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
-
 SIGNAL_FILENAME = "signal.npz"
 ADJ_FILENAME = "adjacency.npz"
 LABELS_FILENAME = "labels.parquet"

@@ -8,7 +8,6 @@ from telemetry.feature_names import (
     AGGREGATION_RULE,
     FEATURE_NAMES,
     FEATURE_NAMES_V4,
-    FEATURE_NAMES_V5_1,
     MODALITY_SLICES,
     SCHEMA_V4,
     SCHEMA_V5_1,

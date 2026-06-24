@@ -6,11 +6,9 @@ Covers Step 3 fixes (audit 2026-05-26):
 - 3.4 : index.parquet exposes target_services + chaos_resource
 """
 
-import argparse
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))

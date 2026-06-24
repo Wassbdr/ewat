@@ -24,7 +24,6 @@ import yaml
 
 from ewat.ontology.owl_schema import DEFAULT_IRI, TBoxArtefact, build_tbox
 
-
 GRID_STEP_SECONDS = 30.0  # ewat_v3 sampling cadence
 
 
@@ -167,8 +166,6 @@ def build_abox(
 
     onto = tbox.ontology
     C = tbox.classes
-    P = tbox.object_properties
-    D = tbox.data_properties
 
     # --- Load all artefacts -------------------------------------------------
     manifest = _load_json(sources.cluster_manifest)
@@ -185,7 +182,6 @@ def build_abox(
     cluster_targets = _aggregate_targets_per_cluster(
         manifest, scenario_targets, set(canonical_services),
     )
-    scenario_dist = _scenario_distribution_per_cluster(manifest)
     self_loop_durations = _self_loop_durations(temporal)
     lead_times = _lead_times_seconds(precursor)
 

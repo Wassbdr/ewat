@@ -37,7 +37,6 @@ from ewat.ontology.literature_taxonomy import (
     validate_taxonomy_mapping,
 )
 
-
 DEFAULT_IRI = "http://ewat.devoteam.com/ontology"
 
 

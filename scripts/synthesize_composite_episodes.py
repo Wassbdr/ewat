@@ -41,7 +41,6 @@ from ewat.ontology.synthesis import (
     write_episode,
 )
 
-
 log = logging.getLogger("synth")
 
 
