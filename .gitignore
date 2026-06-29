@@ -31,7 +31,20 @@ data/embeddings/
 *.part_a*
 
 # Experiment outputs (results, figures, calibration artifacts)
-experiments/
+# Scripts trackés, artefacts ignorés
+experiments/**/*.pt
+experiments/**/*.ckpt
+experiments/**/*.npy
+experiments/**/*.npz
+experiments/**/*.parquet
+experiments/**/*.log
+experiments/**/*.json
+experiments/**/*.png
+experiments/**/*.pdf
+experiments/**/mlruns/
+experiments/**/results/
+experiments/**/checkpoints/
+experiments/**/figures/
 
 # ML artefacts
 mlruns/
