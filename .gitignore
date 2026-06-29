@@ -30,21 +30,11 @@ data/embeddings/
 # Split archives (raw_v4 parts)
 *.part_a*
 
-# Experiment outputs (results, figures, calibration artifacts)
-# Scripts trackés, artefacts ignorés
-experiments/**/*.pt
-experiments/**/*.ckpt
-experiments/**/*.npy
-experiments/**/*.npz
-experiments/**/*.parquet
-experiments/**/*.log
-experiments/**/*.json
-experiments/**/*.png
-experiments/**/*.pdf
-experiments/**/mlruns/
-experiments/**/results/
-experiments/**/checkpoints/
-experiments/**/figures/
+# Experiment outputs — tout ignoré sauf les scripts Python
+experiments/
+!experiments/**/__init__.py
+!experiments/**/train.py
+!experiments/**/eval.py
 
 # ML artefacts
 mlruns/
