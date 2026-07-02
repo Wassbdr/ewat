@@ -53,7 +53,31 @@ _Mis à jour : 2026-07-02 (Phase V5 — résultats multi-graines ewat_v5, Train 
 - H3 **0.927** sur cible clusters v5 (non circulaire — évaluation sur test indépendant du training). Plus honnête que la cible auto-référente v4.
 - best_epoch ~3 = surentraînement siamois rapide, structurel (limitation L10, identique v4).
 - USAD (baseline publiée KDD 2020) = 0.878 sur v4 → EWAT v5 **0.927** sur topologie ×7 plus grande.
-- **Prochaine étape** : stress test A1 (distant-window) pour valider la précursion temporelle réelle.
+
+### Stress test A1 — distant-window (graine 42, 2026-07-02)
+
+`experiments/a1_v5/` — même encodeur + siamois + classifieur ; fenêtre déplacée dans le régime normal.
+
+| Position fenêtre | macro-AUROC test |
+|---|---|
+| `last` (juste avant injection) | **0.914** |
+| `middle` (milieu du régime normal) | 0.874 |
+| `first` (début du régime normal) | **0.868** |
+
+**Δ(far − near) = −0.046** ⇒ **GENUINE_DYNAMIC**
+
+Comparaison historique :
+
+| Dataset / modèle | Δ(far−near) | Verdict |
+|---|---|---|
+| v3 (labels EWAT circulaires) | −0.007 | LEAK |
+| v4 STGCN cible Chaos Mesh (C2-A1) | −0.116 | GENUINE_DYNAMIC |
+| **v5 Train Ticket (labels EWAT, graine 42)** | **−0.046** | **GENUINE_DYNAMIC** |
+
+**Lecture** : le pipeline v5 exploite une vraie dynamique pré-injection (−4.6 pp AUROC quand la fenêtre
+est loin de l'injection). Contrairement à v3 (Δ≈0, fuite statique), les épisodes Train Ticket plus longs
+laissent apparaître un gradient temporel réel. H3 v5 est donc non circulaire à la fois par construction
+(évaluation sur test tenu hors training) et par stress test (Δ < 0).
 
 ---
 
