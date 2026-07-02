@@ -1,11 +1,59 @@
 # EWAT — État courant du projet
 
-_Mis à jour : 2026-06-11 (Phase L — correctifs audit 2026-06 + évaluation renforcée sur v4_strat, pendant la collecte v5)_
+_Mis à jour : 2026-07-02 (Phase V5 — résultats multi-graines ewat_v5, Train Ticket 41 services)_
 
 > Résultats détaillés et interprétation scientifique → [docs/results.md](docs/results.md)
 > **Évolution post-stage planifiée → [ROADMAP.md](ROADMAP.md)** (axes A: couplage onto/pred, B: précursion robuste, C: open-set, D: déploiement)
 > Mémo défense (1 page A4) → [docs/defense_memo.md](docs/defense_memo.md)
 > Nomenclature des datasets → [docs/datasets.md](docs/datasets.md) · Protocole v5 figé → [docs/evaluation_protocol_v5.md](docs/evaluation_protocol_v5.md)
+
+---
+
+## Phase V5 — ewat_v5 Train Ticket : résultats multi-graines (2026-07-02)
+
+### Dataset ewat_v5
+
+| Propriété | Valeur |
+|---|---|
+| Topologie | Train Ticket (FudanSELab, 41 services Spring Cloud) |
+| Épisodes collectés | 611 (Phase 1) |
+| Épisodes retenus | 409 (202 rejetés NaN > 50%) |
+| Split | train=224 / val=47 / test=138 |
+| Scénarios train+val | 19 (15 mono + 4 compo) |
+| Scénarios held-out (test only) | 5 (F1, F3, held_io_latency, held_kernel_fault, held_net_bandwidth) |
+| Features | S(t) ∈ ℝ^{T×41×18} (schéma v5.1 : M[0-9] + T[10-13] + L[14-17]) |
+| Fuite held-out | **AUCUNE** ✅ |
+
+### Résultats pipeline (5 graines, K=10 fixe)
+
+`experiments/multiseed/phase_v5/` — encodeur 80 epochs + siamois 50 epochs + précurseurs BCa CI.
+
+| Métrique | **ewat_v5 (5 graines)** | ewat_v4 Phase H-bis (10 graines) |
+|---|---|---|
+| **H1 sil_test** | **0.779 ± 0.042** | 0.843 ± 0.063 |
+| range sil_test | [0.705, 0.833] | [0.708, 0.920] |
+| **H3 AUROC peak** | **0.927 ± 0.025** | 0.999 ± 0.003 (circulaire) |
+| range AUROC | [0.880, 0.949] | — |
+| best_epoch siamois | 3.0 ± 1.7 | 1.5 ± 0.7 |
+| H1 PASS | **5/5** | 10/10 |
+| H3 PASS | **5/5** | 10/10 |
+
+**Par graine :**
+
+| Graine | sil_test | AUROC | best_epoch | H1 | H3 |
+|---|---|---|---|---|---|
+| 42 | 0.778 | 0.949 | 2 | ✅ | ✅ |
+| 123 | 0.705 | 0.939 | 6 | ✅ | ✅ |
+| 456 | 0.833 | 0.932 | 3 | ✅ | ✅ |
+| 789 | 0.796 | 0.880 | 1 | ✅ | ✅ |
+| 1337 | 0.784 | 0.937 | 3 | ✅ | ✅ |
+
+**Lecture :**
+- H1 **0.779 ± 0.042** — variance ÷1.5 vs Phase H (±0.115 sur v4). Minimum 0.705 >> seuil 0.3. Clustering stable malgré ×7 services.
+- H3 **0.927** sur cible clusters v5 (non circulaire — évaluation sur test indépendant du training). Plus honnête que la cible auto-référente v4.
+- best_epoch ~3 = surentraînement siamois rapide, structurel (limitation L10, identique v4).
+- USAD (baseline publiée KDD 2020) = 0.878 sur v4 → EWAT v5 **0.927** sur topologie ×7 plus grande.
+- **Prochaine étape** : stress test A1 (distant-window) pour valider la précursion temporelle réelle.
 
 ---
 
