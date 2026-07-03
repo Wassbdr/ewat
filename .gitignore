@@ -51,6 +51,10 @@ wandb/
 *.log
 collection.log
 
+# Dataset release kit — sorties régénérables (scripts committés, sorties ignorées)
+/release/
+ewat_v5_ds.tar.gz.sha256
+
 # Secrets / environment
 .env
 kubeconfig*

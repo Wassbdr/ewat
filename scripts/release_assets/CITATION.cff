@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use this dataset, please cite it as below."
+title: "EWAT v5 — Early-Warning & Anomaly-Typing telemetry dataset (Train Ticket)"
+abstract: >-
+  Multi-modal telemetry (metrics, traces, logs) collected on a Kubernetes
+  deployment of the Train Ticket microservice benchmark (41 services), with
+  Chaos Mesh ground-truth fault injection across 27 scenarios (mono-cause,
+  compositional, held-out chaos primitives, and real-bug reproductions). Each
+  episode provides an aligned signal tensor S(t), a dynamic service graph G(t),
+  a missingness mask, and per-timestep regime/intensity labels. Includes a
+  novelty (held-out) test split. Designed to bridge the benchmark-vs-production
+  gap in microservice root-cause and early-warning research.
+authors:
+  - family-names: Badraoui
+    given-names: Wassim
+license: CC-BY-4.0
+keywords:
+  - microservices
+  - observability
+  - anomaly detection
+  - concept drift
+  - Kubernetes
+  - Train Ticket
+  - Chaos Mesh
+  - early warning
+version: "5.1"
+date-released: "2026-07-01"
+references:
+  - type: software
+    title: "Train Ticket: A Benchmark Microservice System"
+    authors:
+      - name: "FudanSELab"
+    url: "https://github.com/FudanSELab/train-ticket"
+    license: Apache-2.0
+  - type: software
+    title: "Chaos Mesh"
+    url: "https://github.com/chaos-mesh/chaos-mesh"
+    license: Apache-2.0
+# doi: 10.5281/zenodo.XXXXXXX   # à renseigner après dépôt Zenodo

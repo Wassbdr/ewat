@@ -261,4 +261,4 @@ Protocole détaillé : [`docs/evaluation_protocol.md`](docs/evaluation_protocol.
 
 Décision collecte : [`docs/ewat_v4_decision.md`](docs/ewat_v4_decision.md).  
 Runbook : [`docs/runbook_v4.md`](docs/runbook_v4.md).  
-Retest H2 post-collecte : `bash scripts/run_v4_retest.sh` (nécessite `data/datasets/ewat_v4`).
+Retest H2 post-collecte : `bash scripts/dev/run_v4_retest.sh` (nécessite `data/datasets/ewat_v4`).
