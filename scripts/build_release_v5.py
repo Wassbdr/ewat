@@ -191,7 +191,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"[OK] release construite : {args.out}")
-    print(f"     {report['n_episodes']} épisodes, {report['n_files_scanned']} fichiers, audit CLEAN.")
+    print(
+        f"     {report['n_episodes']} épisodes, "
+        f"{report['n_files_scanned']} fichiers, audit CLEAN."
+    )
     return 0
 
 
