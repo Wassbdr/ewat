@@ -30,8 +30,11 @@ data/embeddings/
 # Split archives (raw_v4 parts)
 *.part_a*
 
-# Experiment outputs (results, figures, calibration artifacts)
+# Experiment outputs — tout ignoré sauf les scripts Python
 experiments/
+!experiments/**/__init__.py
+!experiments/**/train.py
+!experiments/**/eval.py
 
 # ML artefacts
 mlruns/
@@ -47,6 +50,10 @@ wandb/
 *.tar.gz
 *.log
 collection.log
+
+# Dataset release kit — sorties régénérables (scripts committés, sorties ignorées)
+/release/
+ewat_v5_ds.tar.gz.sha256
 
 # Secrets / environment
 .env

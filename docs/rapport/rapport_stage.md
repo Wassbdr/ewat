@@ -866,7 +866,7 @@ Le NaN résiduel de v4 est mieux réparti qu'en v3 : logs ≈ 2 %, métriques �
 L'absence de validation externe fragilise le pipeline. Pour la combler, on a adapté au format EWAT le benchmark public RCAEval RE2-OB, afin de disposer d'un test de transfert honnête. Le résultat est en demi-teinte (§8.10) : le pipeline détecte bien une anomalie générique mais ne la type pas. On en retient un échec documenté et l'identification du verrou — le scaler non transférable —, qui devient une piste de travaux futurs.
 
 ### 6.4.1 Source RCAEval RE2-OB et conversion de format
-`scripts/adapt_rcaeval.py` convertit le benchmark public RCAEval RE2-OB au format EWAT
+`scripts/dev/adapt_rcaeval.py` convertit le benchmark public RCAEval RE2-OB au format EWAT
 (features compatibles v3). On obtient 90 épisodes couvrant 30 types de pannes, sur le même Online
 Boutique mais un cluster Kubernetes différent.
 

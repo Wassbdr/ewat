@@ -421,7 +421,7 @@ Plan détaillé : `~/.claude/plans/oublie-la-phase-jury-tidy-reef.md` (6 phases,
 **Problème** : sur ewat_v3, T = 21 steps est trop court pour KSG multivariate sur d = 17
 (règle T ≥ 5·d). Cascades synthétiques A → B portent T ≈ 50 steps, qui passe le seuil.
 
-**Solution** — `src/ewat/ontology/synthesis.py` + `scripts/synthesize_composite_episodes.py` :
+**Solution** — `src/ewat/ontology/synthesis.py` + `scripts/dev/synthesize_composite_episodes.py` :
 - **Overlay** : `S_overlay[t,s,f] = S_A[t,s,f] + α·(S_B[t,s,f] − μ_B_normal[s,f])`
   avec α ∈ {0.3, 0.5}. α = 1.0 échoue le garde-fou Spearman médian ≥ 0.85.
 - **Cascade** : concat A + bridge linéaire (gap ∈ {2, 5, 10}) + B → T = 50–60 steps,

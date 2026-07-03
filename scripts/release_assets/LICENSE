@@ -1,0 +1,28 @@
+EWAT v5 dataset — Creative Commons Attribution 4.0 International (CC-BY-4.0)
+
+Copyright (c) 2026 Wassim Badraoui.
+
+This dataset is licensed under the Creative Commons Attribution 4.0
+International License (CC-BY-4.0). You are free to share and adapt the material
+for any purpose, even commercially, provided you give appropriate credit,
+provide a link to the license, and indicate if changes were made.
+
+Full license text: https://creativecommons.org/licenses/by/4.0/legalcode
+
+--------------------------------------------------------------------------------
+Attribution of derived works
+--------------------------------------------------------------------------------
+
+This dataset was collected on a deployment of the Train Ticket benchmark
+(FudanSELab) and uses Chaos Mesh for fault injection. If you use this dataset,
+please also cite:
+
+- Train Ticket: X. Zhou et al., "Fault Analysis and Debugging of Microservice
+  Systems: Industrial Survey, Benchmark System, and Empirical Study",
+  IEEE TSE, 2018. https://github.com/FudanSELab/train-ticket (Apache-2.0)
+
+- Chaos Mesh: https://github.com/chaos-mesh/chaos-mesh (Apache-2.0)
+
+The Train Ticket source code and Chaos Mesh are distributed under the Apache
+License 2.0; this dataset is a derived observational artifact and does not
+redistribute their source.
