@@ -147,6 +147,13 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
     def mark(name):
         boundaries[name] = time.time() - t_start
 
+    # Nettoyage garanti : un épisode INTERROMPU (exception, kill) ne doit jamais
+    # laisser de traînée (manifests chaos orphelins / image fautive) — vu 2× en
+    # campagne : les reliquats contaminent les épisodes suivants du namespace.
+    bug_svc = targets[0] if (is_bug and targets) else None
+    faulty_image = next((b.get("image") for b in catalog.get("bugs", [])
+                         if b["id"] == scenario), None) if is_bug else None
+    cleaned = False
     try:
         mark("baseline_start")
         print(f"[{scenario}] baseline {dur['baseline']}s + pre {dur['pre']}s ...", flush=True)
@@ -158,9 +165,6 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
             # sous pression CPU il met plusieurs minutes à redémarrer. On attend
             # que le pod fautif soit prêt AVANT de compter la fenêtre active,
             # sinon on ne capte que le reboot et pas la signature de la panne.
-            bug_svc = targets[0] if targets else None
-            faulty_image = next((b.get("image") for b in catalog.get("bugs", [])
-                                 if b["id"] == scenario), None)
             print(f"[{scenario}] inject bug ({scenario}) sur {bug_svc} ...", flush=True)
             _run_logged([sys.executable, "-m", "chaos.inject", "apply-bug", scenario, *nsargs],
                         f"{scenario}/apply-bug", cwd=str(v5))
@@ -211,12 +215,24 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
             time.sleep(dur["injection"])
             _run([sys.executable, "-m", "chaos.inject", "delete", scenario, *nsargs], cwd=str(v5))
 
+        cleaned = True  # chaque branche a fait son delete/restore
         mark("injection_end")
         print(f"[{scenario}] recovery {dur['recovery']}s ...", flush=True)
         time.sleep(dur["recovery"])
         mark("recovery_end")
     finally:
         load.terminate()
+        if not cleaned:
+            # épisode interrompu AVANT son nettoyage : purge best-effort
+            print(f"[{scenario}] interrompu — nettoyage chaos/bug de secours", flush=True)
+            try:
+                if is_bug:
+                    _restore_bug(scenario, bug_svc, namespace, v5, nsargs, faulty_image)
+                elif category != "normal":
+                    _run([sys.executable, "-m", "chaos.inject", "delete", scenario, *nsargs],
+                         cwd=str(v5))
+            except Exception as e:  # le nettoyage ne doit pas masquer l'erreur d'origine
+                print(f"[{scenario}] nettoyage de secours échoué: {e}", flush=True)
     t_end = time.time()
 
     # collecte (port-forwards namespacés + offset pour coexistence multi-runner).
