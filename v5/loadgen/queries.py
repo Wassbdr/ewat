@@ -60,8 +60,15 @@ class Query:
             logger.error("login failed")
             return False
 
-    def admin_login(self):
-        return self.login
+    def admin_login(self, username="admin", password="222222") -> bool:
+        """Authentifie CETTE session en ROLE_ADMIN (adminorder/route/user).
+
+        v5 fix : l'ancien corps `return self.login` retournait la méthode sans
+        l'appeler (no-op) → les op admin frappaient en ROLE_USER et ne touchaient
+        que adminbasic/admintravel. À n'utiliser que sur une session dédiée
+        (cf. runner._get_admin), pas sur la session utilisateur d'un worker.
+        """
+        return self.login(username=username, password=password)
 
     def query_high_speed_ticket(self, place_pair: tuple = (), time: str = "", headers: dict = {}) -> List[str]:
         """
@@ -269,6 +276,33 @@ class Query:
         ids = [d.get("id") for d in data if d.get("id") != None]
         # pprint(ids)
         return ids
+
+    def add_contact(self, headers: dict = {}) -> str:
+        """
+        Crée un contact pour l'utilisateur courant et retourne son id.
+
+        v5 fix : un utilisateur fraîchement loggé n'a aucun contact, or preserve
+        exige un contactsId non vide (queries.preserve). Sans contact, preserve
+        échoue → pool d'ordres vide → toute la queue transactionnelle
+        (pay/collect/cancel/rebook/consign) est affamée. On garantit un contact
+        une fois par session.
+        """
+        url = f"{self.address}/api/v1/contactservice/contacts"
+        payload = {
+            "name": random_str() or "ewat",
+            "accountId": self.uid,
+            "documentType": 1,
+            "documentNumber": random_phone() or "411702199211189127",
+            "phoneNumber": random_phone() or "18100000000",
+        }
+        res = self.session.post(url=url, headers=headers, json=payload)
+        if res.status_code in (200, 201) and res.json().get("data") is not None:
+            contact_id = res.json()["data"].get("id")
+            logger.info(f"add contact success: {contact_id}")
+            return contact_id
+        logger.warning(
+            f"add contact failed, code: {res.status_code}, text: {res.text}")
+        return None
 
     def query_orders(self, types: tuple = tuple([0, 1]), query_other: bool = False, headers: dict = {}) -> List[tuple]:
         """
@@ -514,6 +548,57 @@ class Query:
                 f"faild to query admin travel with status_code: {r.status_code}")
         return
 
+    # --- Services admin dédiés (ROLE_ADMIN requis) : réveillent
+    # admin-order / admin-route / admin-user, jamais touchés par les flux user.
+    def query_admin_order(self, headers: dict = {}) -> int:
+        url = f"{self.address}/api/v1/adminorderservice/adminorder"
+        r = self.session.get(url=url, headers=headers)
+        if r.status_code == 200:
+            logger.info("query admin order success")
+        else:
+            logger.warning(f"query admin order failed, code: {r.status_code}")
+        return r.status_code
+
+    def query_admin_route(self, headers: dict = {}) -> int:
+        url = f"{self.address}/api/v1/adminrouteservice/adminroute"
+        r = self.session.get(url=url, headers=headers)
+        if r.status_code == 200:
+            logger.info("query admin route success")
+        else:
+            logger.warning(f"query admin route failed, code: {r.status_code}")
+        return r.status_code
+
+    def query_admin_user(self, headers: dict = {}) -> int:
+        url = f"{self.address}/api/v1/adminuserservice/users"
+        r = self.session.get(url=url, headers=headers)
+        if r.status_code == 200:
+            logger.info("query admin user success")
+        else:
+            logger.warning(f"query admin user failed, code: {r.status_code}")
+        return r.status_code
+
+    # --- Probes best-effort (gardés seulement si 2xx sur l'instance).
+    def gen_verify_code(self, headers: dict = {}) -> int:
+        """Génère un code de vérification → réveille verification-code-service."""
+        url = f"{self.address}/api/v1/verifycode/generate"
+        r = self.session.get(url=url, headers=headers)
+        if r.status_code == 200:
+            logger.info("gen verify code success")
+        else:
+            logger.warning(f"gen verify code failed, code: {r.status_code}")
+        return r.status_code
+
+    def query_voucher(self, order_id: str, headers: dict = {}) -> int:
+        """Réclame un voucher pour un ordre → réveille voucher-service."""
+        url = f"{self.address}/api/v1/voucherservice/voucher"
+        payload = {"orderId": order_id, "type": 1}
+        r = self.session.post(url=url, headers=headers, json=payload)
+        if r.status_code in (200, 201):
+            logger.info(f"query voucher success for {order_id}")
+        else:
+            logger.warning(f"query voucher failed, code: {r.status_code}")
+        return r.status_code
+
     def preserve(self, start: str, end: str, trip_ids: List = [], is_high_speed: bool = True, date: str = "", headers: dict = {}):
         if date == "":
             date = datestr
@@ -575,9 +660,16 @@ class Query:
                                 headers=headers,
                                 json=base_preserve_payload)
 
-        if res.status_code == 200 and res.json()["data"] == "Success":
+        if res.status_code == 200 and res.json().get("data") == "Success":
             logger.info(f"preserve trip {trip_id} success")
+            # v5 fix : retourne l'ordre NOTPAID fraîchement créé pour permettre
+            # le chaînage transactionnel (pay/collect/cancel) sans dépendre du
+            # pool serveur (vidé par reset_tt_state entre épisodes).
+            pairs = self.query_orders(types=tuple([0]))
+            if pairs:
+                return pairs[-1]  # (order_id, trip_id) le plus récent
+            return None
         else:
             logger.error(
                 f"preserve failed, code: {res.status_code}, {res.text}")
-        return
+            return None

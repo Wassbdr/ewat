@@ -32,8 +32,8 @@ def random_from_weighted(d: dict):
 
 
 def random_str():
-    ''.join(random.choices(string.ascii_letters, k=random.randint(4, 10)))
+    return ''.join(random.choices(string.ascii_letters, k=random.randint(4, 10)))
 
 
 def random_phone():
-    ''.join(random.choices(string.digits, k=random.randint(8, 15)))
+    return ''.join(random.choices(string.digits, k=random.randint(8, 15)))

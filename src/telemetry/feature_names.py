@@ -114,6 +114,7 @@ AGGREGATION_RULE: dict[str, str] = {
 
 SCHEMA_V4 = "v4"
 SCHEMA_V5_1 = "v5.1"
+SCHEMA_V5_2 = "v5.2"
 
 FEATURE_NAMES_V4: list[str] = FEATURE_NAMES
 
@@ -132,14 +133,25 @@ FEATURE_NAMES_V5_1: list[str] = [
     "log_error_rate", "restart_count", "semantic_anomaly", "lexical_entropy",
 ]
 
+# v5.2 (Train Ticket, 2026-07): identique à v5.1 sauf M[9]. jvm_threads_blocked
+# était structurellement mort (BLOCKED = 0 sur les 37 pods TT — les apps Spring
+# ne bloquent quasi jamais sur moniteur). Remplacé par jvm_threads_live
+# (jvm_threads_current : nombre de threads vivants), signal de saturation USE qui
+# varie sous charge et sature à l'épuisement du pool de threads (mécanisme F5).
+FEATURE_NAMES_V5_2: list[str] = [
+    *FEATURE_NAMES_V5_1[:9], "jvm_threads_live", *FEATURE_NAMES_V5_1[10:],
+]
+
 SCHEMAS: dict[str, list[str]] = {
     SCHEMA_V4: FEATURE_NAMES_V4,
     SCHEMA_V5_1: FEATURE_NAMES_V5_1,
+    SCHEMA_V5_2: FEATURE_NAMES_V5_2,
 }
 
 MODALITY_SLICES: dict[str, dict[str, slice]] = {
     SCHEMA_V4: {"M": slice(0, 7), "T": slice(7, 13), "L": slice(13, 17)},
     SCHEMA_V5_1: {"M": slice(0, 10), "T": slice(10, 14), "L": slice(14, 18)},
+    SCHEMA_V5_2: {"M": slice(0, 10), "T": slice(10, 14), "L": slice(14, 18)},
 }
 
 assert all(len(SCHEMAS[v]) == MODALITY_SLICES[v]["L"].stop for v in SCHEMAS)

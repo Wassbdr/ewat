@@ -147,7 +147,8 @@ def _validate(ep_dir: Path) -> bool:
 
 def collect_episode(scenario: str, rep: int, out_root: Path, address: str,
                     users: int, is_bug: bool, held_out: bool, max_retries: int,
-                    namespace: str, pf_offset: int = 0, ram_ceiling: float = 90.0) -> bool:
+                    namespace: str, pf_offset: int = 0, ram_ceiling: float = 90.0,
+                    target: str | None = None, peak: str = "high") -> bool:
     for attempt in range(max_retries + 1):
         ep_id = f"episode_{scenario}_{rep:03d}_{_ts()}"
         ep_dir = out_root / ep_id
@@ -161,7 +162,7 @@ def collect_episode(scenario: str, rep: int, out_root: Path, address: str,
             # COLLECTE uniquement (pas de build) — Record→Build→Assemble.
             res = run_episode.run_episode(scenario, ep_dir, address, users,
                                           run_episode.STEP_S, is_bug, held_out,
-                                          namespace, pf_offset)
+                                          namespace, pf_offset, target, peak)
         except Exception as e:
             print(f"[campaign] {scenario} rep{rep} attempt{attempt} EXC: {e}", flush=True)
             (ep_dir).mkdir(parents=True, exist_ok=True)
@@ -201,6 +202,9 @@ def main() -> None:
     cat = _catalog()
     scenarios = [s["name"] for s in cat["scenarios"]]
     bugs = [b["id"] for b in cat["bugs"] if b.get("status") == "ready"]  # F1 d'abord
+    # rotation de cible + catégorie par scénario (design d'échantillonnage v5.2)
+    pools = {s["name"]: s.get("target_pool") for s in cat["scenarios"]}
+    cats = {s["name"]: s.get("category", "") for s in cat["scenarios"]}
     if args.only:
         keep = set(args.only.split(","))
         scenarios = [s for s in scenarios if s in keep]
@@ -239,9 +243,20 @@ def main() -> None:
             subprocess.run([sys.executable, "-m", "collect.reset_tt_state",
                             "--mode", mode, "--namespace", args.namespace,
                             "--cooldown", "30"], cwd=str(V5))
-            collect_episode(name, rep, args.out_root, args.address, args.users,
+            # Design d'échantillonnage v5.2 — tout DÉTERMINISTE par rep (reprise
+            # idempotente : même rep → même config, quel que soit le redémarrage) :
+            #  - rotation de cible : round-robin sur le pool (7-8 reps / type×cible)
+            #  - pic d'intensité : 60% high / 30% med / 10% low (pannes subtiles)
+            #  - charge : 12 / 10 / 14 users (niveaux de trafic)
+            pool = pools.get(name)
+            target = pool[rep % len(pool)] if (pool and not is_bug) else None
+            peak = "high"
+            if not is_bug and cats.get(name) not in ("drift", "normal", "overlap"):
+                peak = "high" if rep % 10 < 6 else ("med" if rep % 10 < 9 else "low")
+            users = [args.users, max(8, args.users - 2), args.users + 2][rep % 3]
+            collect_episode(name, rep, args.out_root, args.address, users,
                             is_bug, held_out, args.max_retries, args.namespace,
-                            args.pf_offset, args.ram_ceiling)
+                            args.pf_offset, args.ram_ceiling, target, peak)
 
     print("[campaign] terminé.", flush=True)
 

@@ -106,15 +106,28 @@ def _category_of(scenario: str, catalog: dict) -> tuple[str, list[str], str]:
 
 def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
                 is_bug: bool, held_out: bool, namespace: str = "tt",
-                pf_offset: int = 0) -> dict:
+                pf_offset: int = 0, target: str | None = None,
+                peak_intensity: str = "high") -> dict:
     out.mkdir(parents=True, exist_ok=True)
     v5 = _v5_dir()
     import yaml
     catalog = yaml.safe_load(open(v5 / "chaos" / "catalog.yaml"))
     category, targets, _kind = _category_of(scenario, catalog)
+    if target:
+        targets = [target]  # rotation : la cible choisie devient la vérité des labels
     nsargs = ["--namespace", namespace]  # passé à chaos.inject
 
-    dur = {k: PHASES[k] * step for k in PHASES}
+    # Jitter d'onset : baseline/pre tirés PAR ÉPISODE (seed = nom d'épisode →
+    # déterministe à la reprise). Sans jitter, tous les épisodes injectent au même
+    # step → un modèle peut apprendre la POSITION au lieu du signal (fuite
+    # positionnelle, cf. stress test A1 v3). V5_PHASES (mode test) désactive.
+    phases = dict(PHASES)
+    if not os.environ.get("V5_PHASES"):
+        import random as _random
+        _rng = _random.Random(f"jitter:{out.name}")
+        phases["baseline"] = _rng.randint(8, 16)
+        phases["pre"] = _rng.randint(10, 18)
+    dur = {k: phases[k] * step for k in phases}
     total = sum(dur.values())
 
     # Charge = mix nominal (NOMINAL_MIX) pour TOUS les épisodes, y compris bugs.
@@ -159,18 +172,42 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
             time.sleep(dur["ramp"] + dur["injection"])
             print(f"[{scenario}] restauration bug (vérifiée) ...", flush=True)
             _restore_bug(scenario, bug_svc, namespace, v5, nsargs, faulty_image)
+        elif category == "normal":
+            # Run sain complet : AUCUNE injection. La fenêtre « injection » du
+            # timeline est vide ; featurize (is_normal) garde regime=normal partout.
+            print(f"[{scenario}] normal : aucune injection, fenêtre "
+                  f"{dur['ramp'] + dur['injection']}s ...", flush=True)
+            time.sleep(dur["ramp"] + dur["injection"])
+        elif category in ("drift", "overlap"):
+            # Drift bénin OU overlap (θ_drift∩anomaly) : UNE seule action au début
+            # de la fenêtre (pas de ramp d'intensité, sinon apply répété →
+            # rollouts multiples + écrasement du replica baseline sauvegardé →
+            # restauration cassée). Pour overlap, inject applique drift natif +
+            # chaos (intensité high) simultanément sur le même service.
+            win = dur["ramp"] + dur["injection"]
+            print(f"[{scenario}] {category} (natif) sur {targets} ...", flush=True)
+            _run([sys.executable, "-m", "chaos.inject", "apply", scenario,
+                  "--intensity", "high", "--duration", f"{win}s", *nsargs], cwd=str(v5))
+            time.sleep(win)
+            _run([sys.executable, "-m", "chaos.inject", "delete", scenario, *nsargs], cwd=str(v5))
         else:
-            # ramp-up : intensité croissante
-            ramp_each = dur["ramp"] / len(RAMP_INTENSITIES)
-            for inten in RAMP_INTENSITIES:
+            # ramp-up : intensité croissante, TRONQUÉE au pic demandé — les épisodes
+            # plafonnés à low/med échantillonnent des pannes subtiles (spectre de
+            # difficulté early-warning), au lieu de toujours finir à high.
+            tgt_args = ["--target", target] if target else []
+            ramp_levels = RAMP_INTENSITIES[:RAMP_INTENSITIES.index(peak_intensity) + 1]
+            ramp_each = dur["ramp"] / len(ramp_levels)
+            for inten in ramp_levels:
                 print(f"[{scenario}] ramp intensité={inten} ...", flush=True)
                 _run([sys.executable, "-m", "chaos.inject", "apply", scenario,
-                      "--intensity", inten, "--duration", f"{int(ramp_each)+2}s", *nsargs], cwd=str(v5))
+                      "--intensity", inten, "--duration", f"{int(ramp_each)+2}s",
+                      *tgt_args, *nsargs], cwd=str(v5))
                 time.sleep(ramp_each)
-            # injection stable high
-            print(f"[{scenario}] injection high {dur['injection']}s ...", flush=True)
+            # injection stable au pic
+            print(f"[{scenario}] injection {peak_intensity} {dur['injection']}s ...", flush=True)
             _run([sys.executable, "-m", "chaos.inject", "apply", scenario,
-                  "--intensity", "high", "--duration", f"{dur['injection']}s", *nsargs], cwd=str(v5))
+                  "--intensity", peak_intensity, "--duration", f"{dur['injection']}s",
+                  *tgt_args, *nsargs], cwd=str(v5))
             time.sleep(dur["injection"])
             _run([sys.executable, "-m", "chaos.inject", "delete", scenario, *nsargs], cwd=str(v5))
 
@@ -231,6 +268,10 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
         "targets": targets, "chaos_resource": (f"v5-{scenario}" if not is_bug else f"bug-{scenario}"),
         "is_bug": is_bug, "bug_id": (scenario if is_bug else None),
         "held_out": held_out, "namespace": namespace, "step": step, "ramp_s": dur["ramp"], "t_start": t_start,
+        "phases": phases,  # phases effectives (jitter d'onset par épisode)
+        "peak_intensity": peak_intensity,
+        # valeur numérique du pic pour intensity_t (featurize plafonne dessus)
+        "peak_value": {"low": 1 / 3, "med": 2 / 3, "high": 1.0}[peak_intensity],
         "boundaries_rel": {  # secondes relatives au début de la fenêtre de collecte
             "baseline_start": boundaries.get("baseline_start", 0.0),
             "injection_start": boundaries["injection_start"],
@@ -266,9 +307,13 @@ def main() -> None:
     p.add_argument("--held-out", action="store_true")
     p.add_argument("--namespace", default="tt")
     p.add_argument("--pf-offset", type=int, default=0, help="décalage ports locaux (multi-runner)")
+    p.add_argument("--target", default=None, help="cible (rotation ; doit appartenir au target_pool)")
+    p.add_argument("--peak-intensity", default="high", choices=["low", "med", "high"],
+                   help="pic d'intensité de l'injection (pannes subtiles = low/med)")
     args = p.parse_args()
     res = run_episode(args.scenario, Path(args.out), args.address, args.users,
-                      args.step, args.bug, args.held_out, args.namespace, args.pf_offset)
+                      args.step, args.bug, args.held_out, args.namespace, args.pf_offset,
+                      args.target, args.peak_intensity)
     print(json.dumps(res, indent=2))
 
 
