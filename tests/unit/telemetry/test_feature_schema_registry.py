@@ -49,8 +49,21 @@ def test_modality_slices_cover_schema():
 
 
 def test_schema_for_dim_roundtrip():
+    # En cas de collision de dimension (v5.1 et v5.2 font toutes deux 18),
+    # schema_for_dim résout vers la PLUS ANCIENNE : l'inférence par dimension
+    # ne sert qu'aux épisodes legacy sans metadata, qui prédatent le schéma
+    # récent par construction (tout épisode v5.2 déclare sa version).
     for version in SCHEMAS:
-        assert schema_for_dim(signal_dim(version)) == version
+        dim = signal_dim(version)
+        oldest_with_dim = next(v for v in SCHEMAS if signal_dim(v) == dim)
+        assert schema_for_dim(dim) == oldest_with_dim
+
+
+def test_schema_for_dim_collision_prefers_legacy():
+    from telemetry.feature_names import SCHEMA_V5_1, SCHEMA_V5_2
+
+    assert signal_dim(SCHEMA_V5_1) == signal_dim(SCHEMA_V5_2) == 18
+    assert schema_for_dim(18) == SCHEMA_V5_1
 
 
 def test_unknown_schema_raises():

@@ -186,6 +186,12 @@ def schema_for_dim(dim: int) -> str:
     Useful for consumers that only see the array (e.g. validators on legacy
     episodes whose metadata predates ``signal_feature_names``).
 
+    When several schemas share the same dimensionality (v5.1 and v5.2 are both
+    18 features), the OLDEST match wins: episodes without declared metadata
+    predate the newer schema by construction (every v5.2 episode writes
+    ``dataset_schema_version``), so legacy inference must resolve to the
+    legacy schema. Registration order in ``SCHEMAS`` is oldest-first.
+
     Raises
     ------
     KeyError: If no registered schema has ``dim`` features.
