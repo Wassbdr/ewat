@@ -74,27 +74,38 @@ def _tt_healthy(namespace: str) -> bool:
     return ready / total >= 0.90  # ≥90% pods prêts
 
 
-def _backends_scraping(namespace: str) -> bool:
+def _backends_scraping(namespace: str, min_cpu_series: int = 40) -> bool:
     """Pré-check télémétrie AVANT un épisode : Prometheus scrape-t-il vraiment ce
     namespace, et Loki répond-il ? Cause racine de la perte du 6-7 juin (incident
     jnk2v) : Prometheus restait `/-/ready` mais ne scrapait plus les pods tt évincés
     → 33 min collectées pour `prom=0`. On vérifie la PRÉSENCE de séries cAdvisor
     fraîches (pas juste la readiness), et la readiness Loki. Fail-open sur erreur
-    réseau (un blip ne doit pas stopper une campagne de plusieurs jours)."""
+    réseau (un blip ne doit pas stopper une campagne de plusieurs jours).
+
+    Le seuil est ABSOLU, pas « ≥ 1 série » : lors de la panne cAdvisor du 17-20
+    juillet (5 nœuds en HTTP 503, payload trop gros pour le timeout de scrape),
+    le namespace ne remontait qu'1 à 13 séries sur 64 — assez pour passer un test
+    « > 0 », et ~450 épisodes ont été collectés SANS métriques M(t) (cpu, ram,
+    net, disk, mem_limit tous NaN) avant qu'on s'en aperçoive. TT a 64 services :
+    en dessous de `min_cpu_series`, la collecte est inexploitable, on met en pause.
+    """
     import urllib.parse
     import urllib.request
 
     node = os.environ.get("V5_NODE_IP", "172.16.203.12")
     prom = f"http://{node}:{os.environ.get('V5_PROM_NODEPORT', '32700')}"
     loki = f"http://{node}:{os.environ.get('V5_LOKI_NODEPORT', '32701')}"
-    # 1) Prometheus scrape-t-il le namespace ? (≥1 série cpu cAdvisor)
+    # 1) Prometheus couvre-t-il VRAIMENT le namespace ? (≥ min_cpu_series séries)
     q = f'count(container_cpu_usage_seconds_total{{namespace="{namespace}",container!=""}})'
     try:
         url = f"{prom}/api/v1/query?{urllib.parse.urlencode({'query': q})}"
         with urllib.request.urlopen(url, timeout=8) as r:
             res = json.load(r).get("data", {}).get("result", [])
-        if not (res and float(res[0]["value"][1]) > 0):
-            print(f"[campaign] Prometheus ne scrape pas {namespace} (0 série cpu) — pause", flush=True)
+        n_series = float(res[0]["value"][1]) if res else 0.0
+        if n_series < min_cpu_series:
+            print(f"[campaign] couverture cAdvisor insuffisante sur {namespace} : "
+                  f"{n_series:.0f} séries cpu < {min_cpu_series} — pause "
+                  f"(épisodes sans métriques M(t) sinon)", flush=True)
             return False
     except Exception as e:
         print(f"[campaign] check Prometheus {namespace} échec ({e}) — fail-open", flush=True)
@@ -148,16 +159,26 @@ def _validate(ep_dir: Path) -> bool:
 def collect_episode(scenario: str, rep: int, out_root: Path, address: str,
                     users: int, is_bug: bool, held_out: bool, max_retries: int,
                     namespace: str, pf_offset: int = 0, ram_ceiling: float = 90.0,
-                    target: str | None = None, peak: str = "high") -> bool:
+                    target: str | None = None, peak: str = "high",
+                    min_cpu_series: int = 40) -> bool:
     for attempt in range(max_retries + 1):
         ep_id = f"episode_{scenario}_{rep:03d}_{_ts()}"
         ep_dir = out_root / ep_id
         # santé TT (readiness pods) + RAM nœuds (anti-saturation à 3 runners) avant épisode
         waited = 0
         while (not _tt_healthy(namespace) or not _nodes_ram_ok(ram_ceiling)
-               or not _backends_scraping(namespace)) and waited < 600:
+               or not _backends_scraping(namespace, min_cpu_series)) and waited < 600:
             print(f"[campaign] TT dégradé / RAM haute / backend KO, pause 30s ...", flush=True)
             time.sleep(30); waited += 30
+        # BLOCAGE DUR sur la télémétrie : dégradation pods/RAM = transitoire (on
+        # tente quand même après l'attente), mais si Prometheus ne couvre toujours
+        # pas le namespace, l'épisode sortirait SANS métriques M(t). On refuse de
+        # brûler 33 min pour des données inexploitables (panne cAdvisor 17-20/07 :
+        # ~450 épisodes vides parce que l'attente expirait puis collectait quand même).
+        if not _backends_scraping(namespace, min_cpu_series):
+            print(f"[campaign] ABANDON {ep_id} : télémétrie insuffisante après "
+                  f"{waited}s d'attente — épisode NON collecté", flush=True)
+            return False
         try:
             # COLLECTE uniquement (pas de build) — Record→Build→Assemble.
             res = run_episode.run_episode(scenario, ep_dir, address, users,
@@ -192,6 +213,9 @@ def main() -> None:
     ap.add_argument("--rep-end", type=int, default=None, help="rep de fin exclue (défaut = reps)")
     ap.add_argument("--pf-offset", type=int, default=0, help="décalage ports locaux (multi-runner ; ex. tt=0, tt-b=10)")
     ap.add_argument("--held-out-cap", type=int, default=28, help="reps max pour les scénarios held-out (test-only)")
+    ap.add_argument("--min-cpu-series", type=int, default=40,
+                    help="séries cpu cAdvisor minimum pour lancer un épisode "
+                         "(TT=64 services ; sous ce seuil les métriques M(t) manquent)")
     ap.add_argument("--ram-ceiling", type=float, default=90.0,
                     help="pause si un nœud worker dépasse ce %% de RAM (garde-fou 3 runners)")
     args = ap.parse_args()
@@ -256,7 +280,8 @@ def main() -> None:
             users = [args.users, max(8, args.users - 2), args.users + 2][rep % 3]
             collect_episode(name, rep, args.out_root, args.address, users,
                             is_bug, held_out, args.max_retries, args.namespace,
-                            args.pf_offset, args.ram_ceiling, target, peak)
+                            args.pf_offset, args.ram_ceiling, target, peak,
+                            args.min_cpu_series)
 
     print("[campaign] terminé.", flush=True)
 
