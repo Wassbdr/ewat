@@ -42,6 +42,10 @@ STATEFUL_DBS = [
 # chaos-daemon (les vraies fautes génèrent bien plus de spans). On le vide au deep
 # reset (entre épisodes → sûr) pour garder les pulls rapides. Bonus : isolation
 # per-épisode propre (plus de spans d'épisodes antérieurs dans le store).
+# VALIDÉ bout-en-bout 07-21 : restart tt-b jaeger (2.6Go, 11s/requête) → charge
+# 150s → 31 services re-tracés, requête 1.2s, mem 73Mi. L'ingestion recouvre
+# (les services se reconnectent), et le reset étant ENTRE épisodes, le baseline
+# laisse le temps au store de se remplir avant l'injection.
 TELEMETRY = ["jaeger"]
 
 
