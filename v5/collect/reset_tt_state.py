@@ -36,6 +36,13 @@ STATEFUL_DBS = [
     "ts-order-mongo", "ts-order-other-mongo", "ts-payment-mongo",
     "ts-inside-payment-mongo",
 ]
+# Jaeger all-in-one stocke les spans EN MÉMOIRE : il gonfle sur toute la campagne
+# → les requêtes de collecte passent de ~100 ms à 60 s+ (vu 07-20 : jaeger à 3 h
+# d'uptime = 62 s/requête, contre 104 ms fraîchement redémarré). Aggravé par le fix
+# chaos-daemon (les vraies fautes génèrent bien plus de spans). On le vide au deep
+# reset (entre épisodes → sûr) pour garder les pulls rapides. Bonus : isolation
+# per-épisode propre (plus de spans d'épisodes antérieurs dans le store).
+TELEMETRY = ["jaeger"]
 
 
 def _run(cmd: list[str]) -> str:
@@ -48,11 +55,12 @@ def reset_light(cooldown: int) -> None:
 
 
 def reset_deep(namespace: str, cooldown: int) -> None:
+    targets = STATEFUL_DBS + STATEFUL + TELEMETRY
     print(f"[reset] deep : rolling-restart stateful ({len(STATEFUL)} svc + "
-          f"{len(STATEFUL_DBS)} db) dans {namespace}", flush=True)
-    for d in STATEFUL_DBS + STATEFUL:
+          f"{len(STATEFUL_DBS)} db) + jaeger dans {namespace}", flush=True)
+    for d in targets:
         _run([*_KC, "rollout", "restart", "deploy", "-n", namespace, d])
-    for d in STATEFUL_DBS + STATEFUL:
+    for d in targets:
         subprocess.run([*_KC, "rollout", "status", "deploy", "-n", namespace, d,
                         "--timeout=300s"], capture_output=True, text=True)
     print(f"[reset] deep terminé, cooldown {cooldown}s", flush=True)
