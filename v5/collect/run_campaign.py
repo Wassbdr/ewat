@@ -121,10 +121,18 @@ def _backends_scraping(namespace: str, min_cpu_series: int = 40) -> bool:
 
 def _nodes_ram_ok(ceiling: float = 90.0) -> bool:
     """Garde-fou RAM — contrainte *binding* à 3 runners (CPU large, RAM tendue :
-    1 runner ≈ 20 GB JVM+mongos). Retourne False si un nœud worker dépasse
-    `ceiling` % de mémoire → le gate met la collecte en pause (anti-éviction qui
-    corromprait les épisodes). Fail-open si `kubectl top` échoue (un blip
-    metrics-server ne doit pas stopper une campagne de plusieurs jours)."""
+    1 runner ≈ 20 GB JVM+mongos). Retourne False si un nœud dépasse `ceiling` %
+    de mémoire → pause (une éviction redémarre les mongos, dont les bases sont
+    éphémères : le seed est alors perdu et TT ne sert plus de parcours, cf.
+    reset_tt_state.reset_reseed). Fail-open si `kubectl top` échoue (un blip
+    metrics-server ne doit pas stopper une campagne de plusieurs jours).
+
+    On surveille TOUS les nœuds hors control-plane. L'ancienne version filtrait
+    sur `"workers" in nom` alors que Train Ticket tourne en réalité sur les nœuds
+    `collectors` : le garde-fou était aveugle sur les seuls nœuds qui comptent
+    (constaté le 2026-07-27, collecteurs à 85-88 % sans qu'aucune pause ne se
+    déclenche).
+    """
     r = subprocess.run(["kubectl", *KCTX_ARGS, "top", "nodes", "--no-headers"],
                        capture_output=True, text=True)
     if r.returncode != 0 or not r.stdout.strip():
@@ -133,7 +141,7 @@ def _nodes_ram_ok(ceiling: float = 90.0) -> bool:
     for line in r.stdout.splitlines():
         cols = line.split()
         # NAME  CPU(cores)  CPU%  MEM(bytes)  MEM%
-        if len(cols) < 5 or "workers" not in cols[0]:
+        if len(cols) < 5 or "masters" in cols[0]:
             continue
         try:
             mem_pct = float(cols[4].rstrip("%"))
@@ -142,7 +150,8 @@ def _nodes_ram_ok(ceiling: float = 90.0) -> bool:
         if mem_pct > ceiling:
             hot.append(f"{cols[0].split('-')[-1]}={mem_pct:.0f}%")
     if hot:
-        print(f"[campaign] RAM workers > {ceiling:.0f}% ({','.join(hot)}) — pause", flush=True)
+        print(f"[campaign] RAM nœud > {ceiling:.0f}% ({','.join(hot)}) — pause "
+              f"(éviction = mongos redémarrés = seed perdu)", flush=True)
         return False
     return True
 
