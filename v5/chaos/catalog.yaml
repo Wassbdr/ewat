@@ -19,10 +19,16 @@
 namespace: tt
 
 # Niveaux d'intensité pour le ramp-up (step/10 → cible nominale)
+# mem_size : taille ABSOLUE, pas un pourcentage (changé le 2026-07-27).
+# Un `size: "80%"` était ambigu — pourcentage de quoi ? Le cgroup du conteneur ou
+# la mémoire du nœud ? Tous les services ciblés ont `limits.memory: 500Mi` et une
+# JVM à ~400 Mi au repos, donc ~100 Mi de marge. Des tailles absolues calées sur
+# cette marge donnent un vrai gradient de sévérité (pression GC → OOMKill franc)
+# et lèvent tout risque pour le nœud, quelle que soit la sémantique du %.
 intensity_levels:
-  low: {cpu_load: 30, mem_pct: 25, latency: "50ms", loss: "10", workers: 1}
-  med: {cpu_load: 60, mem_pct: 50, latency: "200ms", loss: "30", workers: 2}
-  high: {cpu_load: 90, mem_pct: 80, latency: "500ms", loss: "60", workers: 4}
+  low: {cpu_load: 30, mem_size: "50MB", latency: "50ms", loss: "10", workers: 1}
+  med: {cpu_load: 60, mem_size: "120MB", latency: "200ms", loss: "30", workers: 2}
+  high: {cpu_load: 90, mem_size: "250MB", latency: "500ms", loss: "60", workers: 4}
 
 scenarios:
   # ───────────── MONO-CAUSE (15) — training ─────────────
@@ -50,14 +56,14 @@ scenarios:
     kind: StressChaos
     target: ts-order-service
     target_pool: [ts-order-service, ts-travel-service, ts-preserve-service, ts-basic-service]
-    spec: {mode: one, stressors: {memory: {workers: "{{WORKERS}}", size: "{{MEM_PCT}}%"}}}
+    spec: {mode: one, stressors: {memory: {workers: "{{WORKERS}}", size: "{{MEM_SIZE}}"}}}
 
   - name: memory_pressure
     category: contention
     kind: StressChaos
     target: ts-user-service
     target_pool: [ts-user-service, ts-auth-service, ts-contacts-service, ts-price-service]
-    spec: {mode: one, stressors: {memory: {workers: 2, size: "{{MEM_PCT}}%"}}}
+    spec: {mode: one, stressors: {memory: {workers: 2, size: "{{MEM_SIZE}}"}}}
 
   - name: network_delay
     category: gray
@@ -192,7 +198,7 @@ scenarios:
     kind: composite
     parts:
       - {kind: StressChaos, target: ts-travel-service, spec: {mode: one, stressors: {cpu: {workers: 2, load: "{{CPU_LOAD}}"}}}}
-      - {kind: StressChaos, target: ts-travel-service, spec: {mode: one, stressors: {memory: {workers: 1, size: "{{MEM_PCT}}%"}}}, delay_steps: 5}
+      - {kind: StressChaos, target: ts-travel-service, spec: {mode: one, stressors: {memory: {workers: 1, size: "{{MEM_SIZE}}"}}}, delay_steps: 5}
 
   - name: compo_net_loss_concurrent
     category: compo

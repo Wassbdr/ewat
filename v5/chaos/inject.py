@@ -57,7 +57,7 @@ def _repl_for(cat: dict, intensity: str) -> dict:
     lv = cat["intensity_levels"][intensity]
     return {
         "CPU_LOAD": lv["cpu_load"],
-        "MEM_PCT": lv["mem_pct"],
+        "MEM_SIZE": lv["mem_size"],
         "LATENCY": lv["latency"],
         "LOSS": lv["loss"],
         "WORKERS": lv["workers"],
