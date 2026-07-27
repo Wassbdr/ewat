@@ -165,8 +165,13 @@ REPAIR_SERVICES = {
     "trips": ["ts-ticketinfo-service", "ts-travel-service", "ts-travel2-service",
               "ts-route-service", "ts-basic-service", "ts-station-service",
               "ts-train-service", "ts-price-service"],
+    # ts-security-service : indispensable ici. Sans son seed `ts.security_config`,
+    # il renvoie une NullPointerException sur « Get Security Config Info » et
+    # `preserve` échoue en HTTP 500 — diagnostiqué le 2026-07-27 sur tt, où la
+    # collection avait disparu alors qu'elle contenait 2 documents sur tt-b.
     "preserve": ["ts-preserve-service", "ts-contacts-service", "ts-seat-service",
-                 "ts-order-service", "ts-config-service"],
+                 "ts-order-service", "ts-config-service", "ts-security-service",
+                 "ts-assurance-service"],
 }
 
 
