@@ -29,7 +29,7 @@ from pathlib import Path
 
 import yaml
 
-from collect import run_episode
+from collect import reset_tt_state, run_episode
 
 V5 = Path(__file__).resolve().parents[1]
 REPO = V5.parent
@@ -147,6 +147,91 @@ def _nodes_ram_ok(ceiling: float = 90.0) -> bool:
     return True
 
 
+# Services propriétaires du seed, par étape du smoke test en échec. Les mongos TT
+# sont éphémères et le seed n'est rechargé qu'au démarrage du service propriétaire
+# (cf. reset_tt_state.reset_reseed) → redémarrer LE bon service restaure les données
+# sans passer par un reseed complet du namespace (~43 services, plusieurs minutes).
+REPAIR_SERVICES = {
+    "login": ["ts-auth-service", "ts-user-service"],
+    "trips": ["ts-ticketinfo-service", "ts-travel-service", "ts-travel2-service",
+              "ts-route-service", "ts-basic-service", "ts-station-service",
+              "ts-train-service", "ts-price-service"],
+    "preserve": ["ts-preserve-service", "ts-contacts-service", "ts-seat-service",
+                 "ts-order-service", "ts-config-service"],
+}
+
+
+def _app_healthy(namespace: str, address: str, timeout: int = 180) -> tuple[bool, str]:
+    """L'APPLICATION sert-elle encore un parcours métier ? (cf. collect.smoke)
+
+    `_backends_scraping` vérifie que les backends collectent ; le gate brut de
+    `run_episode` vérifie que des données existent. Aucun ne vérifie que TT sert
+    encore des parcours — or TT peut être `Running 1/1` partout et ne plus rien
+    servir (bases éphémères vidées, service du chemin critique en CrashLoop :
+    constaté le 2026-07-26 sur les 3 namespaces). Un épisode collecté ainsi n'a
+    aucun flux transactionnel et son T(t) est massivement imputé.
+
+    Lancé en sous-processus pour un timeout DUR : les appels loadgen ne posent pas
+    de timeout et un TT dégradé bloquerait la campagne. Retourne
+    (ok, étape_en_échec). Fail-open si le test lui-même est inexécutable.
+    """
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "collect.smoke", "--address", address],
+            capture_output=True, text=True, cwd=str(V5), timeout=timeout,
+            env={**os.environ, "PYTHONPATH": str(V5)})
+    except subprocess.TimeoutExpired:
+        print(f"[campaign] smoke test {namespace} : timeout {timeout}s — TT bloqué",
+              flush=True)
+        return False, "timeout"
+    except Exception as e:
+        print(f"[campaign] smoke test {namespace} inexécutable ({e}) — fail-open",
+              flush=True)
+        return True, ""
+    if r.returncode == 0:
+        return True, ""
+    step = ""
+    for line in r.stdout.splitlines():
+        if line.startswith("SMOKE FAIL step="):
+            step = line.split("=", 1)[1].strip()
+    detail = next((ln.strip() for ln in r.stdout.splitlines()
+                   if ln.strip().startswith("✗")), "")
+    print(f"[campaign] smoke test {namespace} ÉCHEC (étape={step or '?'}) {detail}",
+          flush=True)
+    return False, step
+
+
+def _repair_app(namespace: str, step: str) -> bool:
+    """Réparation ciblée du seed : redémarre les services de l'étape en échec.
+
+    Attendre ne sert à rien sur une base éphémère vidée — elle ne se re-remplit
+    jamais toute seule. On agit au lieu de mettre en pause.
+    """
+    svcs = REPAIR_SERVICES.get(step)
+    if not svcs:
+        return False
+    print(f"[campaign] réparation {namespace} (étape={step}) : restart "
+          f"{', '.join(svcs)}", flush=True)
+    reset_tt_state._rollout(namespace, svcs)
+    return True
+
+
+def _stall_flag(out_root: Path, namespace: str, reason: str | None) -> None:
+    """Marqueur de stagnation lisible de l'extérieur (`ls`, dashboard, alerting).
+
+    La panne RKE2 du 2026-07-22 a coûté ~10 h : la campagne se mettait
+    correctement en pause, mais rien ne le signalait autrement qu'une ligne de log
+    noyée parmi des milliers. C'est le seul type de panne hors de notre périmètre
+    (plan de contrôle du cluster) — donc au minimum, la rendre visible tout de
+    suite. Un fichier par namespace : les 3 runners partagent le même out-root.
+    """
+    flag = out_root / f"_STALLED_{namespace}"
+    if reason is None:
+        flag.unlink(missing_ok=True)
+        return
+    flag.write_text(f"{dt.datetime.now(dt.timezone.utc).isoformat()} {reason}\n")
+
+
 def _validate(ep_dir: Path) -> bool:
     r = subprocess.run(
         [sys.executable, str(REPO / "scripts" / "validate_v5.py"), "--episode", str(ep_dir)],
@@ -179,6 +264,23 @@ def collect_episode(scenario: str, rep: int, out_root: Path, address: str,
             print(f"[campaign] ABANDON {ep_id} : télémétrie insuffisante après "
                   f"{waited}s d'attente — épisode NON collecté", flush=True)
             return False
+        # GATE APPLICATIF (~20 s) : les backends collectent, mais TT sert-il encore
+        # des parcours ? Sans ce contrôle, un namespace au seed perdu produit 33 min
+        # sans aucun flux transactionnel — les services profonds (payment, cancel,
+        # rebook, execute) restent non tracés et l'épisode est inexploitable, sans
+        # qu'aucun autre gate ne s'en aperçoive. On répare puis on réessaie ;
+        # l'escalade va du ciblé (quelques services) au reseed complet du namespace.
+        app_ok, step = _app_healthy(namespace, address)
+        if not app_ok:
+            if _repair_app(namespace, step):
+                app_ok, step = _app_healthy(namespace, address)
+            if not app_ok:
+                reset_tt_state.reset_reseed(namespace, cooldown=30)
+                app_ok, step = _app_healthy(namespace, address)
+        if not app_ok:
+            print(f"[campaign] ABANDON {ep_id} : parcours métier KO (étape={step}) "
+                  f"même après reseed — épisode NON collecté", flush=True)
+            return False
         try:
             # COLLECTE uniquement (pas de build) — Record→Build→Assemble.
             res = run_episode.run_episode(scenario, ep_dir, address, users,
@@ -192,10 +294,12 @@ def collect_episode(scenario: str, rep: int, out_root: Path, address: str,
         # gate BRUT (la collecte a-t-elle capté assez de données ?)
         if res.get("raw_ok"):
             print(f"[campaign] OK {ep_id} traces={res['n_traces']} logs={res['n_log_lines']} "
-                  f"prom={res['n_prom_series']} collect={res['collect_s']}s", flush=True)
+                  f"prom={res['n_prom_series']} svc={res.get('n_traced_services')} "
+                  f"fault={res.get('fault_score', float('nan')):.2f} "
+                  f"collect={res['collect_s']}s", flush=True)
             return True
         print(f"[campaign] FAIL raw-gate {ep_id} "
-              f"(traces={res.get('n_traces')} logs={res.get('n_log_lines')}) attempt {attempt}", flush=True)
+              f"({'; '.join(res.get('gate_reasons') or [])}) attempt {attempt}", flush=True)
     return False
 
 
@@ -218,6 +322,9 @@ def main() -> None:
                          "(TT=64 services ; sous ce seuil les métriques M(t) manquent)")
     ap.add_argument("--ram-ceiling", type=float, default=90.0,
                     help="pause si un nœud worker dépasse ce %% de RAM (garde-fou 3 runners)")
+    ap.add_argument("--stall-alert-s", type=int, default=3600,
+                    help="alerte + marqueur _STALLED_<ns> si aucun épisode collecté "
+                         "depuis ce délai (défaut 1 h)")
     args = ap.parse_args()
     rep_end = args.rep_end if args.rep_end is not None else args.reps
 
@@ -252,6 +359,7 @@ def main() -> None:
     print(f"[campaign] ns={args.namespace} reps[{args.rep_start}:{rep_end}] pf_offset={args.pf_offset} "
           f"held-out cap={args.held_out_cap}", flush=True)
     episode_n = 0
+    last_ok = time.time()  # référence de l'alerte de stagnation
     for rep in range(args.rep_start, rep_end):
         for (name, is_bug, held_out) in plan:
             # held-out plafonnés (test-only) : pas besoin de 30 reps
@@ -278,10 +386,23 @@ def main() -> None:
             if not is_bug and cats.get(name) not in ("drift", "normal", "overlap"):
                 peak = "high" if rep % 10 < 6 else ("med" if rep % 10 < 9 else "low")
             users = [args.users, max(8, args.users - 2), args.users + 2][rep % 3]
-            collect_episode(name, rep, args.out_root, args.address, users,
-                            is_bug, held_out, args.max_retries, args.namespace,
-                            args.pf_offset, args.ram_ceiling, target, peak,
-                            args.min_cpu_series)
+            got = collect_episode(name, rep, args.out_root, args.address, users,
+                                  is_bug, held_out, args.max_retries, args.namespace,
+                                  args.pf_offset, args.ram_ceiling, target, peak,
+                                  args.min_cpu_series)
+            # Alerte de stagnation : une campagne qui pause proprement pendant des
+            # heures reste une campagne qui n'avance pas. On le signale au lieu de
+            # le laisser découvrir le lendemain.
+            if got:
+                last_ok = time.time()
+                _stall_flag(args.out_root, args.namespace, None)
+            else:
+                idle = time.time() - last_ok
+                if idle >= args.stall_alert_s:
+                    msg = (f"aucun épisode collecté depuis {idle / 3600:.1f} h "
+                           f"(ns={args.namespace})")
+                    print(f"[campaign] ⚠ ALERTE STAGNATION : {msg}", flush=True)
+                    _stall_flag(args.out_root, args.namespace, msg)
 
     print("[campaign] terminé.", flush=True)
 

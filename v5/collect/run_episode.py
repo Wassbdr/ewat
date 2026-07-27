@@ -104,6 +104,90 @@ def _category_of(scenario: str, catalog: dict) -> tuple[str, list[str], str]:
     return "unknown", [], ""
 
 
+# ───────────────────── Seuils du gate brut (surchargeables par env) ─────────────────────
+# L'ancien gate était `traces>0 and logs>0 and prom>0` : un épisode à 12 traces, sans
+# aucun service profond tracé et sans faute manifestée, passait. C'est ce qui a laissé
+# entrer ~450 épisodes vides (17-20/07) et rendu nécessaire un audit *a posteriori*.
+# Les seuils visent le CATASTROPHIQUE (collecte cassée), pas la perfection : un épisode
+# sain trace 19-28 services sur 41, donc le plancher est bas à dessein — la qualité fine
+# se joue côté loadgen/build, pas en rejetant des épisodes.
+MIN_TRACES = int(os.environ.get("V5_MIN_TRACES", "500"))
+MIN_TRACED_SERVICES = int(os.environ.get("V5_MIN_TRACED_SERVICES", "15"))
+FAULT_MIN_RATIO = float(os.environ.get("V5_FAULT_MIN_RATIO", "1.15"))
+# Scénarios sans faute attendue : un score plat y est NORMAL, on ne teste pas.
+# `overlap` (θ_drift∩anomaly) porte bien une composante chaos → testé.
+NO_FAULT_CATEGORIES = ("normal", "drift")
+
+
+def _traced_services(traces: list) -> set[str]:
+    """Services TT réellement porteurs de spans sur la fenêtre collectée.
+
+    `jaeger["services"]` liste ce que Jaeger CONNAÎT (son historique), pas ce qui a
+    été tracé pendant l'épisode : seul le comptage sur les spans mesure la vraie
+    couverture de T(t).
+    """
+    svcs: set[str] = set()
+    for tr in traces:
+        for proc in (tr.get("processes") or {}).values():
+            name = proc.get("serviceName")
+            if name and name.startswith("ts-"):
+                svcs.add(name)
+    return svcs
+
+
+def _p99(values: list[float]) -> float:
+    ordered = sorted(values)
+    return ordered[min(int(len(ordered) * 0.99), len(ordered) - 1)]
+
+
+def _span_stats(traces: list, lo: float, hi: float) -> tuple[list[float], float]:
+    """(durées en ms, taux de spans en erreur) pour les spans démarrés dans [lo, hi[."""
+    durs: list[float] = []
+    n_span = n_err = 0
+    for tr in traces:
+        for sp in tr.get("spans") or []:
+            start = sp.get("startTime")
+            if start is None or not (lo <= start / 1e6 < hi):
+                continue
+            n_span += 1
+            durs.append(sp.get("duration", 0) / 1000.0)
+            for tag in sp.get("tags") or []:
+                if tag.get("key") == "error" and tag.get("value") in (True, "true"):
+                    n_err += 1
+                    break
+    return durs, (n_err / n_span if n_span else 0.0)
+
+
+def _fault_visible(traces: list, t_start: float, boundaries: dict) -> tuple[bool, float]:
+    """La faute injectée a-t-elle laissé une signature mesurable dans les traces ?
+
+    Même principe que `scripts/fault_presence.py` (rapport injection/baseline sur la
+    meilleure de deux features qui bougent pour *tous* les types de faute), mais
+    calculé sur les spans BRUTS : au moment du gate, `signal.npz` n'existe pas encore
+    (Record → Build → Assemble). On compare p99 de latence et taux d'erreur entre la
+    phase baseline et la phase d'injection.
+
+    Cible le mode d'échec réel — « le chaos n'a jamais été appliqué » donne un rapport
+    ≈ 1.0 (cas chaos-daemon absent, 17-20/07) — sans rejeter les fautes subtiles
+    (peak=low), d'où un seuil bas. Retourne (visible, score) ; score NaN et visible
+    True si trop peu de spans pour conclure : on ne bloque jamais sur une incertitude.
+    """
+    base_lo = t_start + boundaries.get("baseline_start", 0.0)
+    inj_lo = t_start + boundaries.get("injection_start", 0.0)
+    inj_hi = t_start + boundaries.get("injection_end", 0.0)
+    base_durs, base_err = _span_stats(traces, base_lo, inj_lo)
+    inj_durs, inj_err = _span_stats(traces, inj_lo, inj_hi)
+    if len(base_durs) < 30 or len(inj_durs) < 30:
+        return True, float("nan")
+    ratio_lat = _p99(inj_durs) / max(_p99(base_durs), 1e-6)
+    if base_err > 1e-6:
+        ratio_err = inj_err / base_err
+    else:
+        ratio_err = 5.0 if inj_err > 1e-6 else 1.0
+    score = max(ratio_lat, ratio_err)
+    return score >= FAULT_MIN_RATIO, score
+
+
 def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
                 is_bug: bool, held_out: bool, namespace: str = "tt",
                 pf_offset: int = 0, target: str | None = None,
@@ -297,16 +381,43 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
     }
     json.dump(meta, open(out / "episode_meta.json", "w"), indent=2)
 
-    # contrôle qualité BRUT (léger, pas de build) — gate de collecte
+    # contrôle qualité BRUT (léger, pas de build) — gate de collecte.
+    # On ne demande plus « des données existent-elles ? » mais « sont-elles
+    # exploitables ? » : volume, couverture des services tracés, et manifestation
+    # effective de la faute (cf. seuils en tête de module).
     n_traces = jae.get("n_traces_total", 0)
     n_logs = loki.get("n_lines", 0)
     n_prom = len(prom.get("cpu", [])) if isinstance(prom.get("cpu"), list) else 0
-    ok = n_traces > 0 and n_logs > 0 and n_prom > 0
+    traces_list = jae.get("traces") or []
+    n_svc = len(_traced_services(traces_list))
+
+    reasons = []
+    if n_traces < MIN_TRACES:
+        reasons.append(f"traces={n_traces}<{MIN_TRACES}")
+    if n_logs <= 0:
+        reasons.append("logs=0")
+    if n_prom <= 0:
+        reasons.append("prom=0")
+    if n_svc < MIN_TRACED_SERVICES:
+        reasons.append(f"services_tracés={n_svc}<{MIN_TRACED_SERVICES}")
+    fault_score = float("nan")
+    if category not in NO_FAULT_CATEGORIES:
+        visible, fault_score = _fault_visible(traces_list, t_start, boundaries)
+        if not visible:
+            reasons.append(f"faute invisible (score={fault_score:.2f}<{FAULT_MIN_RATIO})")
+
+    ok = not reasons
     if not ok:
-        (out / ".raw_failed").write_text(f"traces={n_traces} logs={n_logs} prom={n_prom}")
+        # Format compatible avec le triage existant (`traces=… logs=… prom=…`),
+        # enrichi du motif exact pour ne plus avoir à deviner à l'audit.
+        (out / ".raw_failed").write_text(
+            f"traces={n_traces} logs={n_logs} prom={n_prom} services={n_svc} "
+            f"fault_score={fault_score:.2f} | " + "; ".join(reasons))
     return {
         "episode_id": episode_id, "raw_ok": ok,
         "n_traces": n_traces, "n_log_lines": n_logs, "n_prom_series": n_prom,
+        "n_traced_services": n_svc, "fault_score": fault_score,
+        "gate_reasons": reasons,
         "collect_s": round(time.time() - t_end, 1),
     }
 
