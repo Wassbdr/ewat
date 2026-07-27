@@ -37,7 +37,17 @@ STEP_LOGIN = "login"
 STEP_TRIPS = "trips"
 STEP_PRESERVE = "preserve"
 
-HTTP_TIMEOUT = 15.0  # les appels loadgen n'en posent AUCUN → un TT dégradé bloquerait
+# Les appels loadgen ne posent AUCUN timeout → un TT dégradé bloquerait la campagne.
+# 25 s : mesuré à chaud, trips ≈ 5-7 s et preserve ≈ 13-20 s (JVM throttlées à 200m CPU).
+HTTP_TIMEOUT = 25.0
+# Un TT fraîchement redémarré est FROID (JIT, pools, registre) : mesuré à 11 s pour un
+# login et > 25 s pour une recherche de trajets, contre < 1 s et 5 s une fois chaud. Or
+# la campagne fait un deep reset tous les N épisodes — sans ce réessai, le smoke test
+# échouerait juste après, déclencherait une réparation, donc de NOUVEAUX redémarrages :
+# une spirale qui empirerait exactement ce qu'elle croit réparer. La 1re tentative sert
+# de réchauffement, la 2e juge.
+ATTEMPTS = 2
+RETRY_PAUSE_S = 20.0
 
 
 def _bound_session(q) -> None:
@@ -62,8 +72,8 @@ def _fail(step: str, detail: str = "") -> int:
     return 1
 
 
-def run_smoke(address: str, verbose: bool = True) -> int:
-    """Exécute le parcours de validation. Retourne un code de sortie (0 = OK)."""
+def _smoke_once(address: str, verbose: bool = True) -> int:
+    """Un passage du parcours de validation. Retourne un code de sortie (0 = OK)."""
     from loadgen import scenarios
     from loadgen.queries import Query
 
@@ -135,12 +145,34 @@ def run_smoke(address: str, verbose: bool = True) -> int:
     return 0
 
 
+def run_smoke(address: str, verbose: bool = True, attempts: int = ATTEMPTS,
+              pause_s: float = RETRY_PAUSE_S) -> int:
+    """Parcours de validation, tolérant au démarrage à froid.
+
+    N'échoue qu'après `attempts` passages : le premier réchauffe (JIT, pools,
+    registre), les suivants jugent. Sans cela, tout redémarrage récent de TT ferait
+    diagnostiquer à tort une panne applicative.
+    """
+    rc = 1
+    for i in range(attempts):
+        rc = _smoke_once(address, verbose=verbose)
+        if rc == 0:
+            return 0
+        if i < attempts - 1:
+            print(f"  … échec au 1er passage — nouvel essai dans {pause_s:.0f}s "
+                  f"(démarrage à froid ?) [{i + 2}/{attempts}]", flush=True)
+            time.sleep(pause_s)
+    return rc
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="EWAT v5 — smoke test métier Train Ticket")
     ap.add_argument("--address", required=True, help="http://<node_ip>:<nodeport> du namespace")
+    ap.add_argument("--attempts", type=int, default=ATTEMPTS,
+                    help="passages avant de conclure à l'échec (le 1er réchauffe TT)")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
-    sys.exit(run_smoke(args.address, verbose=not args.quiet))
+    sys.exit(run_smoke(args.address, verbose=not args.quiet, attempts=args.attempts))
 
 
 if __name__ == "__main__":

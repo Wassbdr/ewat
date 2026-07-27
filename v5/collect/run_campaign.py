@@ -161,7 +161,7 @@ REPAIR_SERVICES = {
 }
 
 
-def _app_healthy(namespace: str, address: str, timeout: int = 180) -> tuple[bool, str]:
+def _app_healthy(namespace: str, address: str, timeout: int = 420) -> tuple[bool, str]:
     """L'APPLICATION sert-elle encore un parcours métier ? (cf. collect.smoke)
 
     `_backends_scraping` vérifie que les backends collectent ; le gate brut de
@@ -172,8 +172,10 @@ def _app_healthy(namespace: str, address: str, timeout: int = 180) -> tuple[bool
     aucun flux transactionnel et son T(t) est massivement imputé.
 
     Lancé en sous-processus pour un timeout DUR : les appels loadgen ne posent pas
-    de timeout et un TT dégradé bloquerait la campagne. Retourne
-    (ok, étape_en_échec). Fail-open si le test lui-même est inexécutable.
+    de timeout et un TT dégradé bloquerait la campagne. Le budget couvre les
+    réessais anti-démarrage-à-froid de `collect.smoke` (un deep reset précède
+    régulièrement cet appel). Retourne (ok, étape_en_échec). Fail-open si le test
+    lui-même est inexécutable.
     """
     try:
         r = subprocess.run(
