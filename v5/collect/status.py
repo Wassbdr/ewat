@@ -142,8 +142,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="EWAT v5 — état live de la collecte")
     ap.add_argument("--out-root", type=Path, required=True)
     ap.add_argument("--target", type=int, default=890, help="objectif d'épisodes")
+    ap.add_argument("--namespaces", default=os.environ.get("V5_NS", " ".join(NAMESPACES)),
+                    help="namespaces suivis (défaut V5_NS, sinon les 3). Un namespace "
+                         "volontairement arrêté ne doit pas apparaître en anomalie.")
     args = ap.parse_args()
     root: Path = args.out_root
+    watched = tuple(args.namespaces.split())
 
     eps = sorted(root.glob("episode_*"))
     built = sum(1 for e in eps if (e / "signal.npz").exists())
@@ -164,28 +168,38 @@ def main() -> None:
         print(f"dernier épisode abouti: il y a {_age(idle)}{flag}")
 
     print("\n── runners (état LIVE du cluster) ──")
-    for ns in NAMESPACES:
+    for ns in watched:
         running, orphan, detail = _chaos_state(ns)
         ready, total = _ready(ns)
         series = _cadvisor_series(ns)
+        line, log_age = _last_log(root, ns)
         gate = "OK" if series >= MIN_CPU_SERIES else (
             "?" if series < 0 else f"PAUSE ({series}<{MIN_CPU_SERIES})")
+        # Le chaos n'est actif que pendant l'injection (~10 min sur 33) : son absence
+        # ne veut PAS dire qu'aucun épisode ne tourne. Un log récent est le signal
+        # fiable des phases baseline/ramp/collecte, qui n'injectent rien.
         if orphan:
             state = f"⚠ {orphan} CHAOS ORPHELIN — à nettoyer"
         elif running:
-            state = "épisode en cours"
+            state = "épisode en cours (injection)"
+        elif 0 <= log_age < 900:
+            state = "épisode en cours (hors injection)"
         else:
-            state = "entre deux épisodes"
+            state = f"inactif depuis {_age(log_age)}" if log_age >= 0 else "jamais démarré"
         stalled = (root / f"_STALLED_{ns}").exists()
-        line, log_age = _last_log(root, ns)
         print(f"  {ns:<5} {state:<36} pods={ready}/{total}  cAdvisor={gate}"
               f"{'  ⚠ STALLED' if stalled else ''}")
         if detail:
             print(f"        chaos: {detail}")
         print(f"        log (il y a {_age(log_age)}) : {line}")
 
+    idle_ns = [n for n in NAMESPACES if n not in watched]
+    if idle_ns:
+        print(f"\n  ({', '.join(idle_ns)} : arrêté volontairement, non suivi)")
+
     procs = _sh(["pgrep", "-fc", "collect.run_campaign"]).strip() or "0"
-    print(f"\n── procs: {procs} runner(s) (attendu 3) ──")
+    warn = "" if procs == str(len(watched)) else "  ⚠"
+    print(f"\n── procs: {procs} runner(s) (attendu {len(watched)}){warn} ──")
 
 
 if __name__ == "__main__":
