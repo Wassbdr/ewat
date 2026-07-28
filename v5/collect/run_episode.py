@@ -140,52 +140,74 @@ def _p99(values: list[float]) -> float:
     return ordered[min(int(len(ordered) * 0.99), len(ordered) - 1)]
 
 
-def _span_stats(traces: list, lo: float, hi: float) -> tuple[list[float], float]:
-    """(durées en ms, taux de spans en erreur) pour les spans démarrés dans [lo, hi[."""
-    durs: list[float] = []
-    n_span = n_err = 0
+def _span_stats(traces: list, lo: float, hi: float) -> dict[str, dict]:
+    """Par service : {durées ms, n_spans, n_err} pour les spans démarrés dans [lo, hi[.
+
+    L'agrégation est PAR SERVICE, pas globale : le chaos frappe un service parmi 41
+    (`mode: one`), donc son effet se dilue complètement dans un p99 calculé sur
+    l'union des spans. C'est ce qui faisait rejeter des épisodes parfaitement
+    valides avec un score collé à 1.00 (constaté le 2026-07-27).
+    """
+    out: dict[str, dict] = {}
     for tr in traces:
+        procs = tr.get("processes") or {}
         for sp in tr.get("spans") or []:
             start = sp.get("startTime")
             if start is None or not (lo <= start / 1e6 < hi):
                 continue
-            n_span += 1
-            durs.append(sp.get("duration", 0) / 1000.0)
+            svc = (procs.get(sp.get("processID")) or {}).get("serviceName")
+            if not svc:
+                continue
+            rec = out.setdefault(svc, {"dur": [], "n": 0, "err": 0})
+            rec["dur"].append(sp.get("duration", 0) / 1000.0)
+            rec["n"] += 1
             for tag in sp.get("tags") or []:
                 if tag.get("key") == "error" and tag.get("value") in (True, "true"):
-                    n_err += 1
+                    rec["err"] += 1
                     break
-    return durs, (n_err / n_span if n_span else 0.0)
+    return out
 
 
 def _fault_visible(traces: list, t_start: float, boundaries: dict) -> tuple[bool, float]:
     """La faute injectée a-t-elle laissé une signature mesurable dans les traces ?
 
-    Même principe que `scripts/fault_presence.py` (rapport injection/baseline sur la
-    meilleure de deux features qui bougent pour *tous* les types de faute), mais
-    calculé sur les spans BRUTS : au moment du gate, `signal.npz` n'existe pas encore
-    (Record → Build → Assemble). On compare p99 de latence et taux d'erreur entre la
-    phase baseline et la phase d'injection.
+    Même principe que `scripts/fault_presence.py` : rapport injection/baseline sur la
+    meilleure de deux grandeurs qui bougent pour *tous* les types de faute (latence,
+    erreurs), et surtout **max à travers les services** — le chaos ne frappe qu'un
+    service, c'est donc le pire touché qui porte le signal. Calculé sur les spans
+    BRUTS car au moment du gate `signal.npz` n'existe pas encore (Record → Build →
+    Assemble).
 
-    Cible le mode d'échec réel — « le chaos n'a jamais été appliqué » donne un rapport
-    ≈ 1.0 (cas chaos-daemon absent, 17-20/07) — sans rejeter les fautes subtiles
-    (peak=low), d'où un seuil bas. Retourne (visible, score) ; score NaN et visible
-    True si trop peu de spans pour conclure : on ne bloque jamais sur une incertitude.
+    On compare le DERNIER TIERS de l'injection (intensité au pic, le ramp monte
+    progressivement) à la baseline. Cible le mode d'échec réel — « le chaos n'a jamais
+    été appliqué » donne un rapport ≈ 1.0 (cas chaos-daemon absent, 17-20/07) — sans
+    rejeter les fautes subtiles (peak=low), d'où un seuil bas. Retourne (visible,
+    score) ; score NaN et visible True si trop peu de spans pour conclure : on ne
+    bloque jamais sur une incertitude.
     """
     base_lo = t_start + boundaries.get("baseline_start", 0.0)
     inj_lo = t_start + boundaries.get("injection_start", 0.0)
     inj_hi = t_start + boundaries.get("injection_end", 0.0)
-    base_durs, base_err = _span_stats(traces, base_lo, inj_lo)
-    inj_durs, inj_err = _span_stats(traces, inj_lo, inj_hi)
-    if len(base_durs) < 30 or len(inj_durs) < 30:
+    peak_lo = inj_lo + (inj_hi - inj_lo) * 2.0 / 3.0
+    base = _span_stats(traces, base_lo, inj_lo)
+    peak = _span_stats(traces, peak_lo, inj_hi)
+    best = float("nan")
+    for svc, p in peak.items():
+        b = base.get(svc)
+        if not b or b["n"] < 20 or p["n"] < 10:
+            continue  # trop peu de spans pour ce service : on ne conclut pas
+        ratio_lat = _p99(p["dur"]) / max(_p99(b["dur"]), 1e-6)
+        base_err, peak_err = b["err"] / b["n"], p["err"] / p["n"]
+        if base_err > 1e-6:
+            ratio_err = peak_err / base_err
+        else:
+            ratio_err = 5.0 if peak_err > 1e-6 else 1.0
+        score = max(ratio_lat, ratio_err)
+        if best != best or score > best:  # best est NaN au premier passage
+            best = score
+    if best != best:
         return True, float("nan")
-    ratio_lat = _p99(inj_durs) / max(_p99(base_durs), 1e-6)
-    if base_err > 1e-6:
-        ratio_err = inj_err / base_err
-    else:
-        ratio_err = 5.0 if inj_err > 1e-6 else 1.0
-    score = max(ratio_lat, ratio_err)
-    return score >= FAULT_MIN_RATIO, score
+    return best >= FAULT_MIN_RATIO, best
 
 
 def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
