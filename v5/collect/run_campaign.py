@@ -160,6 +160,17 @@ def _nodes_ram_ok(ceiling: float = 90.0) -> bool:
 # sont éphémères et le seed n'est rechargé qu'au démarrage du service propriétaire
 # (cf. reset_tt_state.reset_reseed) → redémarrer LE bon service restaure les données
 # sans passer par un reseed complet du namespace (~43 services, plusieurs minutes).
+# Interrupteur d'urgence : V5_APP_GATE=0 désactive entièrement le gate applicatif.
+# Indispensable — sans lui, un gate qui se trompe bloque toute la campagne et il
+# faut modifier le code pour repartir.
+APP_GATE = os.environ.get("V5_APP_GATE", "1") not in ("0", "false", "no")
+WARMUP_S = int(os.environ.get("V5_WARMUP_S", "90"))
+# Plafonds par cycle : au-delà, on abandonne l'épisode au lieu de continuer à
+# redémarrer des services (cf. la boucle du 2026-07-28). Rechargés à chaque succès.
+MAX_TARGETED_REPAIRS = int(os.environ.get("V5_MAX_REPAIRS", "2"))
+MAX_RESEEDS = int(os.environ.get("V5_MAX_RESEEDS", "1"))
+_repair_budget = {"targeted": 0, "reseed": 0}
+
 REPAIR_SERVICES = {
     "login": ["ts-auth-service", "ts-user-service"],
     "trips": ["ts-ticketinfo-service", "ts-travel-service", "ts-travel2-service",
@@ -215,6 +226,26 @@ def _app_healthy(namespace: str, address: str, timeout: int = 420) -> tuple[bool
     print(f"[campaign] smoke test {namespace} ÉCHEC (étape={step or '?'}) {detail}",
           flush=True)
     return False, step
+
+
+def _warmup(address: str, seconds: int = 90) -> None:
+    """Charge de réchauffement après un redémarrage de services.
+
+    Un service qui vient de redémarrer est `Ready` mais FROID : JIT non chauffé,
+    pools de connexions vides, registre à re-résoudre. Mesuré à 11 s pour un login
+    et > 25 s pour une recherche de trajets, contre < 1 s à chaud. Le juger tout de
+    suite relance une réparation, donc de nouveaux redémarrages : c'est la boucle
+    observée le 2026-07-28 (9 h sans un seul épisode abouti).
+    """
+    print(f"[campaign] réchauffement {seconds}s avant de rejuger ...", flush=True)
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "loadgen.runner", "--address", address,
+             "--users", "4", "--duration", str(seconds), "--rps-log", str(seconds)],
+            capture_output=True, text=True, cwd=str(V5), timeout=seconds + 120,
+            env={**os.environ, "PYTHONPATH": str(V5)})
+    except Exception as e:
+        print(f"[campaign] réchauffement interrompu ({e})", flush=True)
 
 
 def _repair_app(namespace: str, step: str) -> bool:
@@ -286,16 +317,28 @@ def collect_episode(scenario: str, rep: int, out_root: Path, address: str,
         # rebook, execute) restent non tracés et l'épisode est inexploitable, sans
         # qu'aucun autre gate ne s'en aperçoive. On répare puis on réessaie ;
         # l'escalade va du ciblé (quelques services) au reseed complet du namespace.
-        app_ok, step = _app_healthy(namespace, address)
+        app_ok, step = (True, "") if not APP_GATE else _app_healthy(namespace, address)
         if not app_ok:
-            if _repair_app(namespace, step):
+            # Budget de réparation. Sans plafond, chaque épisode relance un cycle
+            # restart → test à froid → échec → restart, qui détruit plus qu'il ne
+            # répare : le 2026-07-28, 9 h sans un seul épisode abouti, les deux
+            # runners en boucle. On répare peu, on RÉCHAUFFE avant de rejuger, et
+            # on abandonne l'épisode plutôt que de s'acharner. Le budget se
+            # recharge dès qu'un épisode aboutit.
+            if (_repair_budget["targeted"] < MAX_TARGETED_REPAIRS
+                    and _repair_app(namespace, step)):
+                _repair_budget["targeted"] += 1
+                _warmup(address, WARMUP_S)
                 app_ok, step = _app_healthy(namespace, address)
-            if not app_ok:
-                reset_tt_state.reset_reseed(namespace, cooldown=30)
+            if not app_ok and _repair_budget["reseed"] < MAX_RESEEDS:
+                reset_tt_state.reset_reseed(namespace, cooldown=60)
+                _repair_budget["reseed"] += 1
+                _warmup(address, WARMUP_S)
                 app_ok, step = _app_healthy(namespace, address)
         if not app_ok:
             print(f"[campaign] ABANDON {ep_id} : parcours métier KO (étape={step}) "
-                  f"même après reseed — épisode NON collecté", flush=True)
+                  f"— budget réparation {_repair_budget} — épisode NON collecté",
+                  flush=True)
             return False
         try:
             # COLLECTE uniquement (pas de build) — Record→Build→Assemble.
@@ -309,6 +352,9 @@ def collect_episode(scenario: str, rep: int, out_root: Path, address: str,
             continue
         # gate BRUT (la collecte a-t-elle capté assez de données ?)
         if res.get("raw_ok"):
+            # Un épisode abouti prouve que TT est sain : on recharge le budget de
+            # réparation, pour qu'une panne future puisse encore être réparée.
+            _repair_budget["targeted"] = _repair_budget["reseed"] = 0
             print(f"[campaign] OK {ep_id} traces={res['n_traces']} logs={res['n_log_lines']} "
                   f"prom={res['n_prom_series']} svc={res.get('n_traced_services')} "
                   f"fault={res.get('fault_score', float('nan')):.2f} "
