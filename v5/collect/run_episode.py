@@ -376,6 +376,23 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
         except Exception as e:
             print(f"[{scenario}] collecte échec essai {attempt + 1}/3 ({e}) — retry 25s", flush=True)
             time.sleep(25)
+
+    # Loki renvoie parfois 0 ligne SANS lever d'exception (blip du gateway) : la
+    # boucle ci-dessus ne le rattrape donc pas, et l'épisode part au rebut alors que
+    # traces et métriques sont parfaites. C'était 3 des 5 derniers échecs du gate,
+    # avec 4400-8300 traces et 37 services tracés à côté. On re-tente le seul pull
+    # défaillant plutôt que de jeter 33 min de collecte.
+    for attempt in range(2):
+        if loki.get("n_lines", 0) > 0:
+            break
+        print(f"[{scenario}] logs vides — nouvelle tentative Loki "
+              f"{attempt + 1}/2 dans 20s", flush=True)
+        time.sleep(20)
+        try:
+            loki = probe.pull_loki(t_start, t_end, step, namespace)
+        except Exception as e:
+            print(f"[{scenario}] retry Loki échec ({e})", flush=True)
+
     for name, data in [("prometheus", prom), ("jaeger", jae), ("loki", loki)]:
         with gzip.open(out / f"{name}.json.gz", "wt") as f:
             json.dump(data, f)
