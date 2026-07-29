@@ -186,7 +186,7 @@ REPAIR_SERVICES = {
 }
 
 
-def _app_healthy(namespace: str, address: str, timeout: int = 420) -> tuple[bool, str]:
+def _app_healthy(namespace: str, address: str, timeout: int = 600) -> tuple[bool, str]:
     """L'APPLICATION sert-elle encore un parcours métier ? (cf. collect.smoke)
 
     `_backends_scraping` vérifie que les backends collectent ; le gate brut de

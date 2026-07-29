@@ -38,8 +38,11 @@ STEP_TRIPS = "trips"
 STEP_PRESERVE = "preserve"
 
 # Les appels loadgen ne posent AUCUN timeout → un TT dégradé bloquerait la campagne.
-# 25 s : mesuré à chaud, trips ≈ 5-7 s et preserve ≈ 13-20 s (JVM throttlées à 200m CPU).
-HTTP_TIMEOUT = 25.0
+# 45 s : mesuré à chaud, trips ≈ 5-10 s mais preserve ≈ 12-36 s — c'est une chaîne
+# transactionnelle entière (contacts, assurances, seat, order) sur des JVM throttlées
+# à 200m CPU. À 25 s, preserve timeoutait alors que TT était parfaitement sain, et le
+# gate concluait à tort à une panne (2026-07-28).
+HTTP_TIMEOUT = 45.0
 # Un TT fraîchement redémarré est FROID (JIT, pools, registre) : mesuré à 11 s pour un
 # login et > 25 s pour une recherche de trajets, contre < 1 s et 5 s une fois chaud. Or
 # la campagne fait un deep reset tous les N épisodes — sans ce réessai, le smoke test
