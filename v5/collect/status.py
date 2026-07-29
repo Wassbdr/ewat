@@ -66,7 +66,14 @@ def _chaos_state(ns: str) -> tuple[int, int, str]:
 
     On distingue donc via le statut : non recovered ET plus vieux que sa duration
     = orphelin (anomalie à nettoyer), pas activité normale.
+
+    Exception : les actions ONE-SHOT (`pod-kill`, `container-kill`) sont
+    irréversibles — on ne « dé-tue » pas un pod, donc Chaos Mesh laisse
+    `AllRecovered=False` définitivement. Les compter comme orphelins produisait une
+    fausse alerte permanente sur les scénarios composites qui en contiennent
+    (`compo_pod_kill_under_delay`, vu le 2026-07-29).
     """
+    one_shot = {"pod-kill", "container-kill"}
     import json as _json
     running = orphan = 0
     detail = []
@@ -96,8 +103,10 @@ def _chaos_state(ns: str) -> tuple[int, int, str]:
                 dur_s = float(spec_dur)
             except ValueError:
                 dur_s = 0.0
+            action = it.get("spec", {}).get("action", "")
             # marge : le contrôleur peut mettre quelques dizaines de s à réconcilier
-            if not recovered and dur_s and age_s > dur_s + 120:
+            if (action not in one_shot and not recovered and dur_s
+                    and age_s > dur_s + 120):
                 orphan += 1
                 detail.append(f"{name} ORPHELIN {_age(age_s)}>{spec_dur}s")
             else:
