@@ -58,18 +58,28 @@ def _run(cmd: list[str]) -> str:
     return subprocess.run(cmd, capture_output=True, text=True).stdout
 
 
-def _rollout(namespace: str, names: list[str], timeout: str = "300s") -> None:
-    """Rolling-restart d'un lot de deployments, PUIS attente de leur readiness.
+# Nombre de deployments redémarrés simultanément. Depuis le passage des limites CPU
+# à 500m, redémarrer les 43 services d'un coup laisse 43 JVM en phase de boot
+# réclamer jusqu'à 21 cores sur des nœuds qui en ont 7 : le 2026-07-30, 57p5t est
+# monté à 105 % de CPU et le reseed n'avançait plus (23/69 pods prêts, login à 000).
+# Par lots, le pic reste borné et chaque lot démarre vite.
+BATCH = int(os.environ.get("V5_ROLLOUT_BATCH", "8"))
 
-    Les deux boucles sont séparées à dessein : on lance tous les restarts du lot
-    avant d'attendre (parallélisme intra-lot), mais on ne rend la main qu'une fois
-    le lot entier prêt — c'est ce qui permet de séquencer bases → services.
+
+def _rollout(namespace: str, names: list[str], timeout: str = "300s") -> None:
+    """Rolling-restart PAR LOTS, en attendant la readiness de chaque lot.
+
+    On ne rend la main qu'une fois tous les lots prêts — c'est ce qui permet de
+    séquencer bases → services, tout en évitant la ruée de démarrages simultanés
+    qui sature le CPU des nœuds (cf. BATCH).
     """
-    for d in names:
-        _run([*_KC, "rollout", "restart", "deploy", "-n", namespace, d])
-    for d in names:
-        subprocess.run([*_KC, "rollout", "status", "deploy", "-n", namespace, d,
-                        f"--timeout={timeout}"], capture_output=True, text=True)
+    for i in range(0, len(names), BATCH):
+        chunk = names[i:i + BATCH]
+        for d in chunk:
+            _run([*_KC, "rollout", "restart", "deploy", "-n", namespace, d])
+        for d in chunk:
+            subprocess.run([*_KC, "rollout", "status", "deploy", "-n", namespace, d,
+                            f"--timeout={timeout}"], capture_output=True, text=True)
 
 
 def _app_deployments(namespace: str) -> list[str]:
