@@ -118,6 +118,14 @@ FAULT_MIN_RATIO = float(os.environ.get("V5_FAULT_MIN_RATIO", "1.15"))
 # `overlap` (θ_drift∩anomaly) porte bien une composante chaos → testé.
 NO_FAULT_CATEGORIES = ("normal", "drift")
 
+# Pauses entre re-tentatives du pull Loki quand il revient vide (sans exception).
+# 2 essais × 20 s ne suffisaient pas : sur 88 échecs, `logs=0` reste la cause n°1
+# (32), avec des rafales groupées sur plusieurs heures (01/08, 6 épisodes perdus
+# entre 07 h et 14 h). ~4 min de tolérance couvrent une coupure franche sans
+# bloquer la campagne — l'épisode est déjà collecté, on ne perd que l'attente.
+LOKI_RETRY_PAUSES = [int(x) for x in
+                     os.environ.get("V5_LOKI_RETRIES", "20,40,60,90").split(",")]
+
 
 def _traced_services(traces: list) -> set[str]:
     """Services TT réellement porteurs de spans sur la fenêtre collectée.
@@ -382,12 +390,12 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
     # traces et métriques sont parfaites. C'était 3 des 5 derniers échecs du gate,
     # avec 4400-8300 traces et 37 services tracés à côté. On re-tente le seul pull
     # défaillant plutôt que de jeter 33 min de collecte.
-    for attempt in range(2):
+    for attempt, pause in enumerate(LOKI_RETRY_PAUSES):
         if loki.get("n_lines", 0) > 0:
             break
         print(f"[{scenario}] logs vides — nouvelle tentative Loki "
-              f"{attempt + 1}/2 dans 20s", flush=True)
-        time.sleep(20)
+              f"{attempt + 1}/{len(LOKI_RETRY_PAUSES)} dans {pause}s", flush=True)
+        time.sleep(pause)
         try:
             loki = probe.pull_loki(t_start, t_end, step, namespace)
         except Exception as e:
