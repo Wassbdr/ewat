@@ -443,6 +443,7 @@ def _compute_trace_structures(
         roots = [sid for sid, sp in smap.items() if not sp.parent_span_id]
         max_depth = 0
         fan_outs: list[int] = []
+        fan_out_by_span: dict[str, int] = {}
         visited: set[str] = set()
         from collections import deque as _deque
         queue: _deque[tuple[str, int]] = _deque((r, 1) for r in roots)
@@ -454,11 +455,17 @@ def _compute_trace_structures(
             max_depth = max(max_depth, depth)
             kids = child_map.get(sid, [])
             fan_outs.append(len(kids))
+            fan_out_by_span[sid] = len(kids)
             queue.extend((k, depth + 1) for k in kids)
 
         result[trace_id] = {
             "max_depth": max_depth,
             "avg_fan_out": float(np.mean(fan_outs)) if fan_outs else 0.0,
+            # Fan-out par span : indispensable pour attribuer la structure à CHAQUE
+            # service participant, et pas au seul « propriétaire » de la trace
+            # (cf. _fill_features). Le BFS le calculait déjà, il était simplement
+            # moyenné puis jeté.
+            "fan_out_by_span": fan_out_by_span,
         }
     return result
 
@@ -612,20 +619,45 @@ class TraceCollector:
             if span.service_name in svc_idx:
                 svc_spans.setdefault(span.service_name, []).append(span)
 
-        # Group trace-level structural features by service (via trace's root service)
-        # Heuristic: use service of the first span seen per trace
-        trace_service: dict[str, str] = {}
-        for span in spans:
-            if span.trace_id not in trace_service and span.service_name in svc_idx:
-                trace_service[span.trace_id] = span.service_name
-
-        svc_depths: dict[str, list[float]] = {}
+        # Structure PAR SERVICE (correctif 2026-08-02).
+        #
+        # L'ancienne version attribuait chaque trace à UN SEUL service — « celui du
+        # premier span vu » — et ne remplissait trace_depth/fan_out que pour lui.
+        # En microservices, seul le service d'entrée « possède » la trace : tous les
+        # services en aval, pourtant porteurs de spans, recevaient NaN par
+        # construction. Conséquences mesurées sur ewat_v5.2 : 69,6 % d'imputation sur
+        # ces deux features contre 43,5 % pour les autres features de traces
+        # (abnormal_span_rate, latency_cv, calculées depuis les spans du service), et
+        # une valeur qui CHANGEAIT selon l'ordre des spans dans le dump — donc non
+        # déterministe.
+        #
+        # On agrège désormais sur les spans du service lui-même :
+        #   - trace_depth : profondeur des traces auxquelles il PARTICIPE (une valeur
+        #     par trace distincte, pas une par span, pour ne pas surpondérer les
+        #     services très bavards) ;
+        #   - fan_out : nombre d'appels sortants de SES propres spans. Une feuille
+        #     vaut 0 — une mesure légitime, pas une absence de mesure.
+        #
+        # La sémantique change (« traces où je participe » au lieu de « que je
+        # possède ») : les features ne sont plus comparables telles quelles avec
+        # ewat_v3/v4, ce qui est assumé et documenté.
+        svc_traces: dict[str, set[str]] = {}
         svc_fanouts: dict[str, list[float]] = {}
-        for trace_id, stats in trace_structs.items():
-            svc = trace_service.get(trace_id, "")
-            if svc and svc in svc_idx:
-                svc_depths.setdefault(svc, []).append(stats["max_depth"])
-                svc_fanouts.setdefault(svc, []).append(stats["avg_fan_out"])
+        for span in spans:
+            svc = span.service_name
+            if svc not in svc_idx:
+                continue
+            stats = trace_structs.get(span.trace_id)
+            if stats is None:
+                continue
+            svc_traces.setdefault(svc, set()).add(span.trace_id)
+            svc_fanouts.setdefault(svc, []).append(
+                stats["fan_out_by_span"].get(span.span_id, 0))
+
+        svc_depths: dict[str, list[float]] = {
+            svc: [trace_structs[t]["max_depth"] for t in traces]
+            for svc, traces in svc_traces.items()
+        }
 
         for svc, row in svc_idx.items():
             spans_s = svc_spans.get(svc, [])

@@ -14,6 +14,8 @@ from telemetry.collectors.log_collector import (
     classify_level,
 )
 from telemetry.collectors.trace_collector import (
+    _T_FAN_OUT,
+    _T_TRACE_DEPTH,
     JaegerBackend,
     Span,
     SpanQueryBackend,
@@ -447,3 +449,61 @@ class TestLokiBackendJsonError:
 
         records = backend.fetch_logs(0.0, 100.0)
         assert records == []
+
+
+class TestStructuralFeaturesPerService:
+    """trace_depth / fan_out doivent être renseignés pour CHAQUE service tracé.
+
+    Régression du 2026-08-02 : la structure n'était attribuée qu'au service
+    « propriétaire » de la trace (le premier span vu), laissant tous les services
+    en aval à NaN — 69,6 % d'imputation contre 43,5 % pour les autres features de
+    traces, et un résultat qui dépendait de l'ordre des spans dans le dump.
+    """
+
+    # gateway -> order -> payment : chaîne réaliste, un seul service « possède »
+    # la trace mais les trois y participent.
+    def _chain(self) -> list[Span]:
+        return [
+            make_span("t1", "s1", "", "svc-gateway"),
+            make_span("t1", "s2", "s1", "svc-order"),
+            make_span("t1", "s3", "s2", "svc-payment"),
+        ]
+
+    def _fill(self, spans: list[Span]) -> tuple[np.ndarray, dict[str, int]]:
+        svc_idx = {"svc-gateway": 0, "svc-order": 1, "svc-payment": 2}
+        T_t = np.full((3, TRACES_DIM), np.nan, dtype=np.float32)
+        TraceCollector._fill_features(
+            None, T_t, svc_idx, spans, _compute_trace_structures(spans))
+        return T_t, svc_idx
+
+    def test_tous_les_services_participants_sont_renseignes(self):
+        T_t, _ = self._fill(self._chain())
+        assert not np.isnan(T_t[:, _T_TRACE_DEPTH]).any()
+        assert not np.isnan(T_t[:, _T_FAN_OUT]).any()
+
+    def test_independant_de_l_ordre_des_spans(self):
+        """L'ancienne version faisait MIGRER la valeur d'un service à l'autre."""
+        a, _ = self._fill(self._chain())
+        b, _ = self._fill(list(reversed(self._chain())))
+        assert np.allclose(a, b, equal_nan=True)
+
+    def test_fan_out_reflete_les_appels_sortants(self):
+        T_t, idx = self._fill(self._chain())
+        assert T_t[idx["svc-gateway"], _T_FAN_OUT] == 1.0
+        assert T_t[idx["svc-order"], _T_FAN_OUT] == 1.0
+        # une feuille n'appelle personne : 0 est une mesure, pas une absence
+        assert T_t[idx["svc-payment"], _T_FAN_OUT] == 0.0
+
+    def test_profondeur_partagee_par_les_participants(self):
+        T_t, _ = self._fill(self._chain())
+        assert (T_t[:, _T_TRACE_DEPTH] == 3.0).all()
+
+    def test_service_sans_span_reste_nan(self):
+        """Aucune donnée ⇒ NaN, on n'invente pas de valeur."""
+        svc_idx = {"svc-gateway": 0, "svc-absent": 1}
+        T_t = np.full((2, TRACES_DIM), np.nan, dtype=np.float32)
+        spans = [make_span("t1", "s1", "", "svc-gateway")]
+        TraceCollector._fill_features(
+            None, T_t, svc_idx, spans, _compute_trace_structures(spans))
+        assert not np.isnan(T_t[0, _T_FAN_OUT])
+        assert np.isnan(T_t[1, _T_FAN_OUT])
