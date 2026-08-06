@@ -30,12 +30,15 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from telemetry.feature_names import SCHEMA_V5_1, get_schema, signal_dim  # noqa: E402
+from telemetry.feature_names import SCHEMA_V5_1, SCHEMAS, signal_dim  # noqa: E402
 
 VALID_REGIMES = {"normal", "injection", "recovery", "drift_anomaly"}
 N_CANON = 41
+# v5.1 et v5.2 ont la même dimensionnalité (18) ; seul M[9] est renommé
+# (jvm_threads_blocked → jvm_threads_live). Le gate valide chaque épisode contre
+# le schéma qu'il DÉCLARE (metadata.dataset_schema_version) — sinon les épisodes
+# v5.2 de la re-collecte seraient tous rejetés par un registre v5.1 en dur.
 N_FEATURES = signal_dim(SCHEMA_V5_1)
-FEATURE_NAMES = get_schema(SCHEMA_V5_1)
 
 
 def _check_episode(ep: Path, max_raw_nan: float, trace_floor: int,
@@ -61,9 +64,13 @@ def _check_episode(ep: Path, max_raw_nan: float, trace_floor: int,
     if meta_path.exists():
         meta = json.load(open(meta_path))
         names = meta.get("signal_feature_names")
-        if names is not None and list(names) != FEATURE_NAMES:
+        schema_ver = meta.get("dataset_schema_version", SCHEMA_V5_1)
+        expected = SCHEMAS.get(schema_ver)
+        if expected is None:
+            fails.append(f"schéma inconnu au registre : {schema_ver!r}")
+        elif names is not None and list(names) != expected:
             fails.append(
-                f"signal_feature_names ≠ registre {SCHEMA_V5_1} "
+                f"signal_feature_names ≠ registre {schema_ver} "
                 f"(metadata: {len(names)} noms)"
             )
 

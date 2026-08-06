@@ -104,17 +104,144 @@ def _category_of(scenario: str, catalog: dict) -> tuple[str, list[str], str]:
     return "unknown", [], ""
 
 
+# ───────────────────── Seuils du gate brut (surchargeables par env) ─────────────────────
+# L'ancien gate était `traces>0 and logs>0 and prom>0` : un épisode à 12 traces, sans
+# aucun service profond tracé et sans faute manifestée, passait. C'est ce qui a laissé
+# entrer ~450 épisodes vides (17-20/07) et rendu nécessaire un audit *a posteriori*.
+# Les seuils visent le CATASTROPHIQUE (collecte cassée), pas la perfection : un épisode
+# sain trace 19-28 services sur 41, donc le plancher est bas à dessein — la qualité fine
+# se joue côté loadgen/build, pas en rejetant des épisodes.
+MIN_TRACES = int(os.environ.get("V5_MIN_TRACES", "500"))
+MIN_TRACED_SERVICES = int(os.environ.get("V5_MIN_TRACED_SERVICES", "15"))
+FAULT_MIN_RATIO = float(os.environ.get("V5_FAULT_MIN_RATIO", "1.15"))
+# Scénarios sans faute attendue : un score plat y est NORMAL, on ne teste pas.
+# `overlap` (θ_drift∩anomaly) porte bien une composante chaos → testé.
+NO_FAULT_CATEGORIES = ("normal", "drift")
+
+# Pauses entre re-tentatives du pull Loki quand il revient vide (sans exception).
+# 2 essais × 20 s ne suffisaient pas : sur 88 échecs, `logs=0` reste la cause n°1
+# (32), avec des rafales groupées sur plusieurs heures (01/08, 6 épisodes perdus
+# entre 07 h et 14 h). ~4 min de tolérance couvrent une coupure franche sans
+# bloquer la campagne — l'épisode est déjà collecté, on ne perd que l'attente.
+LOKI_RETRY_PAUSES = [int(x) for x in
+                     os.environ.get("V5_LOKI_RETRIES", "20,40,60,90").split(",")]
+
+
+def _traced_services(traces: list) -> set[str]:
+    """Services TT réellement porteurs de spans sur la fenêtre collectée.
+
+    `jaeger["services"]` liste ce que Jaeger CONNAÎT (son historique), pas ce qui a
+    été tracé pendant l'épisode : seul le comptage sur les spans mesure la vraie
+    couverture de T(t).
+    """
+    svcs: set[str] = set()
+    for tr in traces:
+        for proc in (tr.get("processes") or {}).values():
+            name = proc.get("serviceName")
+            if name and name.startswith("ts-"):
+                svcs.add(name)
+    return svcs
+
+
+def _p99(values: list[float]) -> float:
+    ordered = sorted(values)
+    return ordered[min(int(len(ordered) * 0.99), len(ordered) - 1)]
+
+
+def _span_stats(traces: list, lo: float, hi: float) -> dict[str, dict]:
+    """Par service : {durées ms, n_spans, n_err} pour les spans démarrés dans [lo, hi[.
+
+    L'agrégation est PAR SERVICE, pas globale : le chaos frappe un service parmi 41
+    (`mode: one`), donc son effet se dilue complètement dans un p99 calculé sur
+    l'union des spans. C'est ce qui faisait rejeter des épisodes parfaitement
+    valides avec un score collé à 1.00 (constaté le 2026-07-27).
+    """
+    out: dict[str, dict] = {}
+    for tr in traces:
+        procs = tr.get("processes") or {}
+        for sp in tr.get("spans") or []:
+            start = sp.get("startTime")
+            if start is None or not (lo <= start / 1e6 < hi):
+                continue
+            svc = (procs.get(sp.get("processID")) or {}).get("serviceName")
+            if not svc:
+                continue
+            rec = out.setdefault(svc, {"dur": [], "n": 0, "err": 0})
+            rec["dur"].append(sp.get("duration", 0) / 1000.0)
+            rec["n"] += 1
+            for tag in sp.get("tags") or []:
+                if tag.get("key") == "error" and tag.get("value") in (True, "true"):
+                    rec["err"] += 1
+                    break
+    return out
+
+
+def _fault_visible(traces: list, t_start: float, boundaries: dict) -> tuple[bool, float]:
+    """La faute injectée a-t-elle laissé une signature mesurable dans les traces ?
+
+    Même principe que `scripts/fault_presence.py` : rapport injection/baseline sur la
+    meilleure de deux grandeurs qui bougent pour *tous* les types de faute (latence,
+    erreurs), et surtout **max à travers les services** — le chaos ne frappe qu'un
+    service, c'est donc le pire touché qui porte le signal. Calculé sur les spans
+    BRUTS car au moment du gate `signal.npz` n'existe pas encore (Record → Build →
+    Assemble).
+
+    On compare le DERNIER TIERS de l'injection (intensité au pic, le ramp monte
+    progressivement) à la baseline. Cible le mode d'échec réel — « le chaos n'a jamais
+    été appliqué » donne un rapport ≈ 1.0 (cas chaos-daemon absent, 17-20/07) — sans
+    rejeter les fautes subtiles (peak=low), d'où un seuil bas. Retourne (visible,
+    score) ; score NaN et visible True si trop peu de spans pour conclure : on ne
+    bloque jamais sur une incertitude.
+    """
+    base_lo = t_start + boundaries.get("baseline_start", 0.0)
+    inj_lo = t_start + boundaries.get("injection_start", 0.0)
+    inj_hi = t_start + boundaries.get("injection_end", 0.0)
+    peak_lo = inj_lo + (inj_hi - inj_lo) * 2.0 / 3.0
+    base = _span_stats(traces, base_lo, inj_lo)
+    peak = _span_stats(traces, peak_lo, inj_hi)
+    best = float("nan")
+    for svc, p in peak.items():
+        b = base.get(svc)
+        if not b or b["n"] < 20 or p["n"] < 10:
+            continue  # trop peu de spans pour ce service : on ne conclut pas
+        ratio_lat = _p99(p["dur"]) / max(_p99(b["dur"]), 1e-6)
+        base_err, peak_err = b["err"] / b["n"], p["err"] / p["n"]
+        if base_err > 1e-6:
+            ratio_err = peak_err / base_err
+        else:
+            ratio_err = 5.0 if peak_err > 1e-6 else 1.0
+        score = max(ratio_lat, ratio_err)
+        if best != best or score > best:  # best est NaN au premier passage
+            best = score
+    if best != best:
+        return True, float("nan")
+    return best >= FAULT_MIN_RATIO, best
+
+
 def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
                 is_bug: bool, held_out: bool, namespace: str = "tt",
-                pf_offset: int = 0) -> dict:
+                pf_offset: int = 0, target: str | None = None,
+                peak_intensity: str = "high") -> dict:
     out.mkdir(parents=True, exist_ok=True)
     v5 = _v5_dir()
     import yaml
     catalog = yaml.safe_load(open(v5 / "chaos" / "catalog.yaml"))
     category, targets, _kind = _category_of(scenario, catalog)
+    if target:
+        targets = [target]  # rotation : la cible choisie devient la vérité des labels
     nsargs = ["--namespace", namespace]  # passé à chaos.inject
 
-    dur = {k: PHASES[k] * step for k in PHASES}
+    # Jitter d'onset : baseline/pre tirés PAR ÉPISODE (seed = nom d'épisode →
+    # déterministe à la reprise). Sans jitter, tous les épisodes injectent au même
+    # step → un modèle peut apprendre la POSITION au lieu du signal (fuite
+    # positionnelle, cf. stress test A1 v3). V5_PHASES (mode test) désactive.
+    phases = dict(PHASES)
+    if not os.environ.get("V5_PHASES"):
+        import random as _random
+        _rng = _random.Random(f"jitter:{out.name}")
+        phases["baseline"] = _rng.randint(8, 16)
+        phases["pre"] = _rng.randint(10, 18)
+    dur = {k: phases[k] * step for k in phases}
     total = sum(dur.values())
 
     # Charge = mix nominal (NOMINAL_MIX) pour TOUS les épisodes, y compris bugs.
@@ -134,6 +261,13 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
     def mark(name):
         boundaries[name] = time.time() - t_start
 
+    # Nettoyage garanti : un épisode INTERROMPU (exception, kill) ne doit jamais
+    # laisser de traînée (manifests chaos orphelins / image fautive) — vu 2× en
+    # campagne : les reliquats contaminent les épisodes suivants du namespace.
+    bug_svc = targets[0] if (is_bug and targets) else None
+    faulty_image = next((b.get("image") for b in catalog.get("bugs", [])
+                         if b["id"] == scenario), None) if is_bug else None
+    cleaned = False
     try:
         mark("baseline_start")
         print(f"[{scenario}] baseline {dur['baseline']}s + pre {dur['pre']}s ...", flush=True)
@@ -145,9 +279,6 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
             # sous pression CPU il met plusieurs minutes à redémarrer. On attend
             # que le pod fautif soit prêt AVANT de compter la fenêtre active,
             # sinon on ne capte que le reboot et pas la signature de la panne.
-            bug_svc = targets[0] if targets else None
-            faulty_image = next((b.get("image") for b in catalog.get("bugs", [])
-                                 if b["id"] == scenario), None)
             print(f"[{scenario}] inject bug ({scenario}) sur {bug_svc} ...", flush=True)
             _run_logged([sys.executable, "-m", "chaos.inject", "apply-bug", scenario, *nsargs],
                         f"{scenario}/apply-bug", cwd=str(v5))
@@ -159,27 +290,63 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
             time.sleep(dur["ramp"] + dur["injection"])
             print(f"[{scenario}] restauration bug (vérifiée) ...", flush=True)
             _restore_bug(scenario, bug_svc, namespace, v5, nsargs, faulty_image)
+        elif category == "normal":
+            # Run sain complet : AUCUNE injection. La fenêtre « injection » du
+            # timeline est vide ; featurize (is_normal) garde regime=normal partout.
+            print(f"[{scenario}] normal : aucune injection, fenêtre "
+                  f"{dur['ramp'] + dur['injection']}s ...", flush=True)
+            time.sleep(dur["ramp"] + dur["injection"])
+        elif category in ("drift", "overlap"):
+            # Drift bénin OU overlap (θ_drift∩anomaly) : UNE seule action au début
+            # de la fenêtre (pas de ramp d'intensité, sinon apply répété →
+            # rollouts multiples + écrasement du replica baseline sauvegardé →
+            # restauration cassée). Pour overlap, inject applique drift natif +
+            # chaos (intensité high) simultanément sur le même service.
+            win = dur["ramp"] + dur["injection"]
+            print(f"[{scenario}] {category} (natif) sur {targets} ...", flush=True)
+            _run([sys.executable, "-m", "chaos.inject", "apply", scenario,
+                  "--intensity", "high", "--duration", f"{win}s", *nsargs], cwd=str(v5))
+            time.sleep(win)
+            _run([sys.executable, "-m", "chaos.inject", "delete", scenario, *nsargs], cwd=str(v5))
         else:
-            # ramp-up : intensité croissante
-            ramp_each = dur["ramp"] / len(RAMP_INTENSITIES)
-            for inten in RAMP_INTENSITIES:
+            # ramp-up : intensité croissante, TRONQUÉE au pic demandé — les épisodes
+            # plafonnés à low/med échantillonnent des pannes subtiles (spectre de
+            # difficulté early-warning), au lieu de toujours finir à high.
+            tgt_args = ["--target", target] if target else []
+            ramp_levels = RAMP_INTENSITIES[:RAMP_INTENSITIES.index(peak_intensity) + 1]
+            ramp_each = dur["ramp"] / len(ramp_levels)
+            for inten in ramp_levels:
                 print(f"[{scenario}] ramp intensité={inten} ...", flush=True)
                 _run([sys.executable, "-m", "chaos.inject", "apply", scenario,
-                      "--intensity", inten, "--duration", f"{int(ramp_each)+2}s", *nsargs], cwd=str(v5))
+                      "--intensity", inten, "--duration", f"{int(ramp_each)+2}s",
+                      *tgt_args, *nsargs], cwd=str(v5))
                 time.sleep(ramp_each)
-            # injection stable high
-            print(f"[{scenario}] injection high {dur['injection']}s ...", flush=True)
+            # injection stable au pic
+            print(f"[{scenario}] injection {peak_intensity} {dur['injection']}s ...", flush=True)
             _run([sys.executable, "-m", "chaos.inject", "apply", scenario,
-                  "--intensity", "high", "--duration", f"{dur['injection']}s", *nsargs], cwd=str(v5))
+                  "--intensity", peak_intensity, "--duration", f"{dur['injection']}s",
+                  *tgt_args, *nsargs], cwd=str(v5))
             time.sleep(dur["injection"])
             _run([sys.executable, "-m", "chaos.inject", "delete", scenario, *nsargs], cwd=str(v5))
 
+        cleaned = True  # chaque branche a fait son delete/restore
         mark("injection_end")
         print(f"[{scenario}] recovery {dur['recovery']}s ...", flush=True)
         time.sleep(dur["recovery"])
         mark("recovery_end")
     finally:
         load.terminate()
+        if not cleaned:
+            # épisode interrompu AVANT son nettoyage : purge best-effort
+            print(f"[{scenario}] interrompu — nettoyage chaos/bug de secours", flush=True)
+            try:
+                if is_bug:
+                    _restore_bug(scenario, bug_svc, namespace, v5, nsargs, faulty_image)
+                elif category != "normal":
+                    _run([sys.executable, "-m", "chaos.inject", "delete", scenario, *nsargs],
+                         cwd=str(v5))
+            except Exception as e:  # le nettoyage ne doit pas masquer l'erreur d'origine
+                print(f"[{scenario}] nettoyage de secours échoué: {e}", flush=True)
     t_end = time.time()
 
     # collecte (port-forwards namespacés + offset pour coexistence multi-runner).
@@ -217,6 +384,23 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
         except Exception as e:
             print(f"[{scenario}] collecte échec essai {attempt + 1}/3 ({e}) — retry 25s", flush=True)
             time.sleep(25)
+
+    # Loki renvoie parfois 0 ligne SANS lever d'exception (blip du gateway) : la
+    # boucle ci-dessus ne le rattrape donc pas, et l'épisode part au rebut alors que
+    # traces et métriques sont parfaites. C'était 3 des 5 derniers échecs du gate,
+    # avec 4400-8300 traces et 37 services tracés à côté. On re-tente le seul pull
+    # défaillant plutôt que de jeter 33 min de collecte.
+    for attempt, pause in enumerate(LOKI_RETRY_PAUSES):
+        if loki.get("n_lines", 0) > 0:
+            break
+        print(f"[{scenario}] logs vides — nouvelle tentative Loki "
+              f"{attempt + 1}/{len(LOKI_RETRY_PAUSES)} dans {pause}s", flush=True)
+        time.sleep(pause)
+        try:
+            loki = probe.pull_loki(t_start, t_end, step, namespace)
+        except Exception as e:
+            print(f"[{scenario}] retry Loki échec ({e})", flush=True)
+
     for name, data in [("prometheus", prom), ("jaeger", jae), ("loki", loki)]:
         with gzip.open(out / f"{name}.json.gz", "wt") as f:
             json.dump(data, f)
@@ -231,6 +415,10 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
         "targets": targets, "chaos_resource": (f"v5-{scenario}" if not is_bug else f"bug-{scenario}"),
         "is_bug": is_bug, "bug_id": (scenario if is_bug else None),
         "held_out": held_out, "namespace": namespace, "step": step, "ramp_s": dur["ramp"], "t_start": t_start,
+        "phases": phases,  # phases effectives (jitter d'onset par épisode)
+        "peak_intensity": peak_intensity,
+        # valeur numérique du pic pour intensity_t (featurize plafonne dessus)
+        "peak_value": {"low": 1 / 3, "med": 2 / 3, "high": 1.0}[peak_intensity],
         "boundaries_rel": {  # secondes relatives au début de la fenêtre de collecte
             "baseline_start": boundaries.get("baseline_start", 0.0),
             "injection_start": boundaries["injection_start"],
@@ -240,16 +428,43 @@ def run_episode(scenario: str, out: Path, address: str, users: int, step: int,
     }
     json.dump(meta, open(out / "episode_meta.json", "w"), indent=2)
 
-    # contrôle qualité BRUT (léger, pas de build) — gate de collecte
+    # contrôle qualité BRUT (léger, pas de build) — gate de collecte.
+    # On ne demande plus « des données existent-elles ? » mais « sont-elles
+    # exploitables ? » : volume, couverture des services tracés, et manifestation
+    # effective de la faute (cf. seuils en tête de module).
     n_traces = jae.get("n_traces_total", 0)
     n_logs = loki.get("n_lines", 0)
     n_prom = len(prom.get("cpu", [])) if isinstance(prom.get("cpu"), list) else 0
-    ok = n_traces > 0 and n_logs > 0 and n_prom > 0
+    traces_list = jae.get("traces") or []
+    n_svc = len(_traced_services(traces_list))
+
+    reasons = []
+    if n_traces < MIN_TRACES:
+        reasons.append(f"traces={n_traces}<{MIN_TRACES}")
+    if n_logs <= 0:
+        reasons.append("logs=0")
+    if n_prom <= 0:
+        reasons.append("prom=0")
+    if n_svc < MIN_TRACED_SERVICES:
+        reasons.append(f"services_tracés={n_svc}<{MIN_TRACED_SERVICES}")
+    fault_score = float("nan")
+    if category not in NO_FAULT_CATEGORIES:
+        visible, fault_score = _fault_visible(traces_list, t_start, boundaries)
+        if not visible:
+            reasons.append(f"faute invisible (score={fault_score:.2f}<{FAULT_MIN_RATIO})")
+
+    ok = not reasons
     if not ok:
-        (out / ".raw_failed").write_text(f"traces={n_traces} logs={n_logs} prom={n_prom}")
+        # Format compatible avec le triage existant (`traces=… logs=… prom=…`),
+        # enrichi du motif exact pour ne plus avoir à deviner à l'audit.
+        (out / ".raw_failed").write_text(
+            f"traces={n_traces} logs={n_logs} prom={n_prom} services={n_svc} "
+            f"fault_score={fault_score:.2f} | " + "; ".join(reasons))
     return {
         "episode_id": episode_id, "raw_ok": ok,
         "n_traces": n_traces, "n_log_lines": n_logs, "n_prom_series": n_prom,
+        "n_traced_services": n_svc, "fault_score": fault_score,
+        "gate_reasons": reasons,
         "collect_s": round(time.time() - t_end, 1),
     }
 
@@ -266,9 +481,13 @@ def main() -> None:
     p.add_argument("--held-out", action="store_true")
     p.add_argument("--namespace", default="tt")
     p.add_argument("--pf-offset", type=int, default=0, help="décalage ports locaux (multi-runner)")
+    p.add_argument("--target", default=None, help="cible (rotation ; doit appartenir au target_pool)")
+    p.add_argument("--peak-intensity", default="high", choices=["low", "med", "high"],
+                   help="pic d'intensité de l'injection (pannes subtiles = low/med)")
     args = p.parse_args()
     res = run_episode(args.scenario, Path(args.out), args.address, args.users,
-                      args.step, args.bug, args.held_out, args.namespace, args.pf_offset)
+                      args.step, args.bug, args.held_out, args.namespace, args.pf_offset,
+                      args.target, args.peak_intensity)
     print(json.dumps(res, indent=2))
 
 

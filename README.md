@@ -1,6 +1,6 @@
-# EWAT — Early Warning and Anomaly Typing
+# EWAT: Early Warning and Anomaly Typing
 
-Stage de recherche Devoteam — Wassim Badraoui
+Stage de recherche Devoteam, Wassim Badraoui
 
 Détection précoce et typage automatique des anomalies dans les architectures
 microservices Kubernetes. Projet de recherche : séparer explicitement drift
@@ -28,7 +28,7 @@ Scope réduit aux services effectivement observables sur les 3 modalités
 (Prometheus + Jaeger + Loki) du cluster :
 `frontend`, `recommendation`, `cart`, `ad`, `product-catalog`, `load-generator`.
 
-## Pipeline dataset — Record → Build → Assemble
+## Pipeline dataset: Record → Build → Assemble
 
 Le pipeline de construction du dataset est découplé en trois phases
 indépendantes et rejouables. Une phase ne dépend jamais de la suivante, et
@@ -43,22 +43,22 @@ seule la phase 1 touche au cluster.
  data/raw/<ep>      data/features/<set>       data/datasets/<name>
 ```
 
-### Phase 1 — record
+### Phase 1: record
 
 Orchestre Chaos Mesh (baseline → pre → injection → recovery → cool-down) puis
 dumpe les réponses brutes de Prometheus, Jaeger et Loki pour chaque épisode.
-Pas de feature engineering à cette étape — uniquement un échantillonnage
+Pas de feature engineering à cette étape, uniquement un échantillonnage
 fidèle de la télémétrie.
 
 Trois modes d'accès aux backends (`--endpoint-mode`) :
 
-- **`nodeport`** — recommandé pour toute campagne > 1 h. Accès direct via
+- **`nodeport`**: recommandé pour toute campagne > 1 h. Accès direct via
   NodePort sur un worker Ready. Évite la dégradation SPDY des port-forwards
   longs (ConnectionReset côté Jaeger observé empiriquement). Voir
   `collection.nodeport.*` dans `configs/collection.yaml`.
-- **`local-portforward`** — les forwards sont ouverts manuellement, le script
+- **`local-portforward`**: les forwards sont ouverts manuellement, le script
   les consomme sur `127.0.0.1:<port>`. Pratique pour debug.
-- **`in-cluster`** — exécution depuis un pod du namespace `ewat`.
+- **`in-cluster`**: exécution depuis un pod du namespace `ewat`.
 
 Option `--manage-port-forwards` : ouvre et **renouvelle** un port-forward
 dédié avant chaque dump d'épisode, puis le ferme. Robuste aux tunnels SPDY
@@ -71,7 +71,7 @@ Robustesse :
   (delete Chaos Mesh + dump) avant exit.
 - **Quality gate post-dump** : chaque épisode est validé (Prometheus
   queries_ok non vide, Jaeger n_traces > 0, Loki n_lines > 0). Les échecs
-  sont marqués `.quality_failed` et non checkpointés — donc rejoués.
+  sont marqués `.quality_failed` et non checkpointés, donc rejoués.
 - **Timeouts chaos** : 60 s apply / 30 s delete, fallback `--ignore-not-found`
   pour éviter qu'un delete bloqué ne fige la campagne.
 
@@ -94,7 +94,7 @@ python -m scripts.validate_raw --raw-root data/raw
 python -m scripts.validate_raw --episode data/raw/episode_crash_000_... --strict
 ```
 
-### Phase 2 — build_features
+### Phase 2: build_features
 
 Rejouable à volonté, hors cluster. Construit `S(t) ∈ ℝ^{N×17}`,
 `A(t) ∈ ℝ^{N×N×3}` et `labels.parquet` à partir des dumps bruts via les
@@ -113,7 +113,7 @@ python -m scripts.build_features \
 
 Sortie : `data/features/v1/<episode_id>/{signal.npz,signal_mask.npz,adjacency.npz,labels.parquet,services.json,graph_stats.csv,metadata.json,feature_provenance.json}`
 
-### Phase 3 — assemble_dataset
+### Phase 3: assemble_dataset
 
 Applique les filtres qualité, vérifie la stabilité de l'ensemble V des
 services, puis produit un split **strictement temporel** (train/val/test) des
@@ -148,9 +148,9 @@ Définis dans `k8s/chaos-mesh/registry.yaml` et `configs/collection.yaml` :
 
 - **θ_drift (benign)** : `drift_scale_up`, `drift_rolling_deploy`,
   `drift_config_change`, `drift_traffic_ramp`
-- **θ_anomaly — hard** : `crash`, `oom`, `network_loss`
-- **θ_anomaly — gray** : `intermittent_error`, `fail_slow_latency`, `fail_slow_cpu`
-- **θ_anomaly — contention** : `cpu_starvation`, `memory_pressure`,
+- **θ_anomaly, hard** : `crash`, `oom`, `network_loss`
+- **θ_anomaly, gray** : `intermittent_error`, `fail_slow_latency`, `fail_slow_cpu`
+- **θ_anomaly, contention** : `cpu_starvation`, `memory_pressure`,
   `noisy_neighbor`, `resource_leak`
 - **θ_{drift ∩ anomaly}** : `faulty_deploy_overlap`
 
@@ -170,14 +170,14 @@ servent à calibrer ε_drift (étape 0 MMD-RFF) et à falsifier H2.
 Voir `docs/notes/synthese_collecte_dataset.md` pour le détail des évolutions
 et des décisions de conception.
 
-## EWAT v5 — collecte Train Ticket (prête au lancement)
+## EWAT v5: collecte Train Ticket (prête au lancement)
 
 À partir de v5, la collecte bascule sur **Train Ticket** (FudanSELab, 41 microservices
-Spring Cloud) au lieu d'Online Boutique — système plus riche, base publique, bugs réels
-documentés (F1–F22). Tout est dans `v5/` (loadgen, chaos, collect, deploy). Schéma
+Spring Cloud) au lieu d'Online Boutique, système plus riche, base publique, bugs réels
+documentés (F1-F22). Tout est dans `v5/` (loadgen, chaos, collect, deploy). Schéma
 **S(t) ∈ ℝ^{T×41×18}** (v5.1). Runbook complet : [`v5/LAUNCH.md`](v5/LAUNCH.md).
 
-Trois namespaces (`tt`, `tt-b`, `tt-c`) = 3 runners parallèles (~720 ép, **~7–9 j**). Contrainte
+Trois namespaces (`tt`, `tt-b`, `tt-c`) = 3 runners parallèles (~720 ép, **~7-9 j**). Contrainte
 = RAM (workers ~80-87 %, garde-fou `--ram-ceiling`). Contexte kubectl **épinglé**
 (`V5_KUBE_CONTEXT`, défaut `k8s-research-cluster`) avec préflight bloquant. Collecte **via NodePort,
 zéro port-forward** (Prometheus :32700, Loki :32701, Jaeger :32688/90/92). Runbook : `v5/LAUNCH.md`.
@@ -189,7 +189,7 @@ kubectl apply -f v5/deploy/monitoring_nodeports.yaml    # NodePort Prometheus+Lo
 for ns in tt tt-b tt-c; do kubectl get pods -n $ns --no-headers | grep -c 1/1; done  # 64 chacun
 kubectl top nodes | awk '/workers/{print $1,$5}'        # RAM workers < ~85% au repos
 
-# 1. COLLECTE — 3 runners en parallèle (3 terminaux/tmux), Phase 1 (dumps bruts)
+# 1. COLLECTE: 3 runners en parallèle (3 terminaux/tmux), Phase 1 (dumps bruts)
 cd v5
 PYTHONPATH=../src python -m collect.run_campaign \
   --namespace tt   --address http://<CLUSTER_NODE_IP>:32677 \
@@ -205,10 +205,10 @@ PYTHONPATH=../src python -m collect.run_campaign \
   --out-root ../data/raw_v5 --users 12 --reset-every 10 --held-out-cap 28 --ram-ceiling 90
 # reprise = relancer la même commande (idempotent via episode_meta.json)
 
-# 2. BUILD offline (Phase 2) — rejouable, en parallèle de la collecte
+# 2. BUILD offline (Phase 2): rejouable, en parallèle de la collecte
 PYTHONPATH=../src python -m collect.build_features_v5 --raw-root ../data/raw_v5 --workers 4
 
-# 3. ASSEMBLAGE + VALIDATION (Phase 3) — collecte finie
+# 3. ASSEMBLAGE + VALIDATION (Phase 3): collecte finie
 cd ..
 PYTHONPATH=src python scripts/validate_v5.py --features-root data/raw_v5
 PYTHONPATH=src python -m scripts.assemble_dataset --features-root data/raw_v5 \

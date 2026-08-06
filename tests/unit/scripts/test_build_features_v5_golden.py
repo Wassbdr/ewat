@@ -32,14 +32,19 @@ for p in (str(REPO_ROOT), str(REPO_ROOT / "src"), str(REPO_ROOT / "v5")):
 
 from collect.build_features_v5 import build_episode  # noqa: E402
 from scripts.validate_v5 import _check_episode  # noqa: E402
-from telemetry.feature_names import SCHEMA_V5_1, get_schema  # noqa: E402
+from telemetry.feature_names import get_schema  # noqa: E402
 
 SERVICES = ["ts-alpha", "ts-beta", "ts-gamma"]
 T0 = 1_750_000_000.0
 STEP = 30
 N_BINS = 8  # grille [T0, T0+240], 8 bins de 30 s
 
-V5_NAMES = get_schema(SCHEMA_V5_1)
+# Le golden test suit le schéma DÉCLARÉ par le builder (source de vérité
+# unique) : un bump de schéma (v5.1 → v5.2, etc.) ne doit pas casser ce test
+# tant que le builder et le registre restent cohérents entre eux.
+from collect.build_features_v5 import SCHEMA_VERSION  # noqa: E402
+
+V5_NAMES = get_schema(SCHEMA_VERSION)
 FI = {name: i for i, name in enumerate(V5_NAMES)}
 
 
@@ -74,7 +79,7 @@ def _write_prometheus(dump: Path) -> None:
         "jvm_heap_used": [_series(s, const(50e6)) for s in SERVICES],
         "jvm_heap_max": [_series(s, const(100e6)) for s in SERVICES],
         "jvm_gc_sum": [_series(s, const(0.01)) for s in SERVICES],
-        "jvm_threads_blocked": [_series(s, const(0.0)) for s in SERVICES],
+        "jvm_threads_live": [_series(s, const(0.0)) for s in SERVICES],
     }
     with gzip.open(dump / "prometheus.json.gz", "wt") as f:
         json.dump(prom, f)
@@ -181,7 +186,7 @@ def test_build_shapes_and_schema(built_episode: Path) -> None:
 
     meta = json.loads((built_episode / "metadata.json").read_text())
     assert meta["signal_feature_names"] == V5_NAMES
-    assert meta["dataset_schema_version"] == SCHEMA_V5_1
+    assert meta["dataset_schema_version"] == SCHEMA_VERSION
     assert meta["grid_step_s"] == STEP
 
 

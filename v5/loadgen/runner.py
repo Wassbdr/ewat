@@ -54,16 +54,65 @@ def op_contacts(q: Query):
     q.query_contacts()
 
 def op_admin_config(q: Query):
-    q.admin_login()
     q.query_admin_basic_config()
 
 def op_admin_price(q: Query):
-    q.admin_login()
     q.query_admin_basic_price()
 
 def op_admin_travel(q: Query):
-    q.admin_login()
     q.query_admin_travel()
+
+
+# Session ROLE_ADMIN partagée (login une fois par process). Les endpoints
+# adminorder/route/user exigent ROLE_ADMIN : on NE réutilise PAS la session
+# ROLE_USER du worker (sinon on corromprait son identité en plein flux métier).
+_admin_lock = threading.Lock()
+_admin_q: Query | None = None
+_admin_failed = False
+
+
+def _get_admin(address: str) -> Query | None:
+    """Query ROLE_ADMIN mise en cache. None si le login admin échoue (fallback
+    documenté : les 3 services admin restent alors imputés)."""
+    global _admin_q, _admin_failed
+    if _admin_failed:
+        return None
+    with _admin_lock:
+        if _admin_q is not None:
+            return _admin_q
+        if _admin_failed:
+            return None
+        a = Query(address)
+        try:
+            ok = a.admin_login()
+        except Exception:
+            ok = False
+        if not ok:
+            _admin_failed = True
+            logger.warning("admin login indisponible — admin-order/route/user "
+                           "resteront imputés (à documenter)")
+            return None
+        _admin_q = a
+        return _admin_q
+
+
+def op_admin_order(q: Query):
+    a = _get_admin(q.address)
+    if a is not None:
+        a.query_admin_order()
+
+def op_admin_route(q: Query):
+    a = _get_admin(q.address)
+    if a is not None:
+        a.query_admin_route()
+
+def op_admin_user(q: Query):
+    a = _get_admin(q.address)
+    if a is not None:
+        a.query_admin_user()
+
+def op_verify_code(q: Query):
+    q.gen_verify_code()
 
 
 # Registre des opérations légères (résolu dans le worker si absent de scenarios).
@@ -73,23 +122,37 @@ _EXTRA_OPS = {
     "op_assurances": op_assurances, "op_contacts": op_contacts,
     "op_admin_config": op_admin_config, "op_admin_price": op_admin_price,
     "op_admin_travel": op_admin_travel,
+    "op_admin_order": op_admin_order, "op_admin_route": op_admin_route,
+    "op_admin_user": op_admin_user, "op_verify_code": op_verify_code,
 }
 
 # Mix nominal élargi : flux métier profonds (preserve/pay/cancel/collect/
 # consign/rebook/execute) + opérations légères pour couvrir tout le graphe TT.
 NOMINAL_MIX: dict[str, int] = {
-    # flux métier multi-services (chaînes profondes)
-    "query_and_preserve": 22,
-    "query_and_pay": 16,   # → payment, inside-payment, voucher
-    "query_and_cancel": 10,
-    "query_and_collect": 7,
-    "query_and_consign": 7,
-    "query_and_rebook": 5,
-    "query_and_execute": 5,
-    # opérations légères (couverture large)
+    # parcours métier complet AUTO-SUFFISANT (crée + consomme un ordre dans le
+    # même appel) → réveille toute la queue transactionnelle sans dépendre du
+    # pool serveur (vidé entre épisodes par reset_tt_state). Dominant.
+    "full_journey": 35,
+    # preserve seul : alimente le pool pour la variété des flux standalone
+    "query_and_preserve": 12,
+    # flux transactionnels standalone (redondants avec full_journey, faibles)
+    "query_and_pay": 4,
+    "query_and_cancel": 4,
+    "query_and_collect": 3,
+    "query_and_consign": 3,
+    "query_and_rebook": 3,
+    "query_and_execute": 3,
+    # opérations légères (couverture large lecture)
     "op_food": 5, "op_route": 4, "op_cheapest": 3, "op_min_station": 2,
     "op_quickest": 2, "op_assurances": 3, "op_contacts": 2,
+    # admin basic/travel (ROLE_USER) — voir aussi op_admin_order/route/user (admin)
     "op_admin_config": 3, "op_admin_price": 2, "op_admin_travel": 2,
+    # services admin dédiés (session ROLE_ADMIN) — poids relevé pour garantir
+    # l'échantillonnage même sur épisodes courts (pilote : admin-user/verify
+    # atteignables HTTP 200 mais sous-échantillonnés à poids 2 sur 183 s).
+    "op_admin_order": 3, "op_admin_route": 3, "op_admin_user": 3,
+    # probe best-effort verify-code (HTTP 200 confirmé au pilote)
+    "op_verify_code": 3,
 }
 
 
@@ -121,6 +184,13 @@ def _worker(address: str, stop: threading.Event, stats: Stats, scenario: str | N
     except Exception:
         stats.hit(False)
         return
+
+    # v5 fix : garantir un contact une fois pour la session — preserve l'exige,
+    # sinon toute la queue transactionnelle est affamée (pool d'ordres vide).
+    try:
+        q.add_contact()
+    except Exception:
+        pass
 
     last_relogin = time.time()
     while not stop.is_set():

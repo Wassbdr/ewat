@@ -1,0 +1,120 @@
+# EWAT — promtail dédié aux nœuds `collectors` (fix outage logs tt/tt-b)
+#
+# Contexte : le DaemonSet promtail du cluster (monitoring-metrics) ne tolère PAS
+# le taint `dedicated=collection:NoSchedule` des nœuds `collectors-tjwf5-*`, où
+# tournent les runners tt/tt-b. Résultat : leurs logs ne remontent jamais dans
+# Loki (outage confirmé : 0 ligne tt/tt-b sur 8 jours). tt-c est sur les nœuds
+# `workers-58w74-*` (avec promtail) → non affecté.
+#
+# Ce manifeste déploie NOTRE promtail, uniquement sur les collectors, en
+# **découverte par fichier** (pas de kubernetes_sd) → aucun ClusterRole requis
+# (namespace-admin suffit). Il reproduit les labels du promtail cluster
+# (namespace, app, pod, container, node_name) pour que build_features_v5._logs
+# retrouve les services via le label `app`.
+#
+# À REVOIR + TESTER avant rollout (voir bloc de vérif en fin de fichier).
+# Appliquer : kubectl --context observit-cluster1 -n tt apply -f v5/deploy/ewat-promtail-collectors.yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ewat-promtail-config
+  namespace: tt
+  labels: { app: ewat-promtail }
+data:
+  promtail.yaml: |
+    server:
+      log_level: info
+      log_format: logfmt
+      http_listen_port: 3101
+    clients:
+      - url: http://loki.monitoring-metrics:3100/loki/api/v1/push
+    positions:
+      filename: /run/ewat-promtail/positions.yaml
+    scrape_configs:
+      - job_name: ewat-collection
+        static_configs:
+          - targets: [localhost]
+            labels:
+              # Deux jeux de logs : namespaces tt et tt-b sur ce nœud.
+              # (glob doublestar : {tt_,tt-b_}* matche les deux, pas tt-c.)
+              __path__: /var/log/pods/{tt_,tt-b_}*/*/*.log
+        pipeline_stages:
+          - cri: {}                       # format CRI (timestamp + stream + msg)
+          # Extrait namespace / pod / container depuis le chemin du fichier.
+          - regex:
+              source: filename
+              expression: '/var/log/pods/(?P<namespace>[^_]+)_(?P<pod>[^_]+)_(?P<uid>[^/]+)/(?P<container>[^/]+)/[0-9]+\.log'
+          # Dérive `app` = nom de service depuis le nom de pod
+          # (strip du hash de replicaset + suffixe de pod).
+          - regex:
+              source: pod
+              expression: '^(?P<app>[a-z0-9-]+?)-[0-9a-f]{8,10}-[a-z0-9]{5}$'
+          - labels:
+              namespace:
+              pod:
+              container:
+              app:
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ewat-promtail
+  namespace: tt
+  labels: { app: ewat-promtail }
+spec:
+  selector:
+    matchLabels: { app: ewat-promtail }
+  template:
+    metadata:
+      labels: { app: ewat-promtail }
+    spec:
+      # Uniquement sur les nœuds de collecte (qui n'ont pas le promtail cluster).
+      nodeSelector:
+        dedicated: collection
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: collection
+          effect: NoSchedule
+      containers:
+        - name: promtail
+          image: docker.io/grafana/promtail:2.9.3
+          args:
+            - -config.file=/etc/promtail/promtail.yaml
+            # node_name injecté comme label externe (pas d'API K8s).
+            - -client.external-labels=node_name=$(NODE_NAME)
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef: { fieldPath: spec.nodeName }
+          ports:
+            - name: http-metrics
+              containerPort: 3101
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsUser: 0
+          volumeMounts:
+            - { name: config,     mountPath: /etc/promtail }
+            - { name: positions,  mountPath: /run/ewat-promtail }
+            - { name: pods,       mountPath: /var/log/pods,               readOnly: true }
+            - { name: containers, mountPath: /var/lib/docker/containers,  readOnly: true }
+      volumes:
+        - name: config
+          configMap: { name: ewat-promtail-config }
+        - name: positions
+          hostPath: { path: /run/ewat-promtail, type: DirectoryOrCreate }
+        - name: pods
+          hostPath: { path: /var/log/pods }
+        - name: containers
+          hostPath: { path: /var/lib/docker/containers }
+# ─────────────────────────────────────────────────────────────────────────────
+# VÉRIFICATION (après apply) :
+#   1) pods lancés sur chaque collector :
+#      kubectl -n tt get pods -l app=ewat-promtail -o wide
+#   2) générer un peu de charge (load-gen tt), puis interroger Loki :
+#      {namespace="tt"} | app label présent, ex. {namespace="tt", app="ts-order-service"}
+#      → doit retourner des lignes récentes avec le bon `app`.
+#   3) si `app` vide : le stripping regex ne matche pas ce pod → ajuster l'expression.
+# ROLLBACK : kubectl -n tt delete -f v5/deploy/ewat-promtail-collectors.yaml
+# ─────────────────────────────────────────────────────────────────────────────

@@ -57,7 +57,7 @@ def _repl_for(cat: dict, intensity: str) -> dict:
     lv = cat["intensity_levels"][intensity]
     return {
         "CPU_LOAD": lv["cpu_load"],
-        "MEM_PCT": lv["mem_pct"],
+        "MEM_SIZE": lv["mem_size"],
         "LATENCY": lv["latency"],
         "LOSS": lv["loss"],
         "WORKERS": lv["workers"],
@@ -147,10 +147,83 @@ def cmd_list(cat: dict) -> None:
         print(f"  {b['id']:<5} {b['status']:<9} {b['service']:<28} {b['image'] or '(à builder)'}")
 
 
-def cmd_apply(cat: dict, name: str, intensity: str, duration: str) -> None:
+# ─────────────────────── Drift bénin (pas de Chaos Mesh) ───────────────────
+# θ_drift = dérive bénigne (rolling deploy, autoscaling) : PAS une anomalie.
+# Réalisé par des opérations kubectl natives (restart/scale), pas des manifestes
+# Chaos Mesh. L'épisode reste labellé regime=normal + drift_flag (cf.
+# build_features_v5 : category=="drift" → régime non-anomalie, fenêtre drift_flag).
+def _drift_state_path(name: str, ns: str) -> str:
+    # namespacé : 2 runners (tt / tt-b) sur le même scénario ne doivent pas
+    # s'écraser mutuellement le replica baseline sauvegardé.
+    return f"/tmp/ewat_drift_{ns}_{_rfc1123(name)}.json"
+
+
+def _apply_drift(cat: dict, scn: dict) -> None:
+    ns, svc, kind = cat["namespace"], scn["target"], scn["kind"]
+    if kind == "rollout":
+        print(f"[drift] rollout restart {svc}")
+        subprocess.run([*_KC, "rollout", "restart", "-n", ns, f"deploy/{svc}"], check=False)
+    elif kind == "scale":
+        cur = _kget(ns, svc, "{.spec.replicas}") or "1"
+        json.dump({"service": svc, "replicas": cur},
+                  open(_drift_state_path(scn["name"], ns), "w"))
+        target = str(scn.get("replicas", 3))
+        print(f"[drift] scale {svc}: {cur} -> {target}")
+        subprocess.run([*_KC, "scale", "-n", ns, f"deploy/{svc}", f"--replicas={target}"],
+                       check=False)
+    else:
+        raise SystemExit(f"drift kind inconnu: {kind}")
+
+
+def _delete_drift(cat: dict, scn: dict) -> None:
+    ns, svc, kind = cat["namespace"], scn["target"], scn["kind"]
+    if kind == "rollout":
+        return  # le restart se termine seul — rien à annuler
+    if kind == "scale":
+        st = {}
+        try:
+            st = json.load(open(_drift_state_path(scn["name"], ns)))
+        except Exception:
+            pass
+        back = st.get("replicas", "1")
+        print(f"[drift] scale back {svc} -> {back}")
+        subprocess.run([*_KC, "scale", "-n", ns, f"deploy/{svc}", f"--replicas={back}"],
+                       check=False)
+
+
+_DRIFT_KINDS = {"rollout", "scale"}
+
+
+def _overlap_chaos_pseudo(scn: dict) -> dict:
+    """Sous-scénario chaos d'un overlap, au format attendu par _render."""
+    c = scn["chaos"]
+    return {"name": scn["name"], "kind": c["kind"], "target": c["target"], "spec": c["spec"]}
+
+
+def cmd_apply(cat: dict, name: str, intensity: str, duration: str,
+              target: str | None = None) -> None:
     scn = _get_scn(cat, name)
+    if scn.get("kind") == "none":
+        print(f"[normal] {name}: no-op (aucune injection)")
+        return
+    if scn.get("kind") in _DRIFT_KINDS:
+        return _apply_drift(cat, scn)
+    if scn.get("kind") == "overlap":
+        # θ_drift∩anomaly : drift natif + chaos simultanés sur le même service
+        _apply_drift(cat, {**scn["drift"], "name": scn["name"]})
+        scn = _overlap_chaos_pseudo(scn)
+    # Rotation de cible : --target doit appartenir au pool déclaré du scénario
+    # (décorrèle type↔service ; validation stricte = pas de chaos sur une cible
+    # arbitraire par typo). Sans --target, cible historique du catalogue.
+    if target is not None:
+        allowed = set(scn.get("target_pool", [])) | {scn.get("target")}
+        if target not in allowed:
+            raise SystemExit(
+                f"{name}: cible {target!r} hors pool {sorted(allowed - {None})}")
+        scn = {**scn, "target": target}
     repl = _repl_for(cat, intensity)
     repl["DURATION"] = duration
+    repl["TARGET"] = scn.get("target", "")  # ex. containerNames: ["{{TARGET}}"]
     manifests = _render(scn, cat["namespace"], repl)
     # injecter la duration substituée + caster les champs entiers
     manifests = _cast_ints(_subst(manifests, {"DURATION": duration}))
@@ -159,8 +232,20 @@ def cmd_apply(cat: dict, name: str, intensity: str, duration: str) -> None:
 
 def cmd_delete(cat: dict, name: str) -> None:
     scn = _get_scn(cat, name)
-    manifests = _render(scn, cat["namespace"], {"DURATION": "1s"})
+    if scn.get("kind") == "none":
+        print(f"[normal] {name}: no-op")
+        return
+    if scn.get("kind") in _DRIFT_KINDS:
+        return _delete_drift(cat, scn)
+    drift_part = None
+    if scn.get("kind") == "overlap":
+        drift_part = {**scn["drift"], "name": scn["name"]}
+        scn = _overlap_chaos_pseudo(scn)
+    # delete matche par nom de ressource (v5-<scenario>) — indépendant de la cible
+    manifests = _render(scn, cat["namespace"], {"DURATION": "1s", "TARGET": scn.get("target", "")})
     _kubectl("delete", manifests)
+    if drift_part is not None:
+        _delete_drift(cat, drift_part)
 
 
 def _get_bug(cat: dict, bug_id: str) -> dict:
@@ -170,8 +255,9 @@ def _get_bug(cat: dict, bug_id: str) -> dict:
     raise SystemExit(f"bug inconnu: {bug_id}")
 
 
-def _state_path(bug_id: str) -> str:
-    return f"/tmp/ewat_bug_{bug_id}.json"
+def _state_path(bug_id: str, ns: str) -> str:
+    # namespacé : 2 runners (tt / tt-b) ne doivent pas se croiser les états sains
+    return f"/tmp/ewat_bug_{ns}_{bug_id}.json"
 
 
 def _kget(ns: str, svc: str, jsonpath: str) -> str:
@@ -197,20 +283,41 @@ def cmd_apply_bug(cat: dict, bug_id: str) -> None:
             raise SystemExit(f"{bug_id}: image indisponible (status={b.get('status')}).")
         healthy = _kget(ns, svc, "{.spec.template.spec.containers[0].image}")
         json.dump({"mode": "image", "service": svc, "healthy": healthy},
-                  open(_state_path(bug_id), "w"))
+                  open(_state_path(bug_id, ns), "w"))
         print(f"{bug_id} [image] {svc}: {healthy} -> {b['image']}")
         subprocess.run([*_KC, "set", "image", "-n", ns,
                         f"deploy/{svc}", f"{svc}={b['image']}"], check=False)
     elif mode == "mem_limit":
         healthy = _kget(ns, svc, "{.spec.template.spec.containers[0].resources.limits.memory}") or "500Mi"
         json.dump({"mode": "mem_limit", "service": svc, "healthy": healthy},
-                  open(_state_path(bug_id), "w"))
+                  open(_state_path(bug_id, ns), "w"))
         faulty = b["mem_limit"]
         print(f"{bug_id} [mem_limit] {svc}: {healthy} -> {faulty}")
         patch = {"spec": {"template": {"spec": {"containers": [
             {"name": svc, "resources": {"limits": {"memory": faulty}}}]}}}}
         subprocess.run([*_KC, "patch", "deploy", "-n", ns, svc, "--type=strategic",
                         "-p", json.dumps(patch)], check=False)
+    elif mode == "env":
+        # Bug reproduit par CONFIGURATION (pas de rebuild), comme F3 : on patche des
+        # variables d'env JVM/Spring (ex. -Dserver.tomcat.max-threads=5 → épuisement
+        # du pool de threads sous charge parallèle). On capture la valeur saine de
+        # CHAQUE var pour restaurer à l'identique (une var préexistante ne doit pas
+        # être perdue → sinon contamination des épisodes suivants, cf. _restore_bug).
+        envs = b["env"]  # {VAR: value}
+        prev = {k: _kget(ns, svc,
+                         "{.spec.template.spec.containers[0].env[?(@.name==\"" + k + "\")].value}")
+                for k in envs}
+        json.dump({"mode": "env", "service": svc, "prev": prev},
+                  open(_state_path(bug_id, ns), "w"))
+        # env_append : CONCATÈNE à la valeur saine au lieu de l'écraser. Indispensable
+        # pour JAVA_TOOL_OPTIONS, qui porte déjà `-javaagent:/jmxagent/jmx.jar=...` sur
+        # tous les services TT : l'écraser supprimerait l'agent JMX → plus aucune
+        # métrique jvm_* sur le service fautif, donc plus de symptôme observable.
+        append = bool(b.get("env_append", False))
+        pairs = [f"{k}={(prev[k] + ' ' + v).strip() if (append and prev[k]) else v}"
+                 for k, v in envs.items()]
+        print(f"{bug_id} [env] {svc}: set {pairs} (prev={prev})")
+        subprocess.run([*_KC, "set", "env", "-n", ns, f"deploy/{svc}", *pairs], check=False)
     else:
         raise SystemExit(f"{bug_id}: mode inconnu {mode}")
 
@@ -222,7 +329,7 @@ def cmd_delete_bug(cat: dict, bug_id: str, healthy_override: str | None = None) 
     svc = b["service"]
     st = {}
     try:
-        st = json.load(open(_state_path(bug_id)))
+        st = json.load(open(_state_path(bug_id, ns)))
     except Exception:
         pass
     mode = st.get("mode", b.get("mode", "image"))
@@ -238,6 +345,13 @@ def cmd_delete_bug(cat: dict, bug_id: str, healthy_override: str | None = None) 
             {"name": svc, "resources": {"limits": {"memory": healthy}}}]}}}}
         subprocess.run([*_KC, "patch", "deploy", "-n", ns, svc, "--type=strategic",
                         "-p", json.dumps(patch)], check=False)
+    elif mode == "env":
+        # restaure chaque var : valeur saine préexistante → set back ; absente → unset
+        prev = st.get("prev") or {k: "" for k in b.get("env", {})}
+        args = [f"{k}={v}" if v else f"{k}-" for k, v in prev.items()]
+        subprocess.run([*_KC, "set", "env", "-n", ns, f"deploy/{svc}", *args], check=False)
+        print(f"{bug_id}: env restauré -> {prev}")
+        return
     print(f"{bug_id}: restauré -> {healthy}")
 
 
@@ -246,7 +360,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description="EWAT v5 chaos injector")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list")
-    a = sub.add_parser("apply"); a.add_argument("name"); a.add_argument("--intensity", default="high"); a.add_argument("--duration", default="600s"); a.add_argument("--namespace", default=None)
+    a = sub.add_parser("apply"); a.add_argument("name"); a.add_argument("--intensity", default="high"); a.add_argument("--duration", default="600s"); a.add_argument("--namespace", default=None); a.add_argument("--target", default=None, help="cible (doit appartenir au target_pool du scénario)")
     d = sub.add_parser("delete"); d.add_argument("name"); d.add_argument("--namespace", default=None)
     ab = sub.add_parser("apply-bug"); ab.add_argument("bug_id"); ab.add_argument("--namespace", default=None)
     db = sub.add_parser("delete-bug"); db.add_argument("bug_id"); db.add_argument("healthy_image", nargs="?", default=None); db.add_argument("--namespace", default=None)
@@ -259,7 +373,7 @@ def main() -> None:
     if args.cmd == "list":
         cmd_list(cat)
     elif args.cmd == "apply":
-        cmd_apply(cat, args.name, args.intensity, args.duration)
+        cmd_apply(cat, args.name, args.intensity, args.duration, args.target)
     elif args.cmd == "delete":
         cmd_delete(cat, args.name)
     elif args.cmd == "apply-bug":

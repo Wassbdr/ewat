@@ -124,8 +124,10 @@ def _prom_queries(ns: str = NAMESPACE) -> dict:
         "jvm_heap_used": f'jvm_memory_bytes_used{{namespace="{ns}",area="heap"}}',
         "jvm_heap_max": f'jvm_memory_bytes_max{{namespace="{ns}",area="heap"}}',
         "jvm_gc_sum": f'rate(jvm_gc_collection_seconds_sum{{namespace="{ns}"}}[2m])',
-        # threads BLOQUÉS (contention) — voir build_features_v5 (ρ ram_util faible).
-        "jvm_threads_blocked": f'jvm_threads_state{{namespace="{ns}",state="BLOCKED"}}',
+        # threads VIVANTS (saturation JVM) — jvm_threads_state{state=BLOCKED} était
+        # mort (0 partout : Spring ne bloque quasi jamais sur moniteur). Le nombre
+        # de threads vivants varie sous charge et sature à l'épuisement du pool.
+        "jvm_threads_live": f'jvm_threads_current{{namespace="{ns}"}}',
     }
 
 

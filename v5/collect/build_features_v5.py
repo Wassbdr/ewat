@@ -12,7 +12,7 @@ Sourcing TT v5.1, 18 features (pas d'Istio/OTel HTTP → latence/erreur via trac
   M[4] net_sat, M[5] disk_io              ← cAdvisor
   M[6] mem_limit_ratio                    ← cAdvisor working_set/limite (saturation)
   M[7] jvm_heap_ratio, M[8] jvm_gc_util,
-  M[9] jvm_threads_blocked                ← jmx_prometheus_javaagent (annotations)
+  M[9] jvm_threads_live                   ← jmx_prometheus_javaagent (annotations)
   T[10] abnormal_span_rate, T[11] trace_depth,
   T[12] fan_out, T[13] latency_cv         ← TraceCollector (modules existants)
   L[14] log_error_rate, L[17] lexical_entropy  ← Loki
@@ -59,7 +59,7 @@ from telemetry.extractors.traces_file import (  # noqa: E402
 )
 from telemetry.feature_names import (  # noqa: E402
     MODALITY_SLICES,
-    SCHEMA_V5_1,
+    SCHEMA_V5_2,
     get_schema,
     signal_dim,
 )
@@ -72,7 +72,7 @@ except Exception:  # diagnostics optionnel
 # Schéma v5.1 (18 features) — source de vérité : telemetry.feature_names
 # (registre versionné, D1 audit 2026-06). Rationale du schéma (suppression
 # span_dur_p99/retry_rate, ajout JVM + mem_limit_ratio) documentée là-bas.
-SCHEMA_VERSION = SCHEMA_V5_1
+SCHEMA_VERSION = SCHEMA_V5_2
 FEATURE_NAMES = get_schema(SCHEMA_VERSION)
 N_FEATURES = signal_dim(SCHEMA_VERSION)
 # Tranches modales (pour quality_snapshot et l'analyse)
@@ -101,7 +101,7 @@ def _metrics_cadvisor(prom: dict, services: list[str], idx: dict, t_grid, step):
     out = {f: np.full((len(services), T), np.nan, np.float32)
            for f in ["cpu_util", "ram_util", "net_sat", "disk_io", "mem_limit",
                      "restart_count", "jvm_heap_used", "jvm_heap_max",
-                     "jvm_gc_util", "jvm_threads_blocked"]}
+                     "jvm_gc_util", "jvm_threads_live"]}
 
     def accum(keys, feat, agg):
         buckets = defaultdict(list)
@@ -130,7 +130,7 @@ def _metrics_cadvisor(prom: dict, services: list[str], idx: dict, t_grid, step):
     accum(["jvm_heap_used"], "jvm_heap_used", "max")
     accum(["jvm_heap_max"], "jvm_heap_max", "max")
     accum(["jvm_gc_sum"], "jvm_gc_util", "max")
-    accum(["jvm_threads_blocked"], "jvm_threads_blocked", "max")
+    accum(["jvm_threads_live"], "jvm_threads_live", "max")
     # jvm_heap_ratio = used / max (par cellule), borné [0,1]
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = out["jvm_heap_used"] / out["jvm_heap_max"]
@@ -181,9 +181,10 @@ def impute(S, mask, names):
     S est de forme (T, N, F) : axe 0 = temps, axe 1 = service.
     """
     S = S.copy()
-    # gauges = saturation (forward-fill si scrape manqué). jvm_threads_blocked est
-    # un compteur transitoire (0 = pas de contention) → NaN→0, pas de forward-fill.
-    gauges = {"cpu_util", "ram_util", "jvm_heap_ratio", "mem_limit_ratio"}
+    # gauges = saturation (forward-fill si scrape manqué). jvm_threads_live est le
+    # nombre de threads vivants : un scrape manqué ≠ 0 thread → gauge forward-fill.
+    gauges = {"cpu_util", "ram_util", "jvm_heap_ratio", "mem_limit_ratio",
+              "jvm_threads_live"}
     for fi, fn in enumerate(names):
         plane = S[:, :, fi]  # (T, N)
         if fn in gauges:
@@ -242,7 +243,7 @@ def build(dump: Path, services: list[str], step: int, aliases: dict | None = Non
 
     # M cAdvisor + JVM (transpose service×T → T×service)
     for fname in ["cpu_util", "ram_util", "net_sat", "disk_io", "mem_limit_ratio",
-                  "restart_count", "jvm_heap_ratio", "jvm_gc_util", "jvm_threads_blocked"]:
+                  "restart_count", "jvm_heap_ratio", "jvm_gc_util", "jvm_threads_live"]:
         S[:, :, FEATURE_NAMES.index(fname)] = M[fname].T
     for fname in ["log_error_rate", "lexical_entropy"]:
         S[:, :, FEATURE_NAMES.index(fname)] = L[fname].T
@@ -295,7 +296,8 @@ def build(dump: Path, services: list[str], step: int, aliases: dict | None = Non
 def write_episode(res: dict, out: Path, episode_id: str, scenario: str, category: str,
                   target_services: list[str], chaos_resource: str, boundaries: dict,
                   regime: np.ndarray, intensity: np.ndarray, fault_type: str,
-                  bug_id: str | None, held_out: bool, step: int):
+                  bug_id: str | None, held_out: bool, step: int,
+                  drift_flag_arr: np.ndarray | None = None):
     import pandas as pd
 
     out.mkdir(parents=True, exist_ok=True)
@@ -307,7 +309,11 @@ def write_episode(res: dict, out: Path, episode_id: str, scenario: str, category
     np.savez_compressed(out / "adjacency.npz", adjacency=res["adjacency"])
     json.dump(res["services"], open(out / "services.json", "w"), indent=1)
 
-    drift = category in ("drift", "overlap")
+    # drift_flag par pas de temps. Défaut (rétro-compat) = épisode entier si la
+    # catégorie est drift/overlap. Le drift pur passe une FENÊTRE (regime reste
+    # normal — dérive bénigne, pas d'anomalie : θ_drift est orthogonal au régime).
+    if drift_flag_arr is None:
+        drift_flag_arr = np.full(T, category in ("drift", "overlap"), dtype=bool)
     rows = []
     for t in range(T):
         rows.append({
@@ -319,8 +325,9 @@ def write_episode(res: dict, out: Path, episode_id: str, scenario: str, category
             "target_service": target_services[0] if target_services else "",
             "chaos_resource": chaos_resource,
             "episode_id": episode_id,
-            "drift_flag": bool(drift),
-            "is_injection": regime[t] == "injection",
+            "drift_flag": bool(drift_flag_arr[t]),
+            # drift_anomaly = anomalie active (déploiement défectueux), pas du drift pur
+            "is_injection": regime[t] in ("injection", "drift_anomaly"),
             "intensity_t": float(intensity[t]),
             "fault_type": fault_type,
             "bug_id": bug_id or "",
@@ -398,23 +405,44 @@ def build_episode(ep_dir: Path, services: list[str] | None = None,
     rel = res["t_grid"] - res["t_grid"][0]
     br = meta["boundaries_rel"]
     inj0, inj1, ramp_s = br["injection_start"], br["injection_end"], meta.get("ramp_s", 0)
+    is_drift = meta.get("category") == "drift"
+    is_overlap = meta.get("category") == "overlap"
+    is_normal = meta.get("category") == "normal"
+    # pic d'intensité de l'épisode (pannes subtiles : low=1/3, med=2/3) —
+    # intensity_t plafonne au pic réellement injecté, pas à 1.0 systématique.
+    peak = float(meta.get("peak_value", 1.0))
     regime = np.array(["normal"] * T, dtype=object)
     intensity = np.zeros(T)
+    drift_window = np.zeros(T, dtype=bool)
     for i, g in enumerate(rel):
+        if is_normal:
+            continue  # run sain complet : regime normal partout, intensity 0
         if inj0 <= g < inj1:
-            regime[i] = "injection"
             into = g - inj0
-            intensity[i] = min(1.0, into / ramp_s) if ramp_s > 0 else 1.0
-        elif g >= inj1:
+            intensity[i] = peak * min(1.0, into / ramp_s) if ramp_s > 0 else peak
+            if is_drift:
+                # dérive bénigne : on marque la fenêtre drift, mais le régime reste
+                # normal (pas d'anomalie) — θ_drift orthogonal au régime.
+                drift_window[i] = True
+            elif is_overlap:
+                # θ_drift∩anomaly (déploiement défectueux) : 4e régime de la
+                # formalisation — drift ET anomalie simultanés dans la fenêtre.
+                regime[i] = "drift_anomaly"
+                drift_window[i] = True
+            else:
+                regime[i] = "injection"
+        elif g >= inj1 and not is_drift:
             regime[i] = "recovery"
     t0 = res["t_grid"][0]
     bnd = {"baseline_start": t0, "injection_start": inj0 + t0,
            "injection_end": inj1 + t0, "recovery_end": br["recovery_end"] + t0}
+    fault_type = ("none" if is_normal else "drift" if is_drift
+                  else ("bug" if meta.get("is_bug") else "chaos"))
     q = write_episode(
         res, ep_dir, meta["episode_id"], meta["scenario"], meta.get("category", "unknown"),
         meta.get("targets", []), meta.get("chaos_resource", ""), bnd, regime, intensity,
-        "bug" if meta.get("is_bug") else "chaos", meta.get("bug_id"),
-        bool(meta.get("held_out")), step)
+        fault_type, meta.get("bug_id"), bool(meta.get("held_out")), step,
+        drift_flag_arr=drift_window)
     return {"episode_id": meta["episode_id"], "shape": list(res["signal"].shape),
             "raw_nan": q["signal_nan_ratio"],
             "g_edges": int((res["adjacency"][:, :, :, 0] > 0).sum()),

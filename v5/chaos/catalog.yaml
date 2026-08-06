@@ -19,102 +19,177 @@
 namespace: tt
 
 # Niveaux d'intensité pour le ramp-up (step/10 → cible nominale)
+# mem_size : taille ABSOLUE, pas un pourcentage (changé le 2026-07-27).
+# Un `size: "80%"` était ambigu — pourcentage de quoi ? Le cgroup du conteneur ou
+# la mémoire du nœud ? Tous les services ciblés ont `limits.memory: 500Mi` et une
+# JVM à ~400 Mi au repos, donc ~100 Mi de marge. Des tailles absolues calées sur
+# cette marge donnent un vrai gradient de sévérité (pression GC → OOMKill franc)
+# et lèvent tout risque pour le nœud, quelle que soit la sémantique du %.
 intensity_levels:
-  low: {cpu_load: 30, mem_pct: 25, latency: "50ms", loss: "10", workers: 1}
-  med: {cpu_load: 60, mem_pct: 50, latency: "200ms", loss: "30", workers: 2}
-  high: {cpu_load: 90, mem_pct: 80, latency: "500ms", loss: "60", workers: 4}
+  low: {cpu_load: 30, mem_size: "50MB", latency: "50ms", loss: "10", workers: 1}
+  med: {cpu_load: 60, mem_size: "120MB", latency: "200ms", loss: "30", workers: 2}
+  high: {cpu_load: 90, mem_size: "250MB", latency: "500ms", loss: "60", workers: 4}
 
 scenarios:
   # ───────────── MONO-CAUSE (15) — training ─────────────
+  # target_pool : rotation de cible par répétition (run_campaign : pool[rep % len]).
+  # Décorrèle type de panne ↔ service (fuite signature scénario v3) et débloque la
+  # tâche localisation. Premier élément = cible historique. Pools = services porteurs
+  # de trafic uniquement (jamais news/ticket-office/ui-dashboard/voucher : symptôme
+  # invisible). held-out/compo/drift/overlap gardent une cible fixe (design).
   - name: cpu_stress
     category: contention
     kind: StressChaos
     target: ts-travel-service
+    target_pool: [ts-travel-service, ts-order-service, ts-basic-service, ts-user-service]
     spec: {mode: one, stressors: {cpu: {workers: "{{WORKERS}}", load: "{{CPU_LOAD}}"}}}
 
   - name: cpu_starvation
     category: contention
     kind: StressChaos
     target: ts-travel2-service
+    target_pool: [ts-travel2-service, ts-seat-service, ts-station-service, ts-ticketinfo-service]
     spec: {mode: all, stressors: {cpu: {workers: "{{WORKERS}}", load: "{{CPU_LOAD}}"}}}
 
   - name: memory_stress
     category: contention
     kind: StressChaos
     target: ts-order-service
-    spec: {mode: one, stressors: {memory: {workers: "{{WORKERS}}", size: "{{MEM_PCT}}%"}}}
+    target_pool: [ts-order-service, ts-travel-service, ts-preserve-service, ts-basic-service]
+    spec: {mode: one, stressors: {memory: {workers: "{{WORKERS}}", size: "{{MEM_SIZE}}"}}}
 
   - name: memory_pressure
     category: contention
     kind: StressChaos
     target: ts-user-service
-    spec: {mode: one, stressors: {memory: {workers: 2, size: "{{MEM_PCT}}%"}}}
+    target_pool: [ts-user-service, ts-auth-service, ts-contacts-service, ts-price-service]
+    spec: {mode: one, stressors: {memory: {workers: 2, size: "{{MEM_SIZE}}"}}}
 
   - name: network_delay
     category: gray
     kind: NetworkChaos
     target: ts-basic-service
+    target_pool: [ts-basic-service, ts-order-service, ts-seat-service, ts-food-service]
     spec: {action: delay, mode: one, delay: {latency: "{{LATENCY}}", jitter: "20ms"}}
 
   - name: network_loss
     category: gray
     kind: NetworkChaos
     target: ts-route-service
+    target_pool: [ts-route-service, ts-station-service, ts-price-service, ts-config-service]
     spec: {action: loss, mode: one, loss: {loss: "{{LOSS}}", correlation: "25"}}
 
   - name: network_corrupt
     category: gray
     kind: NetworkChaos
     target: ts-order-other-service
+    target_pool: [ts-order-other-service, ts-route-plan-service, ts-travel2-service, ts-food-service]
     spec: {action: corrupt, mode: one, corrupt: {corrupt: "{{LOSS}}", correlation: "25"}}
 
   - name: network_duplicate
     category: gray
     kind: NetworkChaos
     target: ts-preserve-service
+    target_pool: [ts-preserve-service, ts-inside-payment-service, ts-order-service, ts-security-service]
     spec: {action: duplicate, mode: one, duplicate: {duplicate: "{{LOSS}}", correlation: "25"}}
 
   - name: network_partition
     category: hard
     kind: NetworkChaos
     target: ts-station-service
+    target_pool: [ts-station-service, ts-route-service, ts-config-service, ts-price-service]
     spec: {action: partition, mode: one, direction: both}
 
   - name: pod_kill
     category: hard
     kind: PodChaos
     target: ts-seat-service
+    target_pool: [ts-seat-service, ts-price-service, ts-station-service, ts-food-service]
     spec: {action: pod-kill, mode: one}
 
   - name: pod_failure
     category: hard
     kind: PodChaos
     target: ts-config-service
+    target_pool: [ts-config-service, ts-basic-service, ts-contacts-service, ts-route-plan-service]
     spec: {action: pod-failure, mode: one}
 
   - name: container_kill
     category: hard
     kind: PodChaos
     target: ts-price-service
-    spec: {action: container-kill, mode: one, containerNames: [ts-price-service]}
+    target_pool: [ts-price-service, ts-seat-service, ts-order-service, ts-travel-service]
+    spec: {action: container-kill, mode: one, containerNames: ["{{TARGET}}"]}
 
   - name: dns_error
     category: hard
     kind: DNSChaos
     target: ts-ticketinfo-service
+    target_pool: [ts-ticketinfo-service, ts-travel-service, ts-preserve-service, ts-order-service]
     spec: {action: error, mode: one, patterns: ["ts-*-service"]}
 
   - name: time_skew
     category: gray
     kind: TimeChaos
     target: ts-auth-service
+    target_pool: [ts-auth-service, ts-order-service, ts-travel-service, ts-price-service]
     spec: {mode: one, timeOffset: "-300s"}
 
   - name: net_delay_central
     category: gray
     kind: NetworkChaos
     target: ts-travel-service
+    target_pool: [ts-travel-service, ts-order-service, ts-basic-service, ts-station-service]
     spec: {action: delay, mode: all, delay: {latency: "{{LATENCY}}", jitter: "50ms"}}
+
+  # ───────────── NORMAL (1) — training ─────────────
+  # Runs sains complets : mesure du FPR + calibration drift sur épisodes entiers.
+  # Aucune action — la charge nominale tourne, c'est tout.
+  - name: normal_baseline
+    category: normal
+    kind: none
+
+  # ───────────── DRIFT BÉNIN (3) — training ─────────────
+  # θ_drift : dérive opérationnelle SANS panne (rolling deploy, autoscaling).
+  # Réalisé par kubectl natif (pas Chaos Mesh). L'épisode reste regime=normal +
+  # drift_flag sur la fenêtre (cf. build_features_v5) — sépare drift bénin ↔ anomalie,
+  # ce qu'aucun dataset microservices public ne fournit. Réhabilite H2a.
+  - name: rolling_deploy
+    category: drift
+    kind: rollout
+    target: ts-travel-service
+
+  - name: config_rollout
+    category: drift
+    kind: rollout
+    target: ts-config-service
+
+  - name: autoscale_up
+    category: drift
+    kind: scale
+    target: ts-seat-service
+    replicas: 3
+
+  # ───────────── OVERLAP θ_drift∩anomaly (2) — training ─────────────
+  # 4e régime de la formalisation (déploiement défectueux) : drift bénin natif
+  # (rollout/scale) + chaos SIMULTANÉS sur le même service. Labellisation :
+  # regime=drift_anomaly dans la fenêtre + drift_flag (cf. build_features_v5).
+  # `target` top-level = cible chaos (compat _category_of / cmd_list).
+  - name: faulty_rollout_cpu
+    category: overlap
+    kind: overlap
+    target: ts-travel-service
+    drift: {kind: rollout, target: ts-travel-service}
+    chaos: {kind: StressChaos, target: ts-travel-service,
+            spec: {mode: one, stressors: {cpu: {workers: 2, load: "{{CPU_LOAD}}"}}}}
+
+  - name: faulty_scale_delay
+    category: overlap
+    kind: overlap
+    target: ts-seat-service
+    drift: {kind: scale, target: ts-seat-service, replicas: 3}
+    chaos: {kind: NetworkChaos, target: ts-seat-service,
+            spec: {action: delay, mode: all, delay: {latency: "{{LATENCY}}", jitter: "20ms"}}}
 
   # ───────────── COMPOSITIONNELS (4) — training ─────────────
   # Rendus comme 2 ressources chaos simultanées par l'injecteur.
@@ -123,7 +198,7 @@ scenarios:
     kind: composite
     parts:
       - {kind: StressChaos, target: ts-travel-service, spec: {mode: one, stressors: {cpu: {workers: 2, load: "{{CPU_LOAD}}"}}}}
-      - {kind: StressChaos, target: ts-travel-service, spec: {mode: one, stressors: {memory: {workers: 1, size: "{{MEM_PCT}}%"}}}, delay_steps: 5}
+      - {kind: StressChaos, target: ts-travel-service, spec: {mode: one, stressors: {memory: {workers: 1, size: "{{MEM_SIZE}}"}}}, delay_steps: 5}
 
   - name: compo_net_loss_concurrent
     category: compo
@@ -189,8 +264,28 @@ bugs:
   - {id: F3, service: ts-order-service, image: null, mode: mem_limit, status: ready,
      mem_limit: "250Mi", desc: "JVM/Docker mem mismatch → OOMKill périodique",
      load: query_and_preserve}
-  - {id: F5, service: ts-basic-service, image: null, mode: image, status: needs_source_build,
-     desc: "épuisement thread pool async (Basic-Info) — bug de code, image requise",
+  # F5 : la branche ts-error-F5 est un fork complet non-buildable (cf. note ci-dessus).
+  # On reproduit le MÉCANISME authentique (épuisement du pool de threads Tomcat sous
+  # charge parallèle) par CONFIGURATION, sans rebuild — même approche que F3.
+  # -Dserver.tomcat.max-threads=5 borne le pool → sous query_travel_left_parallel les
+  # requêtes s'empilent/timeout → latence↑ + erreurs + jvm_threads_live sature.
+  # NB Spring Boot < 2.3 : propriété `server.tomcat.max-threads` (≥2.3 : threads.max) —
+  # à confirmer au pilote avant campagne (status needs_pilot).
+  # env_append=true : JAVA_TOOL_OPTIONS porte déjà -javaagent:/jmxagent/jmx.jar sur
+  # tous les services TT. L'écraser tuerait l'agent JMX → plus de jvm_* sur le service
+  # fautif (donc plus de symptôme observable). On CONCATÈNE.
+  #
+  # PILOTE 2026-07-07 → NON REPRODUCTIBLE sur ce cluster. La config SE LIE
+  # (jvm_threads_current 27→22 sous max-threads=5, agent JMX préservé, restauration
+  # exacte vérifiée) mais le symptôme est INATTRIBUABLE : A/B à charge identique
+  # donne baseline p99 PIRE que F5-ON (basic 3.9s vs 3.1s ; travel 66s vs 42s), et
+  # une rafale concurrente (12 threads) sur le chemin SAIN affiche déjà p50=15s —
+  # la chaîne travel→basic sature en amont (CPU limits, cluster partagé) bien avant
+  # le pool Tomcat. Inclure F5 = épisodes labellés anomalie sans signal = bruit de
+  # label. Exclu ; F1 reste LE négatif télémétrie-invisible documenté du dataset.
+  - {id: F5, service: ts-basic-service, image: null, mode: env, status: not_reproducible,
+     env: {JAVA_TOOL_OPTIONS: "-Dserver.tomcat.max-threads=5"}, env_append: true,
+     desc: "épuisement pool de threads Tomcat (config-repro) — exclu après pilote A/B",
      load: query_travel_left_parallel}
   - {id: F7, service: ts-inside-payment-service, image: null, mode: image, status: no_branch,
      desc: "third-party Node.js timeout — pas de branche ts-error-F7", load: query_order_and_pay}
