@@ -22,7 +22,7 @@ _Mis à jour : 2026-07-02 (Phase V5 — résultats multi-graines ewat_v5, Train 
 | Split | train=224 / val=47 / test=138 |
 | Scénarios train+val | 19 (15 mono + 4 compo) |
 | Scénarios held-out (test only) | 5 (F1, F3, held_io_latency, held_kernel_fault, held_net_bandwidth) |
-| Features | S(t) ∈ ℝ^{T×41×18} (schéma v5.1 : M[0-9] + T[10-13] + L[14-17]) |
+| Features | S(t) ∈ ℝ^{T×41×18} — **schéma v5.1** (M[0-9] + T[10-13] + L[14-17]). Le builder produit v5.2 depuis `c4b599b` : refeaturiser ce dataset changerait M[9] ([COLLECTE.md](docs/COLLECTE.md) §2) |
 | Fuite held-out | **AUCUNE** ✅ |
 
 ### Résultats pipeline (5 graines, K=10 fixe)

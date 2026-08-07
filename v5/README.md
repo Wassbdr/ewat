@@ -18,9 +18,12 @@ Point d'entrée collecte : [`../docs/COLLECTE.md`](../docs/COLLECTE.md).
 | Jaeger | T(t) | `tt/jaeger-query:16686` (NodePort 32688) |
 | Loki (via promtail) | L(t) | `monitoring-metrics/loki:3100` |
 
-Jeu de features : **schéma v5.1, 18 features**. Provenance détaillée feature par
-feature dans [`../docs/COLLECTE.md`](../docs/COLLECTE.md) §2 ; la docstring de
-`collect/build_features_v5.py` fait foi côté code.
+Jeu de features : **18 features**. Le builder produit le schéma **v5.2** ; le
+dataset publié `ewat_v5` est en **v5.1**, et les deux ne diffèrent que par M[9]
+(`jvm_threads_blocked` → `jvm_threads_live`). Provenance feature par feature et
+conséquences de l'écart dans [`../docs/COLLECTE.md`](../docs/COLLECTE.md) §2 ;
+côté code, la source de vérité est le registre `src/telemetry/feature_names.py`
+(`get_schema`), pas une constante de module.
 
 ## Composants v5
 
@@ -54,7 +57,7 @@ F3/F5/F7/F12 à builder depuis les branches `ts-error-*-Fxx` (maven+docker).
   Prometheus = `monitoring-metrics/prometheus-server` (cAdvisor **et**
   kube-state-metrics → restart_count). Loki paginé par tranches de `step` s
   (évite le plafond 5000 lignes).
-- `build_features_v5.py` : dumps → contrat v4 complet (S(t) ∈ ℝ^{T×41×18} v5.1 +
+- `build_features_v5.py` : dumps → contrat v4 complet (S(t) ∈ ℝ^{T×41×18}, schéma v5.2 +
   mask + G(t) + labels) — Phase 2 OFFLINE, batch parallèle `--raw-root --workers N`.
 - `run_episode.py` : **orchestrateur** — charge continue + baseline → injection
   → recovery + collecte + features + labels régime, en un appel.

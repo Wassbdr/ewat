@@ -21,7 +21,7 @@ Ce sont ceux qui tranchent en cas de contradiction avec un autre document.
 |---|---|
 | [`datasets.md`](datasets.md) | **Quelle version de dataset fait foi.** Nomenclature v1→v5, statut de chacune, et pourquoi `ewat_v4` est cassé. À consulter avant de citer un chiffre. |
 | [`formalisation.md`](formalisation.md) | Définitions mathématiques : G(t), S(t), les 4 régimes θ, les étapes 0→3, H1–H3, plan d'ablation. |
-| [`COLLECTE.md`](COLLECTE.md) | Mode opératoire de la collecte : 3 phases, provenance des 18 features v5.1, catalogue des scénarios, prérequis cluster, pièges. |
+| [`COLLECTE.md`](COLLECTE.md) | Mode opératoire de la collecte : 3 phases, provenance des 18 features, écart v5.1/v5.2, catalogue des scénarios, prérequis cluster, pièges. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Découpage du code, correspondance module ↔ étape ↔ tests, dettes techniques connues. |
 | [`evaluation_protocol_v5.md`](evaluation_protocol_v5.md) | Protocole d'évaluation **v5 figé** — celui à appliquer aux travaux post-collecte. |
 | [`evaluation_protocol.md`](evaluation_protocol.md) | Protocole d'évaluation v3, utilisé pour la soutenance. |
@@ -70,5 +70,5 @@ sorties LaTeX dans `rapport/figures/` et `paper/figures/`.
 | [`../v5/LAUNCH.md`](../v5/LAUNCH.md) | **Runbook opérationnel de campagne** — trois runners parallèles, garde-fou RAM, suivi quotidien. Testé ; à suivre plutôt qu'à paraphraser. |
 | [`../v5/PREFLIGHT.md`](../v5/PREFLIGHT.md) | Contrôles avant lancement d'une campagne. |
 | [`../mlflow/experiment_registry.md`](../mlflow/experiment_registry.md) | Registre des expériences MLflow. |
-| [`../scripts/release_assets/`](../scripts/release_assets/) | Gabarits du kit de publication du dataset (README, DATASHEET, CITATION, LICENSE) assemblés par `scripts/build_release_v5.py`. |
+| [`../scripts/release_assets/`](../scripts/release_assets/) | Gabarits du kit de publication du dataset (README, DATASHEET, CITATION, LICENSE) assemblés par `scripts/build_release_v5.py`. **Tâche ouverte** : le DATASHEET annonce le schéma v5.1 et `schema.json` doit être régénéré en v5.2 — suivi dans [`../v5/PREFLIGHT.md`](../v5/PREFLIGHT.md) §Packaging. |
 | [`../agents.md`](../agents.md) | Permissions d'autonomie accordées à un agent sur ce dépôt. |

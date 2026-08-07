@@ -21,7 +21,10 @@ workers sont à ~80-87 %. Le gate de collecte a un **garde-fou RAM** (`--ram-cei
 
 Pré-requis (faits) : `tt` + `tt-b` + `tt-c` déployés (64/64, JVM instrumenté) ; **NodePort
 Prometheus+Loki créés** (`kubectl apply -f v5/deploy/monitoring_nodeports.yaml`, une fois) ;
-stack paramétrée par namespace + contexte épinglé, schéma v5.1, séparation collecte/build.
+stack paramétrée par namespace + contexte épinglé, séparation collecte/build.
+Le build produit le schéma **v5.2** (M[9] = `jvm_threads_live`) : les épisodes
+collectés ici ne seront pas directement comparables au dataset `ewat_v5`, qui est
+en v5.1 — cf. [`../docs/COLLECTE.md`](../docs/COLLECTE.md) §2.
 
 `NODE_IP=<CLUSTER_NODE_IP>` · `cd ~/repos/ewat/v5` · `export PYTHONPATH=../src`
 

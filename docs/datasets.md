@@ -23,7 +23,9 @@ _Page de référence unique (E12, audit 2026-06). Avant elle, la réponse à
    route les épisodes `held_out_flag=True` en test-only (D5) et refuse un
    scénario absent du test (override `--allow-missing-test-scenarios`).
 4. Le schéma de features est versionné dans `telemetry.feature_names`
-   (v4 = 17, v5.1 = 18) ; `metadata.signal_feature_names` fait foi par épisode.
+   (v4 = 17, v5.1 = 18, v5.2 = 18) ; `metadata.signal_feature_names` et
+   `metadata.dataset_schema_version` font foi par épisode. **Le dataset `ewat_v5`
+   est en v5.1 ; le builder produit v5.2** (seul M[9] diffère) — cf. [COLLECTE.md](COLLECTE.md) §2.
 5. Les splits shuffled (`--split-mode shuffled`) servent UNIQUEMENT au
    protocole E5 (variance inter-split) — jamais pour entraîner un résultat
    headline.

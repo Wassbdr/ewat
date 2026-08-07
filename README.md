@@ -205,7 +205,9 @@ Détail des évolutions et des décisions de conception : [`docs/evolution.md`](
 À partir de v5, la collecte bascule sur **Train Ticket** (FudanSELab, 41 microservices
 Spring Cloud) au lieu d'Online Boutique, système plus riche, base publique, bugs réels
 documentés (F1-F22). Tout est dans `v5/` (loadgen, chaos, collect, deploy). Schéma
-**S(t) ∈ ℝ^{T×41×18}** (v5.1). Runbook complet : [`v5/LAUNCH.md`](v5/LAUNCH.md).
+**S(t) ∈ ℝ^{T×41×18}** (dataset publié en v5.1 ; le builder produit v5.2, seul M[9]
+diffère — cf. [`docs/COLLECTE.md`](docs/COLLECTE.md) §2). Runbook complet :
+[`v5/LAUNCH.md`](v5/LAUNCH.md).
 
 Trois namespaces (`tt`, `tt-b`, `tt-c`) = 3 runners parallèles (~720 ép, **~7-9 j**). Contrainte
 = RAM (workers ~80-87 %, garde-fou `--ram-ceiling`). Contexte kubectl **épinglé**

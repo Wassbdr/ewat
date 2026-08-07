@@ -67,12 +67,17 @@ sont immuables.
 
 Le reste de `src/telemetry/` (109 tests) : `signal_builder.py` assemble S(t),
 `features/{aggregation,lexical,semantic}.py` portent les agrégations
-différenciées, `feature_names.py` versionne le schéma.
+différenciées, `feature_names.py` est le **registre des schémas** du projet.
 
-> `feature_names.py` porte encore le **schéma v4 à 17 features**. Le schéma
-> courant est v5.1 à 18 features, et il est versionné **par épisode** dans
-> `metadata.signal_feature_names`, qui fait foi. Ne prenez pas la constante
-> globale pour la référence v5.
+> **Trois schémas coexistent** dans `feature_names.py` : `v4` (17 features),
+> `v5.1` (18) et `v5.2` (18). Résolvez-les par `get_schema(version)` — les
+> constantes de module (`FEATURE_NAMES`, `SIGNAL_DIM`, les index) décrivent v4
+> par rétrocompatibilité et ne sont pas la référence v5.
+>
+> Piège : le dataset `ewat_v5` et les résultats publiés sont en **v5.1**, alors
+> que `build_features_v5.py` produit **v5.2** (seul M[9] change). Le schéma fait
+> foi **par épisode**, dans `metadata.dataset_schema_version`. Détail et
+> conséquences dans [`COLLECTE.md`](COLLECTE.md) §2.
 
 ### Graphe et utilitaires
 
@@ -111,7 +116,7 @@ Autonome, avec sa propre documentation ([`../v5/README.md`](../v5/README.md),
 |---|---|
 | `loadgen/` | Générateur de charge — fork vendorisé de `train-ticket-auto-query`, patché pour un login sans CAPTCHA |
 | `chaos/` | Injection : `catalog.yaml` (28 scénarios + 5 bugs réels) et `inject.py` |
-| `collect/` | Orchestration de campagne, featurisation v5.1, sondes, reprise, monitoring santé |
+| `collect/` | Orchestration de campagne, featurisation (schéma v5.2), sondes, reprise, monitoring santé |
 | `deploy/` | Déploiement Train Ticket et NodePorts de télémétrie |
 
 Ce code s'exécute **depuis `v5/`** avec `PYTHONPATH=../src`, contrairement au
@@ -165,7 +170,7 @@ Défauts identifiés, non corrigés, à traiter en connaissance de cause.
 | `v5/loadgen/atomic_queries.py` (×9) | `if response.status_code is not 200` (`F632`) | Comparaison d'identité sur un littéral : le comportement dépend de l'internement des petits entiers en CPython. Code vendorisé FudanSELab, laissé aligné sur l'amont |
 | `v5/loadgen/queries.py:276` | `!= None` (`E711`) | Sans effet ici, mais fragile |
 | `v5/loadgen/atomic_queries.py:8-12` | Cookie de session et JWT en dur | Placeholders de démonstration amont (JWT expiré en 2021), pas des identifiants du cluster — mais présents dans un fichier versionné |
-| `src/telemetry/feature_names.py` | Schéma v4 (17 features) | Ne fait plus foi pour v5.1 ; cf. § 2 |
+| `build_features_v5.py` vs `ewat_v5` | Le builder émet **v5.2**, le dataset publié est **v5.1** | Refeaturiser change M[9] (`jvm_threads_blocked` → `jvm_threads_live`) ; les chiffres deviennent incomparables et `validate_v5` accepte les deux sans alerter |
 | `src/ewat/typing/saliency_explainer.py` | ρ_Spearman(gradient, permutation) = −0,34 | Méthode gradient non validée ; les fiches de cluster restent indicatives |
 
 Les limites **scientifiques** (par opposition à ces dettes techniques) sont dans

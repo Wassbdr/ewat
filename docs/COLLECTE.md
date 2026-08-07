@@ -5,7 +5,9 @@ opérationnel ; les documents détaillés sont référencés au fur et à mesure
 que recopiés, pour qu'il n'existe qu'une seule source de vérité par sujet.
 
 **État courant (2026-08).** La collecte de référence est **v5 / Train Ticket**,
-41 services, schéma de features **v5.1 (18 features)**. Les campagnes v1 à v4
+41 services, **18 features**. Attention au numéro de schéma : le dataset publié
+`ewat_v5` est en **v5.1**, mais le builder produit désormais **v5.2** — un seul
+champ diffère, et rien ne le signale à l'exécution (voir §2). Les campagnes v1 à v4
 portaient sur une topologie à 6 services et un schéma à 17 features ; elles sont
 historiques. Si un document vous parle de « 6 services canoniques » ou de « 17
 features », il décrit v4 — vérifiez toujours contre
@@ -90,8 +92,27 @@ conviction — ne l'utilisez pas.
 
 ## 2. Ce que contient le signal — provenance feature par feature
 
-Schéma **v5.1, 18 features**. Cette table est la référence ; elle n'existait
-jusqu'ici que dans la docstring de `v5/collect/build_features_v5.py`.
+**18 features.** La source de vérité est le registre
+`src/telemetry/feature_names.py`, qui porte trois schémas : `v4` (17 features),
+`v5.1` (18) et `v5.2` (18). La table ci-dessous liste **v5.2**, le schéma que le
+builder produit aujourd'hui.
+
+> ### ⚠️ v5.1 et v5.2 ne sont pas interchangeables
+>
+> Le dataset `ewat_v5` et **tous les résultats publiés sont en v5.1** (vérifié :
+> les épisodes portent `dataset_schema_version = "v5.1"`). Or
+> `v5/collect/build_features_v5.py` fixe `SCHEMA_VERSION = SCHEMA_V5_2` depuis le
+> commit `c4b599b`, donc **le builder émet v5.2**.
+>
+> Les deux schémas ne diffèrent **que par M[9]** : `jvm_threads_blocked` en v5.1,
+> `jvm_threads_live` en v5.2. Refeaturiser un épisode v5.1 aujourd'hui produit
+> donc une feature différente, non comparable aux résultats publiés — et
+> `validate_v5` accepte les deux schémas sans le signaler (correctif tracé dans
+> [`../v5/PREFLIGHT.md`](../v5/PREFLIGHT.md) §5), donc **aucune porte qualité ne
+> rattrapera l'écart**.
+>
+> Avant toute comparaison à un chiffre publié, lisez
+> `metadata.dataset_schema_version` de vos épisodes.
 
 | # | Feature | Source |
 |---|---|---|
@@ -104,7 +125,7 @@ jusqu'ici que dans la docstring de `v5/collect/build_features_v5.py`.
 | M6 | `mem_limit_ratio` | cAdvisor — working set / limite (saturation) |
 | M7 | `jvm_heap_ratio` | `jmx_prometheus_javaagent` (annotations) |
 | M8 | `jvm_gc_util` | idem |
-| M9 | `jvm_threads_live` | idem |
+| M9 | `jvm_threads_live` (v5.2) — `jvm_threads_blocked` en v5.1 | idem |
 | T10 | `abnormal_span_rate` | `TraceCollector` |
 | T11 | `trace_depth` | `TraceCollector` |
 | T12 | `fan_out` | `TraceCollector` |
@@ -116,10 +137,12 @@ jusqu'ici que dans la docstring de `v5/collect/build_features_v5.py`.
 
 Deux points qu'un repreneur doit savoir : **Train Ticket n'a ni Istio ni OTel
 HTTP**, donc latence et taux d'erreur viennent des traces Jaeger, pas de
-métriques de service mesh — c'est le changement de fond entre v4 et v5.1. Et le
-schéma est **versionné par épisode** : `metadata.signal_feature_names` fait foi,
-pas une constante globale. `src/telemetry/feature_names.py` porte encore le
-schéma v4 à 17 features ; ne le prenez pas pour la référence v5.
+métriques de service mesh — c'est le changement de fond entre v4 et v5. Et le
+schéma est **versionné par épisode** : `metadata.signal_feature_names` et
+`metadata.dataset_schema_version` font foi, pas une constante globale. Dans
+`src/telemetry/feature_names.py`, les constantes de module (`FEATURE_NAMES`,
+`SIGNAL_DIM`, les index) décrivent le schéma **v4** par rétrocompatibilité ;
+c'est `get_schema(version)` qu'il faut appeler, pas ces constantes.
 
 `G(t) ∈ ℝ^{T×N×N×3}` est construit par `compute_graph_for_window` : volume,
 latence médiane, taux d'erreur par arête.
