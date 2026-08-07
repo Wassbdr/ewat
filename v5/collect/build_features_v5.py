@@ -23,9 +23,10 @@ G(t) ← compute_graph_for_window (volume, latence médiane, taux d'erreur).
 Sortie : signal.npz, signal_mask.npz, adjacency.npz, labels.parquet,
 services.json, metadata.json, graph_stats.csv, feature_provenance.json.
 
-Usage (PYTHONPATH inclut src/) :
-    python -m collect.build_features_v5 --dump <ep_dir> --out <ep_dir> \
-        --episode-id <id> --scenario cpu_stress --category contention --step 30
+Usage (PYTHONPATH inclut src/) — scénario, catégorie et pas sont relus depuis
+`episode_meta.json`, écrit par run_episode ; il n'y a donc rien à ressaisir :
+    python -m collect.build_features_v5 --episode <ep_dir>
+    python -m collect.build_features_v5 --raw-root <racine> --workers 4   # batch
 """
 
 from __future__ import annotations
