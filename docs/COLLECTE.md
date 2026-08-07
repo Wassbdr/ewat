@@ -44,18 +44,24 @@ En version minimale, pour un épisode isolé :
 ```bash
 cd v5 && export PYTHONPATH=../src
 
-# Phase 1 — un épisode : charge + baseline → injection → recovery + collecte
+# Phase 1 — un épisode : charge + baseline → injection → recovery + collecte.
+# Écrit les dumps ET episode_meta.json dans --out.
 python -m collect.run_episode --namespace tt --scenario cpu_stress \
-    --intensity high --out ../data/raw_v5/<episode_id>
+    --category contention --out ../data/raw_v5/<episode_id>
 
-# Phase 2 — featurisation hors ligne (batch : --raw-root ... --workers N)
-python -m collect.build_features_v5 --dump ../data/raw_v5/<ep> --out ../data/features/v5/<ep> \
-    --episode-id <ep> --scenario cpu_stress --category contention --step 30
+# Phase 2 — featurisation hors ligne. Le scénario, la catégorie et le pas sont
+# relus depuis episode_meta.json : rien à ressaisir, donc rien à désynchroniser.
+python -m collect.build_features_v5 --episode ../data/raw_v5/<episode_id>
+python -m collect.build_features_v5 --raw-root ../data/raw_v5 --workers 4   # batch
 
 # Phase 3 — assemblage stratifié + held-out en test seulement
 cd .. && python -m scripts.assemble_dataset \
     --features-root data/features/v5 --output data/datasets/ewat_v5 --stratified
 ```
+
+`build_features_v5` écrit les features **à côté des dumps**, dans le dossier de
+l'épisode. C'est voulu : un épisode est un répertoire autosuffisant (dumps +
+métadonnées + features), et `--force` le reconstruit après un correctif.
 
 ### Les portes de qualité
 
@@ -155,7 +161,35 @@ d'alerte.
 
 ---
 
-## 4. Prérequis cluster
+## 4. Déployer l'infrastructure (si elle n'existe plus)
+
+Les runbooks supposent les namespaces `tt`, `tt-b`, `tt-c` déjà déployés. S'ils
+ont disparu, la procédure éprouvée est capitalisée dans
+**`v5/deploy/deploy_runner.sh`** — manifests Train Ticket, fixes de version
+(`mongo:4.4`, `jaeger:1.53`, service Jaeger en ClusterIP stable), NodePorts
+paramétrables pour éviter les collisions entre runners, et rollout de
+l'instrumentation JVM.
+
+```bash
+# dépendance externe : les manifests Train Ticket amont
+git clone https://github.com/FudanSELab/train-ticket ~/repos/train-ticket
+# (ou pointer ailleurs : export TT_MANIFESTS=<...>/k8s-with-jaeger)
+
+bash v5/deploy/deploy_runner.sh tt   32677 32688     # runner A
+bash v5/deploy/deploy_runner.sh tt-b 32679 32690     # runner B
+bash v5/deploy/deploy_runner.sh tt-c 32681 32692     # runner C
+
+# une seule fois, pour la collecte sans port-forward
+kubectl apply -f v5/deploy/monitoring_nodeports.yaml
+kubectl apply -f v5/deploy/ewat-promtail-collectors.yaml
+```
+
+Compter 64 pods `1/1` par namespace. Trois runners saturent la RAM des workers
+(~20 Go chacun) : n'en déployez trois que si `kubectl top nodes` laisse la marge.
+
+---
+
+## 5. Prérequis cluster
 
 - **Contexte kubectl** épinglé — `observit-cluster1` par défaut ; sur une autre
   VM, exporter `V5_KUBE_CONTEXT`. Tous les outils v5 font un préflight bloquant.
@@ -176,7 +210,7 @@ La liste de pré-vol complète, avec les vérifications bloquantes, est dans
 
 ---
 
-## 5. Pièges connus
+## 6. Pièges connus
 
 Ils sont tous documentés parce qu'ils ont tous coûté des épisodes.
 
@@ -196,7 +230,7 @@ Ils sont tous documentés parce qu'ils ont tous coûté des épisodes.
 
 ---
 
-## 6. Lancer une nouvelle campagne (v6)
+## 7. Lancer une nouvelle campagne (v6)
 
 Ce qui est spécifique à v5 : la topologie Train Ticket, le catalogue de
 scénarios, les endpoints NodePort. Ce qui est réutilisable tel quel : les trois
@@ -230,7 +264,7 @@ copie de fichier), et injectez via un opérateur qui agit à distance.
 
 ---
 
-## 7. Carte des documents
+## 8. Carte des documents
 
 | Document | Ce qu'il couvre | À jour |
 |---|---|:--:|
