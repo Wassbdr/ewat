@@ -1,11 +1,13 @@
 """EWAT v5 — Phase 2 : dumps Train Ticket → contrat per-épisode v4-conforme.
 
-Construit S(t) ∈ ℝ^{T×N×17}, le masque, et G(t) ∈ ℝ^{T×N×N×3} en RÉUTILISANT
+Construit S(t) ∈ ℝ^{T×N×18}, le masque, et G(t) ∈ ℝ^{T×N×N×3} en RÉUTILISANT
 les modules matures du repo (graphe + indices de trace), de sorte que
 `scripts/assemble_dataset.py` et `scripts/validate_dataset.py` fonctionnent
 sans modification.
 
-Sourcing TT v5.1, 18 features (pas d'Istio/OTel HTTP → latence/erreur via traces) :
+Sourcing TT, 18 features (pas d'Istio/OTel HTTP → latence/erreur via traces).
+Schéma produit : v5.2 (cf. SCHEMA_VERSION ci-dessous). Le dataset publié
+ewat_v5 est en v5.1 ; seul M[9] diffère — voir docs/COLLECTE.md §2 :
   M[0] cpu_util, M[1] ram_util            ← cAdvisor (dump Prometheus)
   M[2] latency_p99                        ← SpanLatencyIndex (traces)
   M[3] error_rate_http                    ← SpanErrorRateIndex (traces)
@@ -70,7 +72,7 @@ try:
 except Exception:  # diagnostics optionnel
     _graph_stats = None
 
-# Schéma v5.1 (18 features) — source de vérité : telemetry.feature_names
+# Schéma produit : v5.2 (18 features) — source de vérité : telemetry.feature_names
 # (registre versionné, D1 audit 2026-06). Rationale du schéma (suppression
 # span_dur_p99/retry_rate, ajout JVM + mem_limit_ratio) documentée là-bas.
 SCHEMA_VERSION = SCHEMA_V5_2
