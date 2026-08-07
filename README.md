@@ -242,11 +242,11 @@ PYTHONPATH=../src python -m collect.build_features_v5 --raw-root ../data/raw_v5 
 
 # 3. ASSEMBLAGE + VALIDATION (Phase 3): collecte finie
 cd ..
-PYTHONPATH=src python scripts/validate_v5.py --features-root data/raw_v5
-PYTHONPATH=src python -m scripts.assemble_dataset --features-root data/raw_v5 \
+python scripts/validate_v5.py --features-root data/raw_v5
+python -m scripts.assemble_dataset --features-root data/raw_v5 \
   --output data/datasets/ewat_v5 --stratified --train-ratio 0.7 --val-ratio 0.15
-PYTHONPATH=src python scripts/enforce_heldout_v5.py --dataset data/datasets/ewat_v5
-PYTHONPATH=src python scripts/validate_v5.py --dataset data/datasets/ewat_v5
+python scripts/enforce_heldout_v5.py --dataset data/datasets/ewat_v5
+python scripts/validate_v5.py --dataset data/datasets/ewat_v5
 ```
 
 ## Reproduction soutenance (ewat_v3)

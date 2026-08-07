@@ -29,6 +29,14 @@ _Mis à jour : 2026-07-02 (Phase V5 — résultats multi-graines ewat_v5, Train 
 
 `experiments/multiseed/phase_v5/` — encodeur 80 epochs + siamois 50 epochs + précurseurs BCa CI.
 
+> ⚠️ **Ces sorties ne sont pas dans le dépôt.** Le run a eu lieu sur la VM de
+> campagne (`dataset.json` porte `features_root = /home/jovyan/ewat/data/raw_v5`) ;
+> seul le dataset assemblé est revenu, `data/raw_v5/` est vide localement. Les
+> chiffres du **dataset** ci-dessus sont vérifiables dans
+> `data/datasets/ewat_v5/{dataset,split}.json` ; ceux des **résultats** ne le sont
+> pas. Pour les régénérer : `python -m experiments.multiseed.run_phase_v5`
+> (script versionné) sur un dataset v5 complet, ou récupérer l'archive de la VM.
+
 | Métrique | **ewat_v5 (5 graines)** | ewat_v4 Phase H-bis (10 graines) |
 |---|---|---|
 | **H1 sil_test** | **0.779 ± 0.042** | 0.843 ± 0.063 |
@@ -58,6 +66,7 @@ _Mis à jour : 2026-07-02 (Phase V5 — résultats multi-graines ewat_v5, Train 
 ### Stress test A1 — distant-window (graine 42, 2026-07-02)
 
 `experiments/a1_v5/` — même encodeur + siamois + classifieur ; fenêtre déplacée dans le régime normal.
+**Sorties absentes du dépôt**, comme pour `phase_v5/` ci-dessus.
 
 | Position fenêtre | macro-AUROC test |
 |---|---|
@@ -108,6 +117,9 @@ laissent apparaître un gradient temporel réel. H3 v5 est donc non circulaire �
 
 ## Pipeline EWAT — complet (config optimisée)
 
+_Configuration v3/v4 (6 services, 17 features). La collecte courante est v5 —
+41 services, 18 features — cf. § Phase V5 ci-dessus._
+
 ```
 S(t) ∈ ℝ^{N×17}
     ↓ Étape 0 : DriftDetector (MMD-RFF, ε=0.5226, look-through)
@@ -120,7 +132,8 @@ S(t) ∈ ℝ^{N×17}
     ↓ Sortie : Alert(t) = (C_i, p̂_i(t), k*_i, fiche_{C_i})
 ```
 
-401 tests unitaires, lint propre. Toutes les étapes implémentées et évaluées sur ewat_v3.
+**770 tests unitaires** (773 avec l'intégration), lint propre. Toutes les étapes
+implémentées et évaluées sur ewat_v3.
 
 ---
 

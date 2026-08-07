@@ -77,6 +77,11 @@ cd v5 && PYTHONPATH=../src python -m collect.run_campaign --help
 
 ### a. Lire les résultats sans rien exécuter
 
+> Les chiffres du **dataset** `ewat_v5` sont vérifiables dans le dépôt
+> (`data/datasets/ewat_v5/{dataset,split}.json`). Ceux des **résultats** v5
+> (H1, H3, stress test A1) ne le sont pas : le run a eu lieu sur la VM de
+> campagne et ses sorties ne sont pas revenues. Cf. [`STATUS.md`](STATUS.md).
+
 1. [`STATUS.md`](STATUS.md) — tableau de bord : dataset courant, résultats
    multi-graines, bilan des hypothèses.
 2. [`docs/results.md`](docs/results.md) — l'interprétation scientifique
@@ -134,6 +139,7 @@ Ordre de grandeur : ~720 épisodes sur trois runners parallèles ≈ **7 à 9 jo
 |---|---|---|
 | `data/` (~16 Go) — dumps bruts, features, datasets | Volumineux, et les dumps contiennent des noms de nœuds, IP internes, DNS et namespaces | Recollecter (§ 4c), ou récupérer l'archive auprès de Devoteam |
 | `experiments/**` sorties — JSON, npy, checkpoints, runs MLflow | Régénérables | Rejouer les scripts (le **code**, lui, est versionné) |
+| Sorties des runs v5 (`experiments/multiseed/phase_v5/`, `experiments/a1_v5/`) | Produites sur la VM de campagne, jamais rapatriées | `python -m experiments.multiseed.run_phase_v5` sur un dataset v5 complet, ou l'archive de la VM |
 | `mlruns/`, `release/` | Régénérables | `make pipeline`, `scripts/build_release_v5.py` |
 | Accès au cluster `observit-cluster1` | Fin de stage | Demander à Devoteam |
 | Manifests Train Ticket amont | Dépendance externe | `git clone https://github.com/FudanSELab/train-ticket` |
