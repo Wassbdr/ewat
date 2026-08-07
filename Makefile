@@ -1,4 +1,4 @@
-.PHONY: help install dev test test-unit lint format clean pipeline figures validate
+.PHONY: help install dev test test-unit lint lint-v5 format clean pipeline figures validate
 
 PYTHON  ?= python3
 DATASET ?= data/datasets/ewat_v3
@@ -11,7 +11,8 @@ help:
 	@echo "  make dev        Installe le paquet + les dépendances de dev"
 	@echo "  make test       Lance toute la suite de tests"
 	@echo "  make test-unit  Tests unitaires seuls (rapide)"
-	@echo "  make lint       ruff check src scripts tests experiments v5"
+	@echo "  make lint       ruff check src scripts tests experiments"
+	@echo "  make lint-v5    ruff check v5 (11 dettes connues, cf. docs/ARCHITECTURE.md)"
 	@echo "  make format     ruff format + ruff check --fix sur src scripts tests"
 	@echo "  make pipeline   Encodeur -> typage -> précurseurs -> alertes"
 	@echo "  make figures    Régénère les figures et tables du rapport"
@@ -32,8 +33,13 @@ test:
 test-unit:
 	$(PYTHON) -m pytest tests/unit -q
 
+# v5/ est linté a part : il porte 11 defauts connus et non corriges
+# (F632 x9, F821, E711) — voir docs/ARCHITECTURE.md § Dettes connues.
 lint:
-	$(PYTHON) -m ruff check src scripts tests experiments v5
+	$(PYTHON) -m ruff check src scripts tests experiments
+
+lint-v5:
+	$(PYTHON) -m ruff check v5
 
 format:
 	$(PYTHON) -m ruff format src scripts tests

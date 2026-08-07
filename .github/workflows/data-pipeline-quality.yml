@@ -23,9 +23,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev]
 
+      # experiments/ est linté depuis qu'il est versionné (cf. .gitignore).
+      # v5/ est traité à part : 11 défauts connus et non corrigés (F632 x9,
+      # F821, E711), listés dans docs/ARCHITECTURE.md § Dettes connues.
       - name: Lint
         run: |
-          python -m ruff check src scripts tests
+          python -m ruff check src scripts tests experiments
+
+      - name: Lint v5 (non bloquant — dettes connues)
+        continue-on-error: true
+        run: |
+          python -m ruff check v5
 
       - name: Unit tests
         run: |
