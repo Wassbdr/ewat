@@ -1,6 +1,6 @@
-from atomic_queries import _query_orders, _collect_one_order, _login, _rebook_ticket
-from utils import random_form_list
 import time
+
+from atomic_queries import _login, _query_orders, _rebook_ticket
 
 base_address = "http://10.176.122.1:32677"
 

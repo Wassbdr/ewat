@@ -21,11 +21,10 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
-from pathlib import Path
 import time
+from pathlib import Path
 
 from collect import probe
-
 
 # Reps 0-9 → tt, 10-19 → tt-b, 20-29 → tt-c (fallback si namespace absent du meta).
 _REP_TO_NS = {**{i: "tt" for i in range(10)},

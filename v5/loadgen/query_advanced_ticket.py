@@ -1,8 +1,8 @@
-from atomic_queries import _query_advanced_ticket, _login
-
 import logging
 import random
 import time
+
+from atomic_queries import _login, _query_advanced_ticket
 
 logger = logging.getLogger("query_advanced_ticket")
 # The UUID of user fdse_microservice is that

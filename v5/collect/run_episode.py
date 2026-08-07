@@ -19,16 +19,13 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-import numpy as np
-
 from collect import probe
-
-import os
 
 STEP_S = 30
 

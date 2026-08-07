@@ -1,6 +1,7 @@
+import logging
+
 from .queries import Query
 from .utils import *
-import logging
 
 logger = logging.getLogger("autoquery-scenario")
 highspeed_weights = {True: 60, False: 40}

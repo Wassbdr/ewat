@@ -1,4 +1,5 @@
-from atomic_queries import _query_orders, _collect_one_order
+from atomic_queries import _collect_one_order, _query_orders
+
 from utils import random_form_list
 
 

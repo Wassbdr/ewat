@@ -1,6 +1,7 @@
 import time
 
-from atomic_queries import _query_orders_all_info, _put_consign
+from atomic_queries import _put_consign, _query_orders_all_info
+
 from utils import random_form_list
 
 

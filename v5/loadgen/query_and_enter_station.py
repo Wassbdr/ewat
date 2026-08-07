@@ -1,4 +1,5 @@
-from atomic_queries import _query_orders, _enter_station
+from atomic_queries import _enter_station, _query_orders
+
 from utils import random_form_list
 
 

@@ -1,8 +1,7 @@
-from atomic_queries import _query_high_speed_ticket, _query_normal_ticket
-from utils import random_boolean
-
 import logging
 import time
+
+from atomic_queries import _query_high_speed_ticket, _query_normal_ticket
 
 logger = logging.getLogger("query_and_preserve")
 # The UUID of user fdse_microservice is that

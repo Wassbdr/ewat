@@ -1,15 +1,14 @@
-from query_and_preserve import query_and_preserve
-from query_order_and_pay import query_order_and_pay
+import time
+from threading import Thread
+
+from atomic_queries import _login, _query_high_speed_ticket, _query_orders
+from query_and_cancel import query_one_and_cancel
 from query_and_collect_ticket import query_and_collect_ticket
 from query_and_enter_station import query_and_enter_station
-from query_and_cancel import query_one_and_cancel
-
-from atomic_queries import _login, _query_orders, _query_high_speed_ticket
+from query_and_preserve import query_and_preserve
+from query_order_and_pay import query_order_and_pay
 
 from utils import random_boolean
-import time
-
-from threading import Thread
 
 
 def main():

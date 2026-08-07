@@ -1,7 +1,7 @@
-from typing import List
-import requests
 import logging
 import time
+
+import requests
 
 logger = logging.getLogger("atomic_queries")
 base_address = "http://139.196.152.44:31000"

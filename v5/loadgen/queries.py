@@ -1,8 +1,9 @@
-from typing import List
-import requests
 import logging
-import time
 import random
+import time
+
+import requests
+
 from .utils import *
 
 logger = logging.getLogger("auto-queries")
