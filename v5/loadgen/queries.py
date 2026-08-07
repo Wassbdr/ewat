@@ -70,7 +70,7 @@ class Query:
         """
         return self.login(username=username, password=password)
 
-    def query_high_speed_ticket(self, place_pair: tuple = (), time: str = "", headers: dict = {}) -> List[str]:
+    def query_high_speed_ticket(self, place_pair: tuple = (), time: str = "", headers: dict = {}) -> list[str]:
         """
         返回TripId 列表
         :param place_pair: 使用的开始结束组对
@@ -111,7 +111,7 @@ class Query:
             trip_ids.append(trip_id)
         return trip_ids
 
-    def query_normal_ticket(self, place_pair: tuple = (), time: str = "", headers: dict = {}) -> List[str]:
+    def query_normal_ticket(self, place_pair: tuple = (), time: str = "", headers: dict = {}) -> list[str]:
         url = f"{self.address}/api/v1/travel2service/trips/left"
         place_pairs = [("Shang Hai", "Nan Jing"),
                        ("Nan Jing", "Shang Hai")]
@@ -144,7 +144,7 @@ class Query:
             trip_ids.append(trip_id)
         return trip_ids
 
-    def query_high_speed_ticket_parallel(self, place_pair: tuple = (), time: str = "", headers: dict = {}) -> List[str]:
+    def query_high_speed_ticket_parallel(self, place_pair: tuple = (), time: str = "", headers: dict = {}) -> list[str]:
         """
         返回TripId 列表
         :param place_pair: 使用的开始结束组对
@@ -185,7 +185,7 @@ class Query:
             trip_ids.append(trip_id)
         return trip_ids
 
-    def query_advanced_ticket(self, place_pair: tuple = (), type: str = "cheapest", date: str = "", headers: dict = {}) -> List[str]:
+    def query_advanced_ticket(self, place_pair: tuple = (), type: str = "cheapest", date: str = "", headers: dict = {}) -> list[str]:
         """
         高级查询
         :param type [cheapet, quickest, minStation]
@@ -255,7 +255,7 @@ class Query:
             "storeName": "Roman Holiday"
         }]
 
-    def query_contacts(self, headers: dict = {}) -> List[str]:
+    def query_contacts(self, headers: dict = {}) -> list[str]:
         """
         返回座位id列表
         :param headers:
@@ -304,7 +304,7 @@ class Query:
             f"add contact failed, code: {res.status_code}, text: {res.text}")
         return None
 
-    def query_orders(self, types: tuple = tuple([0, 1]), query_other: bool = False, headers: dict = {}) -> List[tuple]:
+    def query_orders(self, types: tuple = tuple([0, 1]), query_other: bool = False, headers: dict = {}) -> list[tuple]:
         """
         返回(orderId, tripId) triple list for inside_pay_service
         :param headers:
@@ -342,10 +342,10 @@ class Query:
 
         return pairs
 
-    def query_other_orders(self, types: tuple = tuple([0, 1]), headers: dict = {}) -> List[tuple]:
+    def query_other_orders(self, types: tuple = tuple([0, 1]), headers: dict = {}) -> list[tuple]:
         return self.query_orders(types, True, headers)
 
-    def query_orders_all_info(self, query_other: bool = False, headers: dict = {}) -> List[dict]:
+    def query_orders_all_info(self, query_other: bool = False, headers: dict = {}) -> list[dict]:
         """
         返回(orderId, tripId) triple list for consign service
         :param headers:
@@ -599,7 +599,7 @@ class Query:
             logger.warning(f"query voucher failed, code: {r.status_code}")
         return r.status_code
 
-    def preserve(self, start: str, end: str, trip_ids: List = [], is_high_speed: bool = True, date: str = "", headers: dict = {}):
+    def preserve(self, start: str, end: str, trip_ids: list = [], is_high_speed: bool = True, date: str = "", headers: dict = {}):
         if date == "":
             date = datestr
 

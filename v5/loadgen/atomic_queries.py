@@ -59,7 +59,7 @@ def admin_login():
 
 
 def _query_high_speed_ticket(place_pair: tuple = ("Shang Hai", "Su Zhou"), headers: dict = {},
-                             time: str = "2021-07-15") -> List[str]:
+                             time: str = "2021-07-15") -> list[str]:
     """
     返回TripId 列表
     :param place_pair: 使用的开始结束组对
@@ -96,7 +96,7 @@ def _query_high_speed_ticket(place_pair: tuple = ("Shang Hai", "Su Zhou"), heade
 
 
 def _query_normal_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers: dict = {},
-                         time: str = "2021-07-15") -> List[str]:
+                         time: str = "2021-07-15") -> list[str]:
     url = f"{base_address}/api/v1/travel2service/trips/left"
     place_pairs = [("Shang Hai", "Nan Jing"),
                    ("Nan Jing", "Shang Hai")]
@@ -124,7 +124,7 @@ def _query_normal_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers:
 
 
 def _query_high_speed_ticket_parallel(place_pair: tuple = ("Shang Hai", "Su Zhou"), headers: dict = {},
-                                      time: str = "2021-07-15") -> List[str]:
+                                      time: str = "2021-07-15") -> list[str]:
     """
     返回TripId 列表
     :param place_pair: 使用的开始结束组对
@@ -161,7 +161,7 @@ def _query_high_speed_ticket_parallel(place_pair: tuple = ("Shang Hai", "Su Zhou
 
 
 def _query_advanced_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers: dict = {}, time: str = "2021-07-15",
-                           type: str = "cheapest") -> List[str]:
+                           type: str = "cheapest") -> list[str]:
     url = f"{base_address}/api/v1/travelplanservice/travelPlan/" + type
     print(url)
 
@@ -221,7 +221,7 @@ def _query_food(place_pair: tuple = ("Shang Hai", "Su Zhou"), train_num: str = "
     }]
 
 
-def _query_contacts(headers: dict = {}) -> List[str]:
+def _query_contacts(headers: dict = {}) -> list[str]:
     """
     返回座位id列表
     :param headers:
@@ -244,7 +244,7 @@ def _query_contacts(headers: dict = {}) -> List[str]:
     return ids
 
 
-def _query_orders(headers: dict = {}, types: tuple = tuple([0]), query_other: bool = False) -> List[tuple]:
+def _query_orders(headers: dict = {}, types: tuple = tuple([0]), query_other: bool = False) -> list[tuple]:
     """
     返回(orderId, tripId) triple list for inside_pay_service
     :param headers:
@@ -281,7 +281,7 @@ def _query_orders(headers: dict = {}, types: tuple = tuple([0]), query_other: bo
     return pairs
 
 
-def _query_orders_all_info(headers: dict = {}, query_other: bool = False) -> List[tuple]:
+def _query_orders_all_info(headers: dict = {}, query_other: bool = False) -> list[tuple]:
     """
     返回(orderId, tripId) triple list for consign service
     :param headers:

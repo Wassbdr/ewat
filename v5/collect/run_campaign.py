@@ -59,7 +59,7 @@ def _catalog() -> dict:
 
 
 def _ts() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _tt_healthy(namespace: str) -> bool:
@@ -276,7 +276,7 @@ def _stall_flag(out_root: Path, namespace: str, reason: str | None) -> None:
     if reason is None:
         flag.unlink(missing_ok=True)
         return
-    flag.write_text(f"{dt.datetime.now(dt.timezone.utc).isoformat()} {reason}\n")
+    flag.write_text(f"{dt.datetime.now(dt.UTC).isoformat()} {reason}\n")
 
 
 def _validate(ep_dir: Path) -> bool:

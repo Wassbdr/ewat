@@ -7,7 +7,7 @@ def random_boolean() -> bool:
     return random.choice([True, False])
 
 
-def random_from_list(l: List):
+def random_from_list(l: list):
     return random.choice(l)
 
 
