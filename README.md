@@ -30,6 +30,12 @@ Scope réduit aux services effectivement observables sur les 3 modalités
 
 ## Pipeline dataset: Record → Build → Assemble
 
+> **Pour collecter un dataset, commencer par [`docs/COLLECTE.md`](docs/COLLECTE.md)** —
+> point d'entrée unique : prérequis, trois phases, provenance des 18 features,
+> catalogue des scénarios, pièges connus, et marche à suivre pour une nouvelle
+> campagne. Le présent README décrit le pipeline tel qu'il était en v4 (6 services,
+> 17 features) ; la collecte courante est v5 / Train Ticket, 41 services.
+
 Le pipeline de construction du dataset est découplé en trois phases
 indépendantes et rejouables. Une phase ne dépend jamais de la suivante, et
 seule la phase 1 touche au cluster.
@@ -167,8 +173,7 @@ servent à calibrer ε_drift (étape 0 MMD-RFF) et à falsifier H2.
 - Tests unitaires pour collecteurs, signal builder, validation dataset.
 - Scripts chaos complets (contention, gray, drift, systemic, drift∩anomaly).
 
-Voir `docs/notes/synthese_collecte_dataset.md` pour le détail des évolutions
-et des décisions de conception.
+Détail des évolutions et des décisions de conception : [`docs/evolution.md`](docs/evolution.md).
 
 ## EWAT v5: collecte Train Ticket (prête au lancement)
 
@@ -259,6 +264,5 @@ Protocole détaillé : [`docs/evaluation_protocol.md`](docs/evaluation_protocol.
 
 ### ewat_v4 (optionnel)
 
-Décision collecte : [`docs/ewat_v4_decision.md`](docs/ewat_v4_decision.md).  
 Runbook : [`docs/runbook_v4.md`](docs/runbook_v4.md).  
 Retest H2 post-collecte : `bash scripts/dev/run_v4_retest.sh` (nécessite `data/datasets/ewat_v4`).

@@ -1,6 +1,7 @@
 # EWAT v5 — Infrastructure de collecte Train Ticket
 
-État au 2026-06-01. Voir `docs/dataset_v5_plan.md` §0 pour le contexte complet.
+État au 2026-06-01 (chiffres corrigés 2026-08).
+Point d'entrée collecte : [`../docs/COLLECTE.md`](../docs/COLLECTE.md).
 
 ## Topologie déployée
 
@@ -17,7 +18,9 @@
 | Jaeger | T(t) | `tt/jaeger-query:16686` (NodePort 32688) |
 | Loki (via promtail) | L(t) | `monitoring-metrics/loki:3100` |
 
-Jeu de features : **Lean enrichi, 17 features** (cf. `docs/dataset_v5_plan.md` §0.5).
+Jeu de features : **schéma v5.1, 18 features**. Provenance détaillée feature par
+feature dans [`../docs/COLLECTE.md`](../docs/COLLECTE.md) §2 ; la docstring de
+`collect/build_features_v5.py` fait foi côté code.
 
 ## Composants v5
 
@@ -32,8 +35,8 @@ python -m loadgen.runner --address ... --scenario query_and_cancel --users 20
 Contrainte : **faible concurrence** (cluster partagé). 12 users = baseline stable, 0 erreur.
 
 ### `chaos/` — injection de pannes
-Catalogue `catalog.yaml` : **22 scénarios validés** (15 mono + 4 compo + 3 held-out)
-+ 5 bugs réels (batch B, swap d'image).
+Catalogue `catalog.yaml` : **28 scénarios** (gray 6, hard 5, contention 4, compo 4,
+drift 3, held-out 3, overlap 2, normal 1) + **5 bugs réels** (batch B, swap d'image).
 ```bash
 python -m chaos.inject list
 python -m chaos.inject apply cpu_stress --intensity high --duration 600s
@@ -100,7 +103,7 @@ restauré dans `rca-sandbox` (requis). Voir mémoire `project_v5_tt_deployed`.
 
 ## Reste à faire avant collecte massive
 
-1. **Phase 2 `build_features` pour TT** : N=41 + extraction des 17 features depuis
+1. **Phase 2 `build_features` pour TT** : N=41 + extraction des 18 features depuis
    les dumps (cAdvisor → M, Jaeger spans → T, Loki JSON → L). Le code v4 est
    hardcodé 6 services OB → réécriture ciblée nécessaire.
 2. **Orchestrateur d'épisode** : enchaîner baseline → ramp → injection → recovery
