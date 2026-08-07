@@ -1,26 +1,34 @@
-"""Phase V5 — Multi-seed retrain orchestrator (ewat_v5, Train Ticket 41 services).
+"""Phase H — Multi-seed retrain orchestrator (10 graines, audit 2026-05-26).
 
-Runs the full pipeline across multiple seeds to measure statistical variance on
-ewat_v5 (Train Ticket, 41 Spring Cloud services, 24 scenarios, 409 episodes).
+Reproduces the Phase G retrain (single seed 42) across 10 seeds to measure
+the statistical variance of:
 
-Each seed runs:
+- H1 silhouette test
+- H3 AUROC peak (val + test)
+- A1 Δ(far − near) distant-window
+- best_epoch siamois (over-training diagnostic, cf. C-4)
+- K_optimal stability
+
+Each seed runs the full pipeline:
+
   1. Encoder STGCN (use_layer_norm=True, NaN-aware scaler, 80 epochs)
-  2. Siamese typing (margin=2.0, d_proj=64, mining=semi-hard, avg+cosine, K=10 fixe)
-  3. Precursor (class_weight='balanced', BCa CI)
-  4. A1 distant-window
+  2. Siamese typing (margin=2.0, d_proj=64, mining=semi-hard, avg+cosine)
+  3. Precursor (class_weight='balanced' default, BCa CI)
+  4. A1 distant-window on the trained pipeline (EWAT labels)
 
 Outputs (per seed):
-  experiments/multiseed/phase_v5/seed_<S>/{encoder,typing,precursor,a1}/
+  experiments/multiseed/phase_h/seed_<S>/{encoder,typing,precursor,a1}/
 
 Final aggregate:
-  experiments/multiseed/phase_v5/aggregate.json
+  experiments/multiseed/phase_h/aggregate.json
+  experiments/multiseed/phase_h/results.md
 
 Usage
 -----
-    python -m experiments.multiseed.run_phase_v5 \\
-        --dataset data/datasets/ewat_v5 \\
-        --features-root data/raw_v5 \\
-        [--seeds 42 123 456 789 1337] [--skip-existing] [--skip-a1]
+    python -m experiments.multiseed.run_phase_h \\
+        --dataset data/datasets/ewat_v4_strat \\
+        --features-root data/features/v4 \\
+        [--seeds 42 123 ... 99] [--skip-existing]
 """
 
 from __future__ import annotations
@@ -36,13 +44,13 @@ DEFAULT_SEEDS = [42, 123, 456, 789, 1337, 0, 7, 17, 31, 99]
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Phase V5 — Multi-seed retrain orchestrator")
+    p = argparse.ArgumentParser(description="Phase H — Multi-seed retrain orchestrator")
     p.add_argument("--dataset", type=Path,
-                   default=Path("data/datasets/ewat_v5"))
+                   default=Path("data/datasets/ewat_v4_strat"))
     p.add_argument("--features-root", type=Path,
-                   default=Path("data/raw_v5"))
+                   default=Path("data/features/v4"))
     p.add_argument("--output", type=Path,
-                   default=Path("experiments/multiseed/phase_v5"))
+                   default=Path("experiments/multiseed/phase_h"))
     p.add_argument("--seeds", type=int, nargs="+", default=DEFAULT_SEEDS)
     p.add_argument("--encoder-epochs", type=int, default=80)
     p.add_argument("--typing-epochs", type=int, default=50)
@@ -234,7 +242,7 @@ def run_one_seed(seed: int, args: argparse.Namespace) -> dict:
 def main() -> None:
     args = _build_arg_parser().parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    print("Phase V5 — multi-seed retrain (ewat_v5, Train Ticket)")
+    print("Phase H — multi-seed retrain")
     print(f"  Dataset: {args.dataset}")
     print(f"  Features: {args.features_root}")
     print(f"  Output:  {args.output}")

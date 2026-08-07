@@ -32,11 +32,18 @@ data/embeddings/
 # Split archives (raw_v4 parts)
 *.part_a*
 
-# Experiment outputs — tout ignoré sauf les scripts Python
-experiments/
-!experiments/**/__init__.py
-!experiments/**/train.py
-!experiments/**/eval.py
+# Experiment outputs — les sorties sont ignorées, le code Python est versionné.
+# `experiments/**` n'exclut que les fichiers ; `!experiments/**/` autorise git à
+# descendre dans l'arborescence, sans quoi aucune ré-inclusion ne fonctionnerait
+# (git ne descend jamais dans un répertoire exclu — c'était le bug historique).
+experiments/**
+!experiments/**/
+!experiments/**/*.py
+# Rapports d'expérience cités par STATUS.md / docs
+!experiments/ontology_v2/results.md
+!experiments/rcaeval/results.md
+# MLflow embarqué sous experiments/ : jamais versionné
+experiments/**/mlruns/
 
 # ML artefacts
 mlruns/

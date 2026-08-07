@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ewat"
 version = "0.1.0"
@@ -41,6 +45,9 @@ dev = [
     "ipykernel",
     "jupyter",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff]
 line-length = 100
@@ -86,6 +93,14 @@ select = ["E", "F", "I", "N", "W", "UP"]
 "src/ewat/openset/mahalanobis.py" = ["N806"]
 "src/ewat/openset/openmax.py" = ["N806"]
 "src/ewat/precursor/dataset.py" = ["E501"]
+# Scripts de recherche : notation mathématique du papier (S, W, D, K…), longues
+# lignes de tableaux de résultats, imports après un sys.path.insert. Le code est
+# versionné pour la reproductibilité, pas tenu aux mêmes standards que src/.
+"experiments/**/*.py" = ["N806", "N803", "N812", "E501", "E402", "E702", "F841", "E731"]
+# Collecte v5 (Train Ticket) : code de campagne validé en production sur 7 jours,
+# gelé — on neutralise le style plutôt que de le retoucher. Les défauts réels
+# (F632, F821, E711) restent actifs et sont documentés dans docs/ARCHITECTURE.md.
+"v5/**/*.py" = ["N803", "N806", "E741", "F841", "F541", "E501", "UP035", "F403", "F405", "E402"]
 "tests/**/*.py" = ["I001", "N8"]
 "tests/unit/scripts/test_assemble_index_columns.py" = ["E501"]  # docstring descriptive
 "tests/unit/graph/test_adjacency.py" = ["N806"]

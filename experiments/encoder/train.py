@@ -26,14 +26,13 @@ from pathlib import Path
 
 os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "3")
 
-import mlflow
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as functional
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
+import mlflow
 from ewat.encoder.dataset import EpisodeDataset, collate_episodes
 from ewat.encoder.factory import build_encoder
 from ewat.encoder.stgcn import STGCNEncoder

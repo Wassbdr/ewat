@@ -29,15 +29,12 @@ from pathlib import Path
 
 os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "3")
 
-import mlflow
 import numpy as np
 import torch
 
+import mlflow
 from ewat.encoder.dataset import EpisodeDataset
-from ewat.encoder.factory import build_encoder
-from ewat.encoder.stgcn import STGCNEncoder
 from ewat.typing.clustering import cluster_embeddings
-from utils.seeding import seed_everything
 from ewat.typing.pairs import EpisodePairSampler
 from ewat.typing.saliency_explainer import (
     compute_cluster_saliency,
@@ -45,6 +42,7 @@ from ewat.typing.saliency_explainer import (
 )
 from ewat.typing.siamese import ContrastiveLoss, SiameseTyper
 from ewat.utils.bootstrap import bootstrap_silhouette_ci
+from utils.seeding import seed_everything
 
 # ---------------------------------------------------------------------------
 # Pair DataLoader

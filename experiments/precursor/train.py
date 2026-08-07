@@ -37,12 +37,10 @@ from pathlib import Path
 
 os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "3")
 
-import mlflow
 import numpy as np
 import torch
 
-from ewat.encoder.factory import build_encoder
-from ewat.encoder.stgcn import STGCNEncoder
+import mlflow
 from ewat.precursor.dataset import PrecursorDataset
 from ewat.precursor.model import PrecursorClassifier, baseline_auroc, find_optimal_k
 from ewat.typing.siamese import SiameseTyper

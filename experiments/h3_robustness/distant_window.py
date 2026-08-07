@@ -52,7 +52,6 @@ from ewat.typing.siamese import SiameseTyper
 from ewat.utils.bootstrap import bootstrap_auroc_ci
 from utils.seeding import seed_everything
 
-
 # ---------------------------------------------------------------------------
 # Embedding helper — mirrors experiments/precursor/train.py:_embed_dataset
 # ---------------------------------------------------------------------------
