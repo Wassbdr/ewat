@@ -2,8 +2,9 @@
 
 _Mis à jour : 2026-07-02 (Phase V5 — résultats multi-graines ewat_v5, Train Ticket 41 services)_
 
+> **Nouveau sur le projet → [HANDOVER.md](HANDOVER.md)** · Index de la doc → [docs/README.md](docs/README.md)
 > Résultats détaillés et interprétation scientifique → [docs/results.md](docs/results.md)
-> **Évolution post-stage planifiée → [ROADMAP.md](ROADMAP.md)** (axes A: couplage onto/pred, B: précursion robuste, C: open-set, D: déploiement)
+> **Évolution post-stage planifiée → [HANDOVER.md § Suites possibles](HANDOVER.md#7-suites-possibles)** (axes A: couplage onto/pred, B: précursion robuste, C: open-set, D: déploiement)
 > Nomenclature des datasets → [docs/datasets.md](docs/datasets.md) · Protocole v5 figé → [docs/evaluation_protocol_v5.md](docs/evaluation_protocol_v5.md)
 > **Phases historiques (L, H/J/K, G, F, détail expériences v3/v4) → [docs/status_archive.md](docs/status_archive.md)**
 

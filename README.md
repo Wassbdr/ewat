@@ -10,6 +10,31 @@ de pannes.
 EWAT n'est pas du RCA : le RCA est post-mortem (Où, Pourquoi), EWAT est de
 l'early warning (Quoi, Dans combien de temps, avant la panne).
 
+> **Vous reprenez le projet ?** Commencez par [`HANDOVER.md`](HANDOVER.md) —
+> installation, trois parcours possibles, ce dont vous n'héritez pas, et les
+> pièges à connaître. Index de la documentation : [`docs/README.md`](docs/README.md).
+
+## Installation
+
+Python **≥ 3.11**. `pyproject.toml` est l'unique source des dépendances.
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+make dev              # pip install -e ".[dev]"
+make test             # 773 tests (770 unitaires + 3 d'intégration)
+make lint
+```
+
+Après `pip install -e .`, les paquets `ewat`, `telemetry`, `graph` et `utils`
+sont importables : **`PYTHONPATH=src` n'est pas nécessaire** et les commandes de
+ce README s'exécutent depuis la racine. Seul le code de `v5/` fait exception —
+il s'exécute depuis `v5/` avec `PYTHONPATH=../src`, parce qu'il importe `src/`
+en dehors du paquet installé.
+
+`make help` liste les autres cibles (`pipeline`, `figures`, `validate`, `clean`).
+Architecture du code : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Conventions et invariants : [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 ## Cluster
 
 - Kubernetes (RKE2), 9 nœuds

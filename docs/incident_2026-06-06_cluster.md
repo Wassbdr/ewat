@@ -181,7 +181,7 @@ kubectl --context observit-cluster1 uncordon observit-cluster1-workers-58w74-jz7
 Principe : lire `episode_meta.json` pour récupérer `t_start` + durée → requêter Prometheus
 (rétention 15j, données accessibles) → réécrire `prometheus.json.gz` → supprimer `.raw_failed`.
 
-À implémenter dans `v5/collect/repull_prometheus.py`.
+Implémenté depuis dans `v5/collect/repull_failed.py`, qui couvre les deux sources.
 
 ### Script repull Loki (22 épisodes)
 
