@@ -36,8 +36,16 @@ dependencies = [
     "rdflib>=7.0,<8.0",
 ]
 
+[project.scripts]
+ewat = "ewat.cli:main"
+
 [project.optional-dependencies]
+serve = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
 dev = [
+    "httpx",
     "pytest",
     "pytest-cov",
     "ruff",
@@ -77,6 +85,9 @@ select = ["E", "F", "I", "N", "W", "UP"]
 "src/ewat/drift/mmd.py" = ["N803", "N806"]
 "src/ewat/drift/calibration.py" = ["N806"]
 "src/ewat/drift/detector.py" = ["N803", "N806"]
+"src/ewat/synthetic/generator.py" = ["N803", "N806"]
+"src/ewat/early_warning/pipeline.py" = ["N806"]
+"tests/unit/synthetic/test_generator.py" = ["N806"]
 "src/ewat/encoder/dataset.py" = ["E501", "N806"]
 "src/ewat/encoder/simclr.py" = ["I001", "N802", "N803", "N806", "N812"]
 "src/ewat/encoder/stgcn.py" = ["N806", "N812"]
