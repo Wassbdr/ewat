@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from src.ewat.drift.detector import DriftDetector, DriftResult
-from src.ewat.drift.mmd import RFFKernel
+from ewat.drift.detector import DriftDetector, DriftResult
+from ewat.drift.mmd import RFFKernel
 
 
 def _make_detector(

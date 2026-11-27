@@ -5,12 +5,12 @@ import json
 import numpy as np
 import pytest
 
-from src.ewat.drift.calibration import (
+from ewat.drift.calibration import (
     _episode_mmd2_sequence,
     calibrate_epsilon,
     save_calibration,
 )
-from src.ewat.drift.mmd import RFFKernel
+from ewat.drift.mmd import RFFKernel
 
 
 def _make_signal(T: int, N: int = 2, d: int = 4, shift: float = 0.0, seed: int = 0):

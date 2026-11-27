@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from src.ewat.drift.mmd import RFFKernel, _impute_column_mean
+from ewat.drift.mmd import RFFKernel, _impute_column_mean
 
 
 class TestRFFKernelPhi:

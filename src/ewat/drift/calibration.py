@@ -13,7 +13,7 @@ A matching distribution is computed for normal episodes to verify that
 Usage
 =====
 
-    from src.ewat.drift.calibration import calibrate_epsilon
+    from ewat.drift.calibration import calibrate_epsilon
     epsilon = calibrate_epsilon(
         train_drift_episodes,
         train_normal_episodes,
@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
-from src.ewat.drift.mmd import RFFKernel
+from ewat.drift.mmd import RFFKernel
 
 logger = logging.getLogger(__name__)
 

@@ -71,7 +71,7 @@ def _embed_z_e(
     device: torch.device,
 ) -> tuple[np.ndarray, list[str]]:
     """Forward through ENCODER ONLY (no siamese head)."""
-    from src.ewat.encoder.dataset import EpisodeDataset  # noqa: F401
+    from ewat.encoder.dataset import EpisodeDataset  # noqa: F401
     encoder.eval()
     embeddings, scenarios = [], []
     for idx in range(len(dataset)):

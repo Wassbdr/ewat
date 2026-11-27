@@ -82,7 +82,7 @@ def _copy_episode(src_dir: Path, dst_dir: Path) -> None:
 
 
 def _write_schema(out: Path) -> None:
-    from src.telemetry import feature_names as fn
+    from telemetry import feature_names as fn
 
     schema = {
         "schema_version": fn.SCHEMA_V5_1,
