@@ -126,3 +126,6 @@ notebooks/.ipynb_checkpoints/
 
 # Plan files (claude-managed, kept outside repo)
 *.plan.md
+
+# Showcase build cache (trained model, raw terminal recording)
+showcase/.cache/
