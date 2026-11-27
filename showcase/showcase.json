@@ -65,6 +65,6 @@
     "On the internal cluster, the look-through drift/fault separation (H2) failed on ~21-step episodes; it has not been re-validated on real data.",
     "The demo model is trained on synthetic data only and the API expects 6 services × 17 features."
   ],
-  "role": "Built during my ML research internship at Devoteam (AIOps), where it is used internally.",
+  "role": "Sole developer. Built during my ML research internship at Devoteam (AIOps), where it is used internally.",
   "repo": "https://github.com/Wassbdr/ewat"
 }
