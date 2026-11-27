@@ -1,4 +1,82 @@
-# EWAT: Early Warning and Anomaly Typing
+# EWAT : Early Warning and Anomaly Typing
+
+**Alerte précoce pour microservices, pour les équipes SRE et plateforme : EWAT distingue un drift inoffensif (montée de charge) d'une vraie panne, puis nomme le type de panne, à partir de métriques et d'un graphe d'appels.**
+
+![Démo terminal : un épisode synthétique traité en direct, puis la chronologie](showcase/demo.gif)
+
+```bash
+git clone https://github.com/Wassbdr/ewat && cd ewat
+pip install ".[serve]" --extra-index-url https://download.pytorch.org/whl/cpu   # Python ≥ 3.11, CPU
+ewat demo --plot poster.png   # ≈ 20 s : entraîne sur données synthétiques, traite un épisode
+```
+
+## Résultats clés
+
+**Mesurés dans ce dépôt, données synthétiques** : `ewat benchmark --episodes 50` (ou `bash showcase/make_showcase.sh`).
+Setup : générateur `ewat.synthetic`, 250 épisodes (5 scénarios × 50, graines d'évaluation 0–49, graines d'entraînement 10000–10029), 6 services × 17 features, pas de 30 s, Intel Xeon 8 threads, CPU seul, sans GPU.
+
+| Mesure | Valeur |
+|---|---|
+| Fausses alertes sur drift inoffensif (rampe de trafic ×1.4–2.2) | **0 %** (0/50) ; MMD seul sans typage : 100 % |
+| Pannes détectées (4 types, 200 épisodes) | **90 %** (180/200) |
+| Type de panne correct (pannes détectées) | **100 %** (180/180) |
+| Délai de détection médian / p90 | **150 s** / 663 s |
+| Latence par pas (MMD + typage), p50 / p95 | **0,19 ms** / 1,6 ms |
+
+| Panne injectée | Détectée | Type correct | Délai médian |
+|---|---|---|---|
+| `fail_slow_latency` (latence ×2,5–5 sur un service) | 96 % | 100 % | 120 s |
+| `intermittent_error` | 100 % | 100 % | 120 s |
+| `cpu_starvation` | 88 % | 100 % | 150 s |
+| `resource_leak` (fuite mémoire lente) | 76 % | 100 % | 630 s |
+
+Ces chiffres valent pour un générateur synthétique dont les pannes sont nettes : ils montrent que la chaîne complète fonctionne et ce qu'elle mesure, pas sa performance en production. Détail par épisode : [`showcase/results/benchmark.json`](showcase/results/benchmark.json).
+
+**Historiques, cluster Kubernetes interne** (stage Devoteam, dataset `ewat_v3`, non redistribuable, non rejoués ici, détail dans [`docs/results.md`](docs/results.md)) :
+
+| Hypothèse | Résultat |
+|---|---|
+| H1 structurabilité des types | silhouette test **0,414** (seuil 0,3), PASS |
+| H2 drift vs panne par look-through | FPR 0,67 contre 0,73 sans look-through, **FAIL** (épisodes de ~21 pas, trop courts) |
+| H3 précurseurs typés | AUROC test moyen **0,952**, 8 types sur 10, PASS |
+
+Sur des épisodes synthétiques de ~110 pas, le look-through qui échouait en H2 sépare drift et panne : cela va dans le sens de la limite L1 (épisodes trop courts), sans la prouver sur données réelles.
+
+## Comment ça marche
+
+```mermaid
+flowchart LR
+    S["métriques S(t)<br/>6 services × 17"] --> Z["z-score robuste<br/>vs fenêtre de référence"]
+    A["graphe d'appels A(t)"] --> E
+    Z --> M{"MMD² (RFF)<br/>W_ref vs W_cur ≥ ε ?"}
+    M -- non --> N["normal"]
+    M -- oui --> E["STGCN + projection siamoise<br/>+ Mahalanobis"]
+    E -- "drift inoffensif" --> R["W_ref ← fenêtre récente<br/>(look-through)"]
+    E -- "panne, 2 pas de suite" --> AL["ALERTE typée"]
+```
+
+1. **Porte de drift** : MMD² entre la fenêtre de référence et les 5 derniers pas, estimé avec des features de Fourier aléatoires (O(n) au lieu de O(n²)) ; ε est le quantile 99,5 % du MMD² en régime normal.
+2. **Typage** : un encodeur spatio-temporel (STGCN) et une tête siamoise projettent la fenêtre ; un classifieur de Mahalanobis donne la classe parmi `normal`, `drift_traffic_ramp` et les 4 pannes.
+3. **Look-through** : un drift typé inoffensif pendant 6 pas remplace la référence et ne lève pas d'alerte ; une panne confirmée 2 pas de suite lève une alerte typée.
+
+Chaque composant vient de `src/ewat/` (`drift/`, `encoder/`, `typing/`, `openset/`) ; `src/ewat/early_warning/` les assemble.
+
+## Utilisation
+
+```bash
+ewat demo --scenario cpu_starvation --seed 3      # un autre épisode synthétique
+ewat benchmark --episodes 50 --out bench.json      # benchmark synthétique
+ewat example-window | ewat predict -               # fenêtre JSON [T][6][17] → drift, type, latence
+ewat serve                                         # API FastAPI sur :8000
+curl -s localhost:8000/predict -H 'content-type: application/json' \
+     -d "$(ewat example-window)"
+```
+
+Réponse de `/predict` (et de `ewat predict`) : `drift_score`, `threshold`, `drift`, `regime`, `alert`, `fault_type`, `probability`, `latency_ms`. Le modèle est entraîné au premier appel sur données synthétiques et mis en cache (`~/.cache/ewat/synthetic.pt`, variable `EWAT_MODEL`). Les fenêtres doivent suivre le schéma des 6 services et 17 features de [`src/telemetry/feature_names.py`](src/telemetry/feature_names.py).
+
+`bash showcase/make_showcase.sh` reconstruit les résultats, [`showcase/poster.png`](showcase/poster.png) et la démo (vhs, ttyd, ffmpeg).
+
+## Détails du projet de recherche
 
 Stage de recherche Devoteam, Wassim Badraoui
 
@@ -21,7 +99,7 @@ Python **≥ 3.11**. `pyproject.toml` est l'unique source des dépendances.
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 make dev              # pip install -e ".[dev]"
-make test             # 773 tests (770 unitaires + 3 d'intégration)
+make test             # 668 tests passent, 132 ignorés sans données internes
 make lint
 ```
 
@@ -293,3 +371,13 @@ Protocole détaillé : [`docs/evaluation_protocol.md`](docs/evaluation_protocol.
 
 Runbook : [`docs/runbook_v4.md`](docs/runbook_v4.md).  
 Retest H2 post-collecte : `bash scripts/dev/run_v4_retest.sh` (nécessite `data/datasets/ewat_v4`).
+
+## Roadmap et limites connues
+
+Limites détaillées, causes et pistes : [`docs/limitations.md`](docs/limitations.md).
+
+- Les résultats synthétiques ne remplacent pas une validation sur cluster : les pannes générées sont nettes et les classes sont connues à l'entraînement.
+- Les fuites lentes (`resource_leak`) sont détectées tard (médiane 630 s) et 24 % ne le sont pas pendant les 15 min de panne : elles ressemblent à un drift.
+- Le modèle de démonstration est entraîné uniquement sur le générateur synthétique ; l'API attend 6 services et 17 features.
+- Hors périmètre de cette version : transfert entre clusters, réentraînement sur données réelles, nouveaux modèles.
+- Prochaines étapes : rejouer le benchmark sur un dataset public d'incidents microservices, ajouter des drifts inoffensifs supplémentaires (déploiement progressif, changement de config), mesurer la robustesse aux features manquantes.
