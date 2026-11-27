@@ -129,3 +129,12 @@ notebooks/.ipynb_checkpoints/
 
 # Showcase build cache (trained model, raw terminal recording)
 showcase/.cache/
+
+# Agent and progress files are not tracked
+CLAUDE.md
+AGENTS.md
+agents.md
+.claude/
+.cursor/
+STATUS.md
+PROGRESS.md

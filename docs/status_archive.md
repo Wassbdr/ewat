@@ -1,11 +1,11 @@
-# EWAT — Archive des phases historiques
+# EWAT : Archive des phases historiques
 
-_Détail chronologique des phases antérieures, déplacé hors de [STATUS.md](../STATUS.md) pour garder l'état courant lisible._
+_Détail chronologique des phases antérieures, déplacé hors de STATUS.md (retiré du dépôt) pour garder l'état courant lisible._
 _Résultats interprétés → [docs/results.md](results.md) · [docs/evolution.md](evolution.md)._
 
 ---
 
-## Phase L — Audit 2026-06 : correctifs + évaluation renforcée (2026-06-11)
+## Phase L : Audit 2026-06 : correctifs + évaluation renforcée (2026-06-11)
 
 Audit complet data→modèle→résultats ([docs/audit_2026_06.md](docs/audit_2026_06.md), 40 points) puis
 plan d'action exécuté pendant la collecte v5. Branche `audit-fixes-2026-06` (11 commits, 739 tests verts).
@@ -16,46 +16,46 @@ plan d'action exécuté pendant la collecte v5. Branche `audit-fixes-2026-06` (1
 |---|---|
 | Pipeline v5 (P0) | Registre features versionné v4/v5.1 (D1) ; `assemble_dataset` stratifié par défaut + held-out test-only intégré + erreur scénario absent (D4+D5) ; test golden build→validate→assemble sur mini-dump (D6, 10 tests) ; provenance metadata (D12) |
 | Modèle | Self-loops STGCN Â=D̃^{-1/2}(A+I)D̃^{-1/2} (M4) + validation shapes (M5) ; checkpoint siamois sélectionné sur **silhouette val** (M6) ; K=10 fixe + HDBSCAN (M8/T3) ; `sigma_policy=keep` à la recalibration drift (M2) ; ε jamais en dur, calibration requise (M1) ; garde-fou TE T≥5d en erreur + 500 permutations (M11) ; k* parcimonieux (M12) ; empreinte sha256 du scaler dans les checkpoints (M15) |
-| Évaluation | PR-AUC partout (E3) + filtre reportable n_pos≥5 (E8) ; calibration Brier/ECE/reliability (E2) ; IC lead-time (E4) ; robustesse NaN (E9) ; variance inter-split (E5) ; oracle (E6) ; null model silhouette (M9) ; tests edge cases (E10) ; **USAD** (KDD 2020) première baseline publiée (E1) |
+| Évaluation | PR-AUC partout (E3) + filtre reportable n_pos≥5 (E8) ; calibration Brier/ECE/reliability (E2) ; IC lead-time (E4) ; solidité NaN (E9) ; variance inter-split (E5) ; oracle (E6) ; null model silhouette (M9) ; tests edge cases (E10) ; **USAD** (KDD 2020) première baseline publiée (E1) |
 
-### Résultats nouveaux (v4_strat — `experiments/audit2026/`, `experiments/sota/usad/`)
+### Résultats nouveaux (v4_strat`experiments/audit2026/`, `experiments/sota/usad/`)
 
 | Mesure | Valeur | Lecture |
 |---|---|---|
-| **B2 PR-AUC** (à côté du headline AUROC 0.920) | **0.587** | l'AUROC seule était optimiste (n_pos=3/scénario) — reporter les deux (L9.1) |
+| **B2 PR-AUC** (à côté du headline AUROC 0.920) | **0.587** | l'AUROC seule était optimiste (n_pos=3/scénario), reporter les deux (L9.1) |
 | **Variance inter-split** (E5, 5 splits shuffled) | 0.969 ± 0.011 vs **0.920 temporel** | le split officiel est conservateur ; le décalage temporel pénalise surtout la précision (PR 0.59 vs 0.80-0.91) |
 | **Oracle** (E6) | fit-on-all = 1.000 ; train+val = 0.962 | gap 0.920→1.0 entièrement rattrapable, pas de chevauchement irréductible |
-| **Robustesse NaN** (E9) | −1.3 pp AUROC à 20 % NaN, −8.3 pp à 50 % | argument production solide |
+| **Solidité NaN** (E9) | −1.3 pp AUROC à 20 % NaN, −8.3 pp à 50 % | argument production solide |
 | **Calibration** (E2) | B2 ECE=0.037 ✓ ; précurseurs **ECE=0.120 ✗** → isotonique 0.021 | le « seuil 0.7 » historique exige une recalibration (L9.2) |
-| **Missingness en features** (D3) | Δ=+0.0005, IC ∋ 0 | négatif propre — l'imputation à 0 post-instance-norm code déjà le masque |
-| **Drift recalibré v4_strat** | AUC **0.315** (w10) / 0.284 (w5) | pire que le hasard — H2a falsifiée au niveau calibration, pas un réglage (L9.4) |
+| **Missingness en features** (D3) | Δ=+0.0005, IC ∋ 0 | négatif propre, l'imputation à 0 post-instance-norm code déjà le masque |
+| **Drift recalibré v4_strat** | AUC **0.315** (w10) / 0.284 (w5) | pire que le hasard, H2a falsifiée au niveau calibration, pas un réglage (L9.4) |
 | **USAD (typage, latents+LR)** | 0.878 / PR 0.505 | **B2 0.920 / 0.587 bat la baseline publiée** à protocole constant |
-| **USAD (détection, tâche native)** | 0.703 vs z-score max 0.495 | USAD bat la baseline naïve (au hasard post-instance-norm) — détecteur d'appoint crédible, pas un classifieur de types |
+| **USAD (détection, tâche native)** | 0.703 vs z-score max 0.495 | USAD bat la baseline naïve (au hasard post-instance-norm), détecteur d'appoint crédible, pas un classifieur de types |
 | **Sanity retrain graine 42** (self-loops + checkpoint-sil + K=10) | sil_test **0.880** (vs 0.838 Phase G, 0.691±0.115 Phase H) | gain net ; mais best_epoch=**1** à toute marge (sweep 1.5/1.8/2.0) → le contrastif n'améliore pas la géométrie de l'encodeur (L9.3) |
-| **NMI externe clusters vs scénarios** (10 graines) | **0.738 ± 0.052** vs 0.518 (v3) | le gain des fixes est aussi SÉMANTIQUE, pas que géométrique — métrique indépendante, présentable (ARI 0.31, pureté 0.42 plafonnée par K=10<15) |
+| **NMI externe clusters vs scénarios** (10 graines) | **0.738 ± 0.052** vs 0.518 (v3) | le gain des fixes est aussi SÉMANTIQUE, pas que géométrique, métrique indépendante, présentable (ARI 0.31, pureté 0.42 plafonnée par K=10<15) |
 | **Table opérationnelle calibrée** (typage avec abstention) | top-1 0.444 @100 % couverture ; **0.733 @33 %** | remplace la table seuils invalide ; l'AUROC mesure le rang, pas la décision |
-| Alerte opérationnelle (pipeline retrainé) | FA drift 100 % à tous seuils, lead ≈ 14,5 min | l'alerte = identificateur de scénario dès les 1ers steps (cohérent A1) — table seuils à refaire post-recalibration |
+| Alerte opérationnelle (pipeline retrainé) | FA drift 100 % à tous seuils, lead ≈ 14,5 min | l'alerte = identificateur de scénario dès les 1ers steps (cohérent A1), table seuils à refaire post-recalibration |
 
-### Phase H-bis — multi-graines avec fixes (TERMINÉE 2026-06-12, 10 graines)
+### Phase H-bis : multi-graines avec fixes (TERMINÉE 2026-06-12, 10 graines)
 
-`experiments/multiseed/phase_h2/{aggregate.json,results.md}` — comparaison directe avec Phase H :
+`experiments/multiseed/phase_h2/{aggregate.json,results.md}` - comparaison directe avec Phase H :
 
 | Métrique | Phase H (avant fixes) | **Phase H-bis (fixes actifs)** |
 |---|---|---|
 | **H1 sil_test** | 0.691 ± 0.115, range [0.521, 0.839] | **0.843 ± 0.063**, range [0.708, 0.920] |
 | K_optimal | 11.8 ± 2.1, range [9, 15] | **10 constant** (fixe par design, T3) |
-| best_epoch siamois | ~3 | **1.5 ± 0.7** — confirme L9.3 sur 10 graines |
-| H3 AUROC (circulaire) | 0.990 ± 0.012 | 0.999 ± 0.003 (PR 0.992 ± 0.021) — by design, cf. L9 |
+| best_epoch siamois | ~3 | **1.5 ± 0.7** : confirme L9.3 sur 10 graines |
+| H3 AUROC (circulaire) | 0.990 ± 0.012 | 0.999 ± 0.003 (PR 0.992 ± 0.021), by design, cf. L9 |
 | A1 Δ(far−near) | −0.012 ± 0.022, LEAK 9/10 | −0.013 ± 0.010, **LEAK 10/10** (structurel sur cible circulaire) |
 
 **Lecture** : +15 pp de silhouette moyenne, variance ÷2, le MINIMUM de H-bis (0.708) dépasse
 le maximum hors-outlier de Phase H ; la variance K disparaît par construction. La fuite A1 sur
-labels EWAT est confirmée 10/10 — inchangée et attendue (la précursion honnête se mesure sur
-cible Chaos Mesh : C2, et v5). Nouvelles limites L9.1–L9.6 → [docs/limitations.md](docs/limitations.md) §9.
+labels EWAT est confirmée 10/10, inchangée et attendue (la précursion honnête se mesure sur
+cible Chaos Mesh : C2, et v5). Nouvelles limites L9.1-L9.6 → [docs/limitations.md](docs/limitations.md) §9.
 
 ---
 
-## v5 — Collecte Train Ticket : PRÊTE AU LANCEMENT (2026-06-03)
+## v5 : Collecte Train Ticket : PRÊTE AU LANCEMENT (2026-06-03)
 
 Pivot v5 : abandon d'Online Boutique → **Train Ticket** (FudanSELab, 41 microservices Spring Cloud).
 Pipeline complet construit, vérifié end-to-end et durci. **GO collecte sur la VM** via [`v5/LAUNCH.md`](v5/LAUNCH.md).
@@ -66,19 +66,19 @@ Pipeline complet construit, vérifié end-to-end et durci. **GO collecte sur la 
 - **Catalogue** : 22 scénarios chaos (15 mono + 4 compo + 3 held-out) + bugs F1/F3. **3 runners parallèles** (`tt`/`tt-b`/`tt-c`, splits reps 0-9/10-19/20-29) → ~720 ép en **~7-9 j**. Contrainte = RAM (workers ~80-87 %, garde-fou `--ram-ceiling 90`) ; mini-batch 3 runners validé (pic 87 %, 0 éviction).
 - **Vérif data pré-lancement (6 épisodes réels)** : chaos localisé (cpu ×2.0 sur cible), régimes propres, G(t) dynamique, 0 NaN imputé, validate `[OK]`. error_rate/abnormal_span vivants, JVM + semantic actifs.
 - **Bugs corrigés en vérif** : (1) restauration F1 (swap image) cassée → `run_episode._restore_bug` vérifié+retry ; (2) **contexte kubectl non épinglé** → `--context` partout + préflight bloquant (`V5_KUBE_CONTEXT`). Feature morte `oom_events`→`mem_limit_ratio` (cAdvisor ne surface pas l'OOM sur ce cluster).
-- **Bugs réels** : **F3 (OOM) = headline détectable** (restart_count+ram_util+heap) ; **F1 = négatif honnête** (bug logique silencieux, invisible en télémétrie — prouvé 107 ops/0 err/0 log).
-- **Objectif** : dataset potentiellement **public** (base TT/Chaos Mesh ouverte) — conditions : autorisation Devoteam + sanitization des bruts (voir mémoire projet).
+- **Bugs réels** : **F3 (OOM) = headline détectable** (restart_count+ram_util+heap) ; **F1 = négatif honnête** (bug logique silencieux, invisible en télémétrie, prouvé 107 ops/0 err/0 log).
+- **Objectif** : dataset potentiellement **public** (base TT/Chaos Mesh ouverte), conditions : autorisation Devoteam + sanitization des bruts (voir mémoire projet).
 
 ---
 
 
-## Phase H + J + K — Multi-seed validation (2026-05-26, 10 graines)
+## Phase H + J + K : Multi-seed validation (2026-05-26, 10 graines)
 
 Suite à Phase G (single seed 42 → résultats trop optimistes), un sweep multi-seed (10 graines) a été lancé pour mesurer la variance réelle. Verdict : **le retrain Phase G était un outlier** sur deux métriques clés (sil_test 0.84 et A1 Δ=−0.05).
 
-### Phase H — Pipeline retrain (cible labels EWAT, circulaire)
+### Phase H : Pipeline retrain (cible labels EWAT, circulaire)
 
-10 graines × (encoder + siamois + précurseur + A1) — ~7h CPU total.
+10 graines × (encoder + siamois + précurseur + A1), ~7h CPU total.
 
 | Métrique | Mean ± Std (10 graines) | Range | Verdict |
 |---|---|---|---|
@@ -90,24 +90,24 @@ Suite à Phase G (single seed 42 → résultats trop optimistes), un sweep multi
 
 Détail per-seed : `experiments/multiseed/phase_h/results.md`.
 
-### Phase J — Headline défensif (cible Chaos Mesh, indépendante)
+### Phase J : Headline défensif (cible Chaos Mesh, indépendante)
 
 10 graines × B2 (LR-OvR features brutes flatten + instance norm). Le LR avec solver lbfgs étant **déterministe**, toutes les graines donnent exactement le même chiffre (la variance est dans le bootstrap CI, pas dans le fit).
 
 | Métrique | Valeur (10 graines, identique) | IC 95% bootstrap | Verdict |
 |---|---|---|---|
-| **B2 stratified macro-AUROC** | **0.9201** | [0.878, 0.956] | ✅ headline défensif robuste par construction |
+| **B2 stratified macro-AUROC** | **0.9201** | [0.878, 0.956] | ✅ headline défensif solide par construction |
 | **B2 LOSO macro-AUROC** | **0.9298** | (15 folds × 10 seeds) | ✅ stable |
 
 **Le NaN-aware scaler (Step 2.3) ne bouge pas B2** car B2 utilise son propre scaler local sur flatten features. L'audit corrige des bugs réels mais ne déplace pas le headline indépendant. Cohérent avec A5 (paired Δ B4-B3 IC contient 0).
 
-### Phase K — Diagnostics
+### Phase K : Diagnostics
 
 **K.1 K-selection comparison** (`k_selection_comparison.md`) :
 
 | Stratégie | Mode (count) | Mean ± Std | Range | Agreement |
 |---|---|---|---|---|
-| silhouette (default) | K=14 (2/10) | 11.8 ± 2.1 | [9, 15] | — |
+| silhouette (default) | K=14 (2/10) | 11.8 ± 2.1 | [9, 15] | - |
 | gap_tibshirani | K=12 (2/10) | 8.2 ± 2.8 | [4, 12] | 4/10 avec silhouette |
 
 Verdict : **K intrinsèquement instable** sur ce dataset (n=270 train). Ni silhouette ni Tibshirani ne stabilise. Recommandation v5 : fixer K=10 manuellement ou passer à HDBSCAN (density-based).
@@ -115,13 +115,13 @@ Verdict : **K intrinsèquement instable** sur ce dataset (n=270 train). Ni silho
 **K.3 Variance per-seed** (`variance_analysis.md`, `distribution.png`) :
 - Métriques **stables** : H3 AUROC (circ), B2 stratified/LOSO (déterministe).
 - Métriques **instables** : H1 sil (range 0.32), K (range 6), A1 Δ (outlier seed 42).
-- **Seed 42 confirmé comme outlier** sur A1 — son Δ=−0.05 (initialement reporté Phase G) n'est pas reproductible.
+- **Seed 42 confirmé comme outlier** sur A1, son Δ=−0.05 (initialement reporté Phase G) n'est pas reproductible.
 
 ### Verdict consolidé (à reporter au maître de stage)
 
-1. **Headline défensif** : B2 = **0.9201** [0.878, 0.956] sur Chaos Mesh v4_strat — déterministe, IC bootstrap explicite, indépendant des labels EWAT.
+1. **Headline défensif** : B2 = **0.9201** [0.878, 0.956] sur Chaos Mesh v4_strat, déterministe, IC bootstrap explicite, indépendant des labels EWAT.
 2. **Phase G était un outlier** : Phase H montre que sil=0.84 et A1=−0.05 ne sont pas reproductibles.
-3. **38 fixes audit corrigent des bugs réels** (NaN-aware scaler, class_weight, instance norm exclusive, etc.) mais ne déplacent pas le headline indépendant — c'est attendu et cohérent.
+3. **38 fixes audit corrigent des bugs réels** (NaN-aware scaler, class_weight, instance norm exclusive, etc.) mais ne déplacent pas le headline indépendant, c'est attendu et cohérent.
 4. **Limites intrinsèques** : K_optimal instable (n_train=270 trop petit), surentraînement siamois (best_epoch~3 quoi qu'il arrive), n_pos=3 par scénario test (C-5).
 5. **Documentation** : 17 limites L1-L17 documentées avec fixes futurs proposés.
 
@@ -133,7 +133,7 @@ Verdict : **K intrinsèquement instable** sur ce dataset (n=270 train). Ni silho
 
 ---
 
-## Phase G — Retrain complet v4_strat (2026-05-26)
+## Phase G : Retrain complet v4_strat (2026-05-26)
 
 Après les 38 fixes appliqués via le plan 10-étapes (audit méthodologique du pipeline complet), un retrain end-to-end a été effectué sur `data/datasets/ewat_v4_strat` (graine 42) pour mesurer l'impact combiné des correctifs.
 
@@ -152,20 +152,20 @@ Après les 38 fixes appliqués via le plan 10-étapes (audit méthodologique du 
 | Métrique | Ancien pipeline | **Retrain v4_strat (Phase G)** | Δ |
 |---|---|---|---|
 | **H1** sil_test | 0.467 ± 0.156 (6 graines v4) | **0.838** (graine 42, K=12) | **+0.371** |
-| H1 bootstrap CI 95% | — | [0.6530, 0.8096] | — |
+| H1 bootstrap CI 95% | - | [0.6530, 0.8096] | - |
 | **H3** AUROC mean test (peak) | 0.935 ± 0.024 (v4) / 0.987 ± 0.011 (v3) | **0.993** | +0.058 vs v4 |
-| H3 clusters PASS | 6/10 (v4) | **7/12** | — |
-| **A1** Δ(far−near) | −0.007 (v3, EWAT labels — fuite) | **−0.050** (v4_strat retrained) | **GENUINE_PRECURSION** |
+| H3 clusters PASS | 6/10 (v4) | **7/12** | - |
+| **A1** Δ(far−near) | −0.007 (v3, EWAT labels, fuite) | **−0.050** (v4_strat retrained) | **GENUINE_PRECURSION** |
 | Latence E2E p95 | 13.28 ms (v3) | **12.97 ms** | 🟢 GREEN |
-| Clusters reportables (n_pos≥5) | 5/10 (v4) | 4/7 (filtrés sur 12) | — |
+| Clusters reportables (n_pos≥5) | 5/10 (v4) | 4/7 (filtrés sur 12) | - |
 
 ### Lecture des résultats
 
 **Gain majeur H1** : silhouette test passe de 0.467 → **0.838** (×1.8). Le surentraînement siamois identifié en C-4 (best_epoch=2-7) reste présent (best_epoch=3 ici), mais la qualité du clustering ne s'en ressent plus grâce à `margin=2.0` + `mining=semi-hard` + `class_weight=balanced` propagé jusqu'aux précurseurs.
 
-**Renversement A1 — précursion réelle** : sur la cible labels EWAT (auto-référente, censée être circulaire), le nouveau pipeline produit **Δ(far−near) = −0.050**, soit 5 pp d'AUROC qui dépendent vraiment de la position de la fenêtre. C'est un saut qualitatif par rapport à l'ancien Δ=−0.007 (fuite signature). Le pipeline exploite enfin la dynamique pré-injection même sur la cible circulaire — preuve que les fixes (NaN-aware scaler, instance norm correctement séparée du scaler, encoder LayerNorm, etc.) ont éliminé une part importante du bruit qui obscurcissait le signal.
+**Renversement A1, précursion réelle** : sur la cible labels EWAT (auto-référente, censée être circulaire), le nouveau pipeline produit **Δ(far−near) = −0.050**, soit 5 pp d'AUROC qui dépendent vraiment de la position de la fenêtre. C'est un saut qualitatif par rapport à l'ancien Δ=−0.007 (fuite signature). Le pipeline exploite enfin la dynamique pré-injection même sur la cible circulaire, preuve que les fixes (NaN-aware scaler, instance norm correctement séparée du scaler, encoder LayerNorm, etc.) ont éliminé une part importante du bruit qui obscurcissait le signal.
 
-**H3 AUROC test = 0.993** sur le pipeline retrainé, avec 4/7 clusters reportables (n_pos≥5) atteignant AUROC = 1.0 avec BCa CIs [1.0, 1.0]. À comparer prudemment avec le headline défensif B2 sur Chaos Mesh indépendant (0.920 [0.878, 0.956]) — voir limitation L9 sur la circularité d'évaluation.
+**H3 AUROC test = 0.993** sur le pipeline retrainé, avec 4/7 clusters reportables (n_pos≥5) atteignant AUROC = 1.0 avec BCa CIs [1.0, 1.0]. À comparer prudemment avec le headline défensif B2 sur Chaos Mesh indépendant (0.920 [0.878, 0.956]), voir limitation L9 sur la circularité d'évaluation.
 
 ### Bugs corrigés en passant (Phase G)
 
@@ -194,7 +194,7 @@ Le headline défensif honnête reste **0.920 sur Chaos Mesh indépendant** (B2, 
 
 
 **Config optimale identifiée par sweep** (2026-05-21) :
-- clustering : `average + cosine` (vs. ward + euclidean) — aligné avec les embeddings L2-normalisés sur sphère unitaire
+- clustering : `average + cosine` (vs. ward + euclidean), aligné avec les embeddings L2-normalisés sur sphère unitaire
 - projection siamoise : `d_proj=64, margin=2.0` (vs. d_proj=32, margin=1.0)
 - classifier précurseur : `lr_tuned` (LogisticRegressionCV avec C ∈ {0.01..100})
 
@@ -206,7 +206,7 @@ Le headline défensif honnête reste **0.920 sur Chaos Mesh indépendant** (B2, 
 - H1 : labels val/test assignés par nearest centroid depuis les centroides train (vs. fit_predict indépendant)
 - H3 : k* sélectionné sur val (vs. test) ; labels alignés cross-split
 
-## Phase F — Audit + validation opérationnelle (2026-05-26)
+## Phase F : Audit + validation opérationnelle (2026-05-26)
 
 Suite à l'audit méthodologique post-Phase C, 5 critiques (C-1 à C-5) ont été identifiées avec un budget de 1+ mois. Statut actuel :
 
@@ -214,14 +214,14 @@ Suite à l'audit méthodologique post-Phase C, 5 critiques (C-1 à C-5) ont ét�
 |---|---|---|---|
 | **C-1** | STGCN non-prédictif (0.863 < B2=0.920) | ✅ Option B docs | Pipeline opérationnel = LR-OvR sans STGCN ; STGCN = clustering + ontologie |
 | **C-2** | Validation externe nulle (RCAEval H3=0.5) | ⏳ Travail futur | Stratégie B fine-tuning identifiée, non implémentée |
-| **C-3** | Latence E2E non mesurée | ✅ Résolu | **TOTAL p95 = 13.28 ms** (375× sous budget < 5 s) — `experiments/bench/latency_e2e.py` |
+| **C-3** | Latence E2E non mesurée | ✅ Résolu | **TOTAL p95 = 13.28 ms** (375× sous budget < 5 s)`experiments/bench/latency_e2e.py` |
 | **C-4** | H1 dégradé sur ewat_v4 (0.467 ± 0.156) | ⏳ Travail futur | Hard-negative mining + curriculum identifiés, non implémentés |
-| **C-5** | Power statistique non quantifiée | ✅ Résolu | **5/10 clusters reportables** (n_pos ≥ 5), power = 1.0 — `experiments/bench/power_analysis.py` |
+| **C-5** | Power statistique non quantifiée | ✅ Résolu | **5/10 clusters reportables** (n_pos ≥ 5), power = 1.0`experiments/bench/power_analysis.py` |
 
 | ID majeur | Critique | Statut |
 |---|---|---|
 | M-4 | TE method univariate par défaut | ✅ Documenté (Phase 8 utilise multivariate explicitement → 3 causales) |
-| M-6 | macro-AUROC cache hétérogénéité par scénario | ✅ Résolu, PR-AUC ajouté (`experiments/architecture_v2/chaos_mesh_target.py`) — révèle PR-AUC ∈ [0.166, 1.000] selon scénario |
+| M-6 | macro-AUROC cache hétérogénéité par scénario | ✅ Résolu, PR-AUC ajouté (`experiments/architecture_v2/chaos_mesh_target.py`), révèle PR-AUC ∈ [0.166, 1.000] selon scénario |
 
 **Documentation L10-L17 ajoutée** dans `docs/limitations.md` : surentraînement siamois v4 (L10), latence résolue (L11), OpenMax mitigé (L12), service graph N=6 (L13), cross-cluster (L14), retraining cycle (L15), 17 features hardcodées (L16), ontologie sans audit SRE (L17). Toutes accompagnées de propositions de fix pour future itération.
 
@@ -232,51 +232,51 @@ Suite à l'audit méthodologique post-Phase C, 5 critiques (C-1 à C-5) ont ét�
 ---
 
 
-## Expériences — résultats
+## Expériences : résultats
 
-### Étape 0 — Calibration drift
+### Étape 0 : Calibration drift
 
 - ε_drift = **0.5226** (Youden-optimal, AUC=0.60 sur train)
 - `configs/default.yaml` mis à jour
 
-### H2 — Look-through temporel (test set)
+### H2 : Look-through temporel (test set)
 
-- TPR drift : lt=0.42 vs baseline=0.67 — ❌ look-through moins bon que le seuil simple
-- FPR anomalie : lt=0.67 vs baseline=0.73 — réduction non significative (p=0.27)
-- **Cause** : épisodes ~21 steps trop courts pour la confirmation temporelle (post=3–6 steps)
+- TPR drift : lt=0.42 vs baseline=0.67, ❌ look-through moins bon que le seuil simple
+- FPR anomalie : lt=0.67 vs baseline=0.73, réduction non significative (p=0.27)
+- **Cause** : épisodes ~21 steps trop courts pour la confirmation temporelle (post=3-6 steps)
 
-### H2 bis — Look-through sur embeddings STGCN (test set)
+### H2 bis : Look-through sur embeddings STGCN (test set)
 
-- ε_emb=0.5186 (Youden J=0.071 — très faible discrimination)
-- FPR anomalie : lt=0.788 vs baseline=0.667 — ❌ look-through pire que baseline (p=0.978)
+- ε_emb=0.5186 (Youden J=0.071, très faible discrimination)
+- FPR anomalie : lt=0.788 vs baseline=0.667, ❌ look-through pire que baseline (p=0.978)
 - **Interprétation** : embeddings STGCN capturent le TYPE d'anomalie, pas le régime drift/anomalie
 
-### Étape 1+2 — Encodeur + Typage (47 epochs + 50 epochs)
+### Étape 1+2 : Encodeur + Typage (47 epochs + 50 epochs)
 
 - Silhouette train=0.577 / val=**0.470** / **test=0.414** → **H1 ✓ PASS** (seuil 0.3)
 - K optimal = **10** clusters
 - Note : scores précédents (val=0.601, test=0.615) utilisaient un clustering indépendant par split
 
-### Étape 2b — Ontologie (100 permutations — définitif)
+### Étape 2b : Ontologie (100 permutations : définitif)
 
-**Cluster-level TE (build.py — biais écologique documenté) :**
+**Cluster-level TE (build.py, biais écologique documenté) :**
 - 22 relations temporelles, **0 causales**, 0 co-occurrence
 - Les 2 relations causales du dry-run (C6→C8, C2→C8, 20 perm.) étaient des faux positifs
 - Relations temporelles : 10 auto-transitions (Ci→Ci), 12 transitions inter-clusters (support ≥ 3)
 
-**Service-level TE (build_service.py — estimateur hiérarchique, sans biais écologique) :**
+**Service-level TE (build_service.py, estimateur hiérarchique, sans biais écologique) :**
 - **124 relations causales brutes** → **46 filtrées** (paires ubiquitaires inter-clusters retirées) → **8/10 clusters enrichis**
-- C5 (rolling_deploy) et C6 (config_change) : **0 relation** — les drifts bénins ne produisent pas de cascade causale entre services (résultat validant)
-- `load-generator → frontend` : relation ubiquitaire (tous clusters actifs) — couplage structurel
-- **Relation unique à C8** (θ_{drift∩anomaly}) : `cart → load-generator` (TE=0.031) — seul cluster où ce sens est significatif
+- C5 (rolling_deploy) et C6 (config_change) : **0 relation** : les drifts bénins ne produisent pas de cascade causale entre services (résultat validant)
+- `load-generator → frontend` : relation ubiquitaire (tous clusters actifs), couplage structurel
+- **Relation unique à C8** (θ_{drift∩anomaly}) : `cart → load-generator` (TE=0.031), seul cluster où ce sens est significatif
 
-**Ontologie OWL/RDF (build_owl.py — `experiments/ontology_v2/`) :**
+**Ontologie OWL/RDF (build_owl.py`experiments/ontology_v2/`) :**
 - **29 classes** TBox ancrées littérature (Soldani & Brogi 2022, Fu et al. 2025, Gregg 2013, Aniello et al. 2014)
 - **143 individus** ABox : 10 EmpiricalCluster + 10 Anomaly typées par classe leaf + 10 Signature + 107 FeatureWeight réifiés (depuis permutation_importance) + 6 Service
 - **11 object properties** (causes transitive/asymmetric/irreflexive, precedes transitive, coOccursWith symmetric, propagatesThrough ⊑ affects, hasComponent transitive, etc.) + 6 data properties
 - **46 edges de propagation services** (propagatesThrough) après filtre de spécificité : 124 brutes → 46 spécifiques, 13 paires ubiquitaires dropped (ex. `load-generator → frontend`)
 - **3 relations causales** (causes, BH-FDR p < 0.05 sur cascades synthétiques, TE multivariate KSG-1) : C4→C1 (crash → traffic_ramp), C6→C5 (config → rolling_deploy), C4→C8 (crash → faulty_deploy)
-- **19 co-occurrences** (coOccursWith, par construction sur overlays — pas de test statistique car circulaire)
+- **19 co-occurrences** (coOccursWith, par construction sur overlays, pas de test statistique car circulaire)
 - **12 precedes** cross-cluster injectées depuis les transitions temporelles (self-loops exclus)
 - **HermiT reasoning** : ontologie cohérente en 0.61 s, 0 classe inconsistante. Limitation owlready2 : entailments d'instances accessibles via SPARQL, pas matérialisés dans `.is_a`.
 - **Validation chiffrée** : 8/10 critères atteints (cf. `experiments/ontology_v2/results.md`)
@@ -289,7 +289,7 @@ Suite à l'audit méthodologique post-Phase C, 5 critiques (C-1 à C-5) ont ét�
 - **AUC discriminateur = 0.529** (indistinguable du réel à corpus level)
 - Objectif : observer co-occurrences/causalités inter-types impossibles dans le design mono-scénario de ewat_v3
 
-### Étape 3 — Précurseurs (k ∈ {2,4,6,8,10,12} steps, k* sélectionné sur val)
+### Étape 3 : Précurseurs (k ∈ {2,4,6,8,10,12} steps, k* sélectionné sur val)
 
 | Type | n_pos_test | k* | AUROC_val(k*) | AUROC_test(k*) | IC 95% bootstrap |
 |------|------------|-----|--------------|----------------|-----------------|
@@ -304,14 +304,14 @@ Suite à l'audit méthodologique post-Phase C, 5 critiques (C-1 à C-5) ont ét�
 | C8   | 7          | 10  | 0.988        | **0.962**      | [0.895, 1.000]  |
 | C9   | 1          | 2   | NaN          | NaN            | n.a. (n_pos<2)  |
 
-**H3 ✓ PASS** — 8/10 types prédictibles (graine 42) ; 7-8/K selon la graine.
+**H3 ✓ PASS** : 8/10 types prédictibles (graine 42) ; 7-8/K selon la graine.
 C6/C9 : NaN par manque d'épisodes test (n_pos=1). C3 IC le plus large [0.636, 0.930] (n_pos=3).
 
-_Correction 2026-05-11_ : k* identiques à STATUS.md original. AUROC légèrement supérieur (+0.3–1.6 pp) car le résidu STGCN du commit 6543c69 (LayerNorm TCN activé post-entraînement) est désormais corrigé — forward reverted au comportement de l'entraînement.
+_Correction 2026-05-11_ : k* identiques à STATUS.md original. AUROC légèrement supérieur (+0.3-1.6 pp) car le résidu STGCN du commit 6543c69 (LayerNorm TCN activé post-entraînement) est désormais corrigé, forward reverted au comportement de l'entraînement.
 
-**Baselines précurseurs** — deux niveaux de comparaison :
+**Baselines précurseurs** : deux niveaux de comparaison :
 
-_B0/B1/B2 (cible : labels EWAT — récupérabilité des clusters)_ :
+_B0/B1/B2 (cible : labels EWAT, récupérabilité des clusters)_ :
 | Baseline | AUROC test @k* | Remarque |
 |---|---|---|
 | B0 (aléatoire) | 0.500 | référence |
@@ -319,13 +319,13 @@ _B0/B1/B2 (cible : labels EWAT — récupérabilité des clusters)_ :
 | **B2 (k-means brut + LR)** | **0.975** | prédit labels EWAT |
 | **EWAT (STGCN + Siamois)** | **0.951** | prédit ses propres labels |
 
-_B3/B4 (cible : scénarios Chaos Mesh — vérité terrain indépendante, k=6, macro-AUROC OvR)_ :
+_B3/B4 (cible : scénarios Chaos Mesh, vérité terrain indépendante, k=6, macro-AUROC OvR)_ :
 | Condition | macro-AUROC test | IC 95% | Δ vs B3 |
 |-----------|-----------------|--------|---------|
-| B3 (features brutes) | 0.835 | [0.773, 0.888] | — |
+| B3 (features brutes) | 0.835 | [0.773, 0.888] | - |
 | B4 (STGCN z_e, d=64) | 0.835 | [0.772, 0.885] | +0.000 |
 
-**Macro Δ=0.000 — coïncidence mathématique, non neutralité.** Les AUROCs sont des ratios de paires concordantes entiers sur 126 (= 3 pos × 42 neg). La somme des Δ par scénario = 0 exactement (75 paires gagnées − 75 perdues), redistribuées sans gain net. Le détail par scénario révèle la redistribution :
+**Macro Δ=0.000, coïncidence mathématique, non neutralité.** Les AUROCs sont des ratios de paires concordantes entiers sur 126 (= 3 pos × 42 neg). La somme des Δ par scénario = 0 exactement (75 paires gagnées − 75 perdues), redistribuées sans gain net. Le détail par scénario révèle la redistribution :
 
 | Scénario | B3 | B4 | Δ |
 |---|---|---|---|
@@ -342,13 +342,13 @@ _B3/B4 (cible : scénarios Chaos Mesh — vérité terrain indépendante, k=6, m
 | fail_slow_latency | **0.690** | 0.643 | −0.048 |
 | network_loss | **0.722** | 0.690 | −0.032 |
 
-_Interprétation_ : l'encodeur **redistribue** la discriminabilité entre types de pannes. Il aide les pannes basées sur la saturation CPU/latence (fail_slow_cpu +27pp) et nuit aux pannes config/réseau (noisy_neighbor −25pp). Sur n=45 test, cette redistribution est exactement compensée — elle ne le sera presque certainement plus sur ewat_v4.
+_Interprétation_ : l'encodeur **redistribue** la discriminabilité entre types de pannes. Il aide les pannes basées sur la saturation CPU/latence (fail_slow_cpu +27pp) et nuit aux pannes config/réseau (noisy_neighbor −25pp). Sur n=45 test, cette redistribution est exactement compensée, elle ne le sera presque certainement plus sur ewat_v4.
 
-**Interprétation globale B3/B4** : B1/B2 mesurent la *récupérabilité* des labels EWAT depuis le signal brut (circulaire — la cible est EWAT lui-même). B3/B4 utilisent la vérité terrain Chaos Mesh indépendante : Δ_macro=0.000 confirme que l'encodeur STGCN n'ajoute **pas de discriminabilité prédictive agrégée** au-delà des features brutes. La valeur du STGCN est **géométrique** (structuration de l'espace latent pour le clustering, H1 sil=0.519) et **redistributive** (réorganise la séparabilité par type) plutôt que prédictive au sens global.
+**Interprétation globale B3/B4** : B1/B2 mesurent la *récupérabilité* des labels EWAT depuis le signal brut (circulaire, la cible est EWAT lui-même). B3/B4 utilisent la vérité terrain Chaos Mesh indépendante : Δ_macro=0.000 confirme que l'encodeur STGCN n'ajoute **pas de discriminabilité prédictive agrégée** au-delà des features brutes. La valeur du STGCN est **géométrique** (structuration de l'espace latent pour le clustering, H1 sil=0.519) et **redistributive** (réorganise la séparabilité par type) plutôt que prédictive au sens global.
 
-### Stress tests H3 — robustesse (2026-05-22)
+### Stress tests H3 : solidité (2026-05-22)
 
-#### A1 — Distant-window : fuite signature scénario CONFIRMÉE
+#### A1 : Distant-window : fuite signature scénario CONFIRMÉE
 
 Script : `experiments/h3_robustness/distant_window.py`. Mêmes encodeur + siamois + classifieur ; on déplace seulement la fenêtre dans le régime normal.
 
@@ -356,18 +356,18 @@ Script : `experiments/h3_robustness/distant_window.py`. Mêmes encodeur + siamoi
 |---|---|
 | `last` (status quo, juste avant injection) | **0.904** |
 | `middle` (milieu du régime normal) | 0.907 |
-| `first` (début du régime normal — maximum loin de l'injection) | 0.897 |
+| `first` (début du régime normal, maximum loin de l'injection) | 0.897 |
 
 **Δ(far − near) = −0.007** ⇒ **fuite signature scénario confirmée**.
 
 Le précurseur produit le **même AUROC** que la fenêtre soit juste avant l'injection ou au tout début du régime normal. Donc :
 - L'AUROC=0.987 ne mesure **pas** de précursion (la dynamique pré-injection n'apporte rien).
-- Le classifieur apprend la signature **statique** du scénario (quel service, mix de charge, baselines) — recoverable depuis n'importe quel point du régime normal.
+- Le classifieur apprend la signature **statique** du scénario (quel service, mix de charge, baselines), recoverable depuis n'importe quel point du régime normal.
 - Cohérent avec B3/B4=0.835 (vérité terrain indépendante) et B1=0.966 (récupérabilité circulaire) : la tâche EWAT-label est de la discrimination de scénario, pas de la prédiction temporelle.
 
 **Conséquence pour le rapport** : H3 reste PASS au sens "discriminabilité ⇒ AUROC > 0.5", mais **n'est pas une prédiction d'événement futur**. Reframer en "typage anticipé du scénario actif" plutôt que "détection précoce".
 
-#### A2 — Leave-One-Scenario-Out (LOSO precursor-only)
+#### A2 : Leave-One-Scenario-Out (LOSO precursor-only)
 
 Script : `experiments/h3_robustness/loso_cv.py`. Encodeur + siamois fixes (entraînés sur les 15 scénarios) ; pour chaque scénario s, on retire les épisodes de s du training du précurseur, on entraîne sur les 14 autres, on évalue.
 
@@ -377,13 +377,13 @@ Script : `experiments/h3_robustness/loso_cv.py`. Encodeur + siamois fixes (entra
 | top-1 cluster acc sur scénario held-out (3 ép) | **0.511 ± 0.382** |
 
 **Lecture** :
-- Le macro-AUROC sur test complet reste élevé (0.896) car les 14 autres scénarios couvrent l'espace — la "vrai" généralisation à un type inédit est mesurée par le top-1 sur l'held-out.
+- Le macro-AUROC sur test complet reste élevé (0.896) car les 14 autres scénarios couvrent l'espace, la "vrai" généralisation à un type inédit est mesurée par le top-1 sur l'held-out.
 - Top-1 polarisé : `cpu_starvation`, `drift_scale_up`, `fail_slow_cpu`, `intermittent_error` → 100% (leurs clusters sont peuplés par d'autres scénarios). `drift_config_change`, `drift_traffic_ramp`, `faulty_deploy_overlap`, `noisy_neighbor` → 0% (clusters uniques au scénario retiré).
 - **Conclusion** : le modèle ne généralise PAS à un nouveau type de panne. Il interpole entre scénarios connus. C8 (faulty_deploy_overlap) et C3 (noisy_neighbor), 100% appariés à un seul scénario, sont impossibles à reconstituer une fois leur scénario retiré.
 
 Cohérent avec A1 et avec la critique de circularité : la performance H3=0.987 mesure l'identification du scénario actif parmi un set fixe, pas la généralisation.
 
-#### A3 — Permutation test sur labels (null distribution)
+#### A3 : Permutation test sur labels (null distribution)
 
 Script : `experiments/h3_robustness/permutation_test.py`. 100 permutations aléatoires des labels train, même encodeur + précurseur, AUROC test mesuré à chaque permutation.
 
@@ -394,9 +394,9 @@ Script : `experiments/h3_robustness/permutation_test.py`. 100 permutations aléa
 | p95 null | 0.672 |
 | p-value empirique | **< 0.01** |
 
-**Lecture** : l'AUROC observé est très significativement au-dessus du null (p < 0.01). Donc le précurseur **apprend bien** un signal aligné avec les labels — mais A1 a montré que ce signal est la signature *statique* du scénario, pas la dynamique pré-injection. Les trois résultats sont cohérents : A3 confirme qu'il y a un signal réel, A1 montre qu'il n'est pas temporel, A2 montre qu'il ne généralise pas à un type inédit.
+**Lecture** : l'AUROC observé est très significativement au-dessus du null (p < 0.01). Donc le précurseur **apprend bien** un signal aligné avec les labels, mais A1 a montré que ce signal est la signature *statique* du scénario, pas la dynamique pré-injection. Les trois résultats sont cohérents : A3 confirme qu'il y a un signal réel, A1 montre qu'il n'est pas temporel, A2 montre qu'il ne généralise pas à un type inédit.
 
-#### A4 — H3 filtré par n_pos ≥ 5
+#### A4 : H3 filtré par n_pos ≥ 5
 
 Script : `experiments/h3_robustness/filter_npos.py`. On élimine les clusters dont le test set contient < 5 positifs (où l'AUROC est statistiquement bruité par 1-3 points).
 
@@ -406,9 +406,9 @@ Script : `experiments/h3_robustness/filter_npos.py`. On élimine les clusters do
 | Clusters reportables (n_pos ≥ 5) | **5** (C0, C2, C4, C7, C8) |
 | AUROC moyen sur clusters reportables | **0.975 ± 0.020** |
 
-**Lecture** : 5 clusters sur 10 ont un effectif suffisant. Sur ceux-là, l'AUROC reste élevé (0.975) — mais c'est cohérent avec A1 : ces clusters bien peuplés sont aussi ceux dont les scénarios ont la signature statique la plus distincte. Les 5 autres clusters (C1, C3, C5, C6, C9 — n_pos ≤ 3) doivent être marqués "non concluant" dans le rapport.
+**Lecture** : 5 clusters sur 10 ont un effectif suffisant. Sur ceux-là, l'AUROC reste élevé (0.975), mais c'est cohérent avec A1 : ces clusters bien peuplés sont aussi ceux dont les scénarios ont la signature statique la plus distincte. Les 5 autres clusters (C1, C3, C5, C6, C9, n_pos ≤ 3) doivent être marqués "non concluant" dans le rapport.
 
-#### A5 — Paired bootstrap IC sur Δ(B4 − B3)
+#### A5 : Paired bootstrap IC sur Δ(B4 − B3)
 
 Script : `experiments/h3_robustness/paired_delta_b4_b3.py`. 1000 rééchantillonnages bootstrap **paired** des indices test (mêmes indices pour B3 et B4) → distribution de Δ.
 
@@ -421,11 +421,11 @@ Script : `experiments/h3_robustness/paired_delta_b4_b3.py`. 1000 rééchantillon
 | IC exclut 0 | **non** |
 | P(Δ ≤ 0) | 0.420 |
 
-**Lecture** : l'IC paired contient zéro. La neutralité de l'encodeur STGCN sur les labels Chaos Mesh (cible indépendante) est **statistiquement bien soutenue** — ce n'est pas un Δ=0 ponctuel suspect, c'est une plage [−0.03, +0.04] autour de 0. Le rapport peut affirmer cette neutralité sans risque de critique. La valeur du STGCN est géométrique (H1 sil=0.78) et redistributive par scénario, pas prédictive en agrégé.
+**Lecture** : l'IC paired contient zéro. La neutralité de l'encodeur STGCN sur les labels Chaos Mesh (cible indépendante) est **statistiquement bien soutenue** : ce n'est pas un Δ=0 ponctuel suspect, c'est une plage [−0.03, +0.04] autour de 0. Le rapport peut affirmer cette neutralité sans risque de critique. La valeur du STGCN est géométrique (H1 sil=0.78) et redistributive par scénario, pas prédictive en agrégé.
 
-#### B1 — Instance norm diagnostic (résultat nuancé, important pour le rapport)
+#### B1 : Instance norm diagnostic (résultat nuancé, important pour le rapport)
 
-Script : `experiments/architecture_v2/instance_norm_diagnostic.py`. LR sur features brutes × {position, norm_mode} avec cible Chaos Mesh (15 scénarios). Pas d'encodeur — diagnostic pur sur S(t).
+Script : `experiments/architecture_v2/instance_norm_diagnostic.py`. LR sur features brutes × {position, norm_mode} avec cible Chaos Mesh (15 scénarios). Pas d'encodeur, diagnostic pur sur S(t).
 
 | Position fenêtre | Global norm | Instance norm | Δ(instance − global) |
 |---|---|---|---|
@@ -442,19 +442,19 @@ Script : `experiments/architecture_v2/instance_norm_diagnostic.py`. LR sur featu
 
 - A1 mesurait sur les labels EWAT (auto-référents, circulaires) → Δ ≈ 0 trivial.
 - B1 mesure sur les labels Chaos Mesh (vérité terrain indépendante) → **Δ(far−near) = −0.071** avec global norm. Donc **il existe bien une dynamique pré-injection** captée par les features brutes (au moins 7 pp d'AUROC).
-- L'instance norm **améliore** le signal — particulièrement à `first` (+5.5 pp). Les baselines absolus ajoutent du bruit (services aux baselines différentes), l'instance norm le supprime.
+- L'instance norm **améliore** le signal, particulièrement à `first` (+5.5 pp). Les baselines absolus ajoutent du bruit (services aux baselines différentes), l'instance norm le supprime.
 - Cohérent avec A2 LOSO : il y a un signal réel, mais pas suffisant pour généraliser à un type inédit.
 
 **Conséquence pour Phase B** : l'architecture v2 doit intégrer l'instance normalization. Cela suggère qu'un modèle entraîné directement sur labels Chaos Mesh avec instance norm + fenêtre pré-injection pourrait obtenir un AUROC honnête > 0.85 sans circularité.
 
-#### B2 — Cible Chaos Mesh directe (instance norm + temporal flatten)
+#### B2 : Cible Chaos Mesh directe (instance norm + temporal flatten)
 
 Script : `experiments/architecture_v2/chaos_mesh_target.py`. LR-OvR sur (k × N × 17) features brutes pré-injection instance-normalized. Pas d'encodeur STGCN. Cible : 15 scénarios Chaos Mesh.
 
 | Évaluation | macro-AUROC | IC 95% bootstrap |
 |---|---|---|
 | **Stratified** (status quo, 209/45/45) | **0.855** | [0.789, 0.905] |
-| **LOSO macro-AUROC full test** (15 folds) | 0.847 ± 0.010 | — |
+| **LOSO macro-AUROC full test** (15 folds) | 0.847 ± 0.010 | - |
 | **LOSO top-1 sur scénario held-out (3 ép)** | 0.000 ± 0.000 | tautologique (OvR fermé) |
 
 **Lectures** :
@@ -465,9 +465,9 @@ Script : `experiments/architecture_v2/chaos_mesh_target.py`. LR-OvR sur (k × N 
 
 **Conclusion** : on a un modèle prédictif **viable** (0.855 honnête sur cible indépendante avec IC explicite). L'encodeur STGCN n'est pas nécessaire pour cette tâche. La contribution se reframe autour de "typage de scénario actif" avec une métrique défendable, et de l'ontologie OWL/RDF Phase 8 pour la valeur sémantique.
 
-#### B3 — Validation croisée B1/B2 sur ewat_v4 (stratifié)
+#### B3 : Validation croisée B1/B2 sur ewat_v4 (stratifié)
 
-**Note méthodologique critique** : le split temporel `ewat_v4` (262/56/57) est inutilisable pour cette évaluation — 4 scénarios sont entièrement absents du training (`faulty_deploy_overlap`, `memory_pressure`, `noisy_neighbor`, `resource_leak`). Test set = 3 scénarios non vus → AUROC=0.500 trivial. Nouveau dataset assemblé : `data/datasets/ewat_v4_strat/` (270/60/45 stratifié, 1 ép/scénario minimum par split).
+**Note méthodologique critique** : le split temporel `ewat_v4` (262/56/57) est inutilisable pour cette évaluation, 4 scénarios sont entièrement absents du training (`faulty_deploy_overlap`, `memory_pressure`, `noisy_neighbor`, `resource_leak`). Test set = 3 scénarios non vus → AUROC=0.500 trivial. Nouveau dataset assemblé : `data/datasets/ewat_v4_strat/` (270/60/45 stratifié, 1 ép/scénario minimum par split).
 
 **B1 sur ewat_v4_strat** (instance norm diagnostic, LR sur features brutes pré-injection moyennées sur k, cible Chaos Mesh) :
 
@@ -477,7 +477,7 @@ Script : `experiments/architecture_v2/chaos_mesh_target.py`. LR-OvR sur (k × N 
 | `middle` | 0.862 | 0.896 |
 | `first` | 0.863 | 0.878 |
 
-- Δ(far − near) global = **−0.043**, instance = **−0.063** (plus large que v3 : −0.071 / −0.026) → **la dynamique pré-injection est clairement présente** sur les épisodes v4 plus longs (47–51 steps).
+- Δ(far − near) global = **−0.043**, instance = **−0.063** (plus large que v3 : −0.071 / −0.026) → **la dynamique pré-injection est clairement présente** sur les épisodes v4 plus longs (47-51 steps).
 - Instance norm gain : +3.5 pp à `last`. Mieux que v3 (+1 pp).
 
 **B2 sur ewat_v4_strat** (instance norm + temporal flatten, LR-OvR sur 6×N×17 = 612 features, cible Chaos Mesh) :
@@ -485,7 +485,7 @@ Script : `experiments/architecture_v2/chaos_mesh_target.py`. LR-OvR sur (k × N 
 | Évaluation | macro-AUROC | IC 95% |
 |---|---|---|
 | **Stratified** | **0.920** | [0.878, 0.956] |
-| LOSO macro-AUROC full test (15 folds) | 0.930 ± 0.007 | — |
+| LOSO macro-AUROC full test (15 folds) | 0.930 ± 0.007 | - |
 
 **Comparaison v3 vs v4** :
 
@@ -495,9 +495,9 @@ Script : `experiments/architecture_v2/chaos_mesh_target.py`. LR-OvR sur (k × N 
 | B2 LOSO macro | 0.847 | **0.930** | +0.083 |
 | B1 best (instance norm + last) | 0.850 | **0.941** | +0.091 |
 
-**Conclusion** : ewat_v4 confirme et amplifie le signal v3. **Le headline défensif final est 0.920–0.941** (B2 stratified / B1 best) sur cible Chaos Mesh indépendante avec IC bootstrap explicite. Les épisodes plus longs (×2) révèlent une dynamique pré-injection plus marquée (Δ near-far passe de −0.026 à −0.063 avec instance norm).
+**Conclusion** : ewat_v4 confirme et amplifie le signal v3. **Le headline défensif final est 0.920-0.941** (B2 stratified / B1 best) sur cible Chaos Mesh indépendante avec IC bootstrap explicite. Les épisodes plus longs (×2) révèlent une dynamique pré-injection plus marquée (Δ near-far passe de −0.026 à −0.063 avec instance norm).
 
-#### C1 — STGCN entraîné cible Chaos Mesh directe (v4_strat)
+#### C1 : STGCN entraîné cible Chaos Mesh directe (v4_strat)
 
 Script : `experiments/architecture_v2/train_chaos_mesh.py`. Pipeline complet : signal → instance norm → STGCN encoder + 15-way head → CE loss. 80 époques, batch 16.
 
@@ -514,7 +514,7 @@ Script : `experiments/architecture_v2/train_chaos_mesh.py`. Pipeline complet : s
 S(t) → instance norm → LR-OvR 15-way → softmax → OpenMax (cf. C3)
 ```
 
-#### C2 — A1 distant-window sur le modèle Chaos Mesh STGCN (résultat MAJEUR)
+#### C2 : A1 distant-window sur le modèle Chaos Mesh STGCN (résultat MAJEUR)
 
 Script : `experiments/architecture_v2/distant_window_chaos_mesh.py`. Mêmes paramètres que A1 mais sur le modèle C1 + cible Chaos Mesh + v4_strat.
 
@@ -534,9 +534,9 @@ Script : `experiments/architecture_v2/distant_window_chaos_mesh.py`. Mêmes para
 - B1 (raw LR, cible Chaos Mesh, v4_strat) : Δ = −0.043 à −0.063
 - **C2-A1 (STGCN end-to-end, cible Chaos Mesh, v4_strat) : Δ = −0.116** ✓
 
-Conclusion : il y a de la précursion temporelle réelle dans le signal pré-injection. EWAT n'est pas qu'un identificateur de signature statique — pour une évaluation honnête sur cible indépendante.
+Conclusion : il y a de la précursion temporelle réelle dans le signal pré-injection. EWAT n'est pas qu'un identificateur de signature statique, pour une évaluation honnête sur cible indépendante.
 
-#### C5 — H2 look-through retest sur ewat_v4_strat
+#### C5 : H2 look-through retest sur ewat_v4_strat
 
 Script : `experiments/h2_lookthrough_v4/`. Recalibration sur épisodes 47-51 steps.
 
@@ -544,11 +544,11 @@ Script : `experiments/h2_lookthrough_v4/`. Recalibration sur épisodes 47-51 ste
 |---|---|---|---|
 | TPR drift | 0.500 | 0.750 | look-through pire |
 | FPR anomaly | 0.667 | 0.697 | réduction non significative |
-| p-value (paired t, one-sided) | 0.372 | — | **H2 ✗ FAIL robuste** |
+| p-value (paired t, one-sided) | 0.372 | - | **H2 ✗ FAIL solide** |
 
-**Lecture** : même avec des épisodes 2× plus longs, le mécanisme look-through MMD² ne sépare pas le drift bénin de l'anomalie. L'hypothèse "v3 trop court" n'explique pas tout — le mécanisme lui-même est fondamentalement falsifié. Résultat négatif honnête confirmé.
+**Lecture** : même avec des épisodes 2× plus longs, le mécanisme look-through MMD² ne sépare pas le drift bénin de l'anomalie. L'hypothèse "v3 trop court" n'explique pas tout, le mécanisme lui-même est fondamentalement falsifié. Résultat négatif honnête confirmé.
 
-#### C3 — OpenMax open-set recognition (LOSO complet, 15 folds × 60 époques)
+#### C3 : OpenMax open-set recognition (LOSO complet, 15 folds × 60 époques)
 
 Script : `experiments/architecture_v2/openset_eval.py`. Module : `src/ewat/openset/openmax.py` (Bendale & Boult 2016, Weibull EVT). Tests unitaires : 11/11.
 
@@ -567,7 +567,7 @@ Script : `experiments/architecture_v2/openset_eval.py`. Module : `src/ewat/opens
 
 
 
-#### Config baseline (Ward+Euclidean, d_proj=32, m=1.0, lr — 5 graines)
+#### Config baseline (Ward+Euclidean, d_proj=32, m=1.0, lr : 5 graines)
 
 | Graine | sil_test | AUROC moyen | H3 |
 |---|---|---|---|
@@ -578,7 +578,7 @@ Script : `experiments/architecture_v2/openset_eval.py`. Module : `src/ewat/opens
 | 1337 | 0.591 | 0.972 | PASS (7/10) |
 | **Agrégé** | **0.519 ± 0.092** | **0.973 ± 0.012** | **5/5 PASS** |
 
-#### Config optimisée (Average+Cosine, d_proj=64, m=2.0, lr_tuned — 10 graines)
+#### Config optimisée (Average+Cosine, d_proj=64, m=2.0, lr_tuned : 10 graines)
 
 | Graine | sil_test | AUROC moyen | H3 |
 |---|---|---|---|
@@ -598,11 +598,11 @@ Script : `experiments/architecture_v2/openset_eval.py`. Module : `src/ewat/opens
 
 Détail des sweeps → `experiments/runs/sweep_multiseed/aggregate.json`
 
-### Baseline alerte — comparaison z-score vs EWAT (test set)
+### Baseline alerte : comparaison z-score vs EWAT (test set)
 
 | Méthode | Détection anomalie | FA drift | Lead time |
 |---|---|---|---|
-| **z-score (σ=2.0–3.5)** | **100%** | **100%** | 2.5 min |
+| **z-score (σ=2.0-3.5)** | **100%** | **100%** | 2.5 min |
 | EWAT seuil 0.3 | 100% | 100% | 4.6 min |
 | EWAT seuil 0.4 | 97.0% | 100% | 3.8 min |
 | EWAT seuil 0.5 | 78.8% | 100% | 3.9 min |
@@ -610,7 +610,7 @@ Détail des sweeps → `experiments/runs/sweep_multiseed/aggregate.json`
 
 **Apport EWAT** : le z-score ne distingue pas drift et anomalie (FA=100% sur les drifts bénins à tous les seuils). EWAT au seuil 0.7 réduit la FA à 8.3% en maintenant un lead time de 3.0 min. Baselines précurseurs B0/B1/B2 → `experiments/baselines/precursor_baselines.py`.
 
-### Simulation en ligne — AlertAssembler (test set, 45 épisodes)
+### Simulation en ligne : AlertAssembler (test set, 45 épisodes)
 
 DriftDetector intégré. Labels corrigés → "correct cluster" maintenant significatif.
 
@@ -622,17 +622,17 @@ DriftDetector intégré. Labels corrigés → "correct cluster" maintenant signi
 | 0.6 | 75.8% | 63.6% | 50.0% | 3.7 min |
 | **0.7** | **57.6%** | **51.5%** | **8.3%** | **3.0 min** |
 
-Point opérationnel recommandé : seuil 0.7 (FA maîtrisée). FA=100% aux seuils 0.3–0.5 car classifieurs très sensibles sur épisodes drift (court warm-up DriftDetector).
+Point opérationnel recommandé : seuil 0.7 (FA maîtrisée). FA=100% aux seuils 0.3-0.5 car classifieurs très sensibles sur épisodes drift (court warm-up DriftDetector).
 
-_Correction 2026-05-11_ : résultats corrigés vs STATUS précédent (48.5%/8.3%) — bug TCN LayerNorm résolu + précurseurs réentraînés. Détection améliorée (+9.1 pp), FA inchangée.
+_Correction 2026-05-11_ : résultats corrigés vs STATUS précédent (48.5%/8.3%), bug TCN LayerNorm résolu + précurseurs réentraînés. Détection améliorée (+9.1 pp), FA inchangée.
 
-### Ablation modalités (réentraînement complet — graine 42)
+### Ablation modalités (réentraînement complet : graine 42)
 
 **Ablation rigoureuse** : réentraînement encodeur+siamois complet pour chaque condition (vs. masquage à l'inférence, biaisé OOD). Script : `experiments/ablation/run_retrain.py`.
 
 | Condition | n_feat | sil_train | sil_test | Δ vs full |
 |-----------|--------|-----------|----------|-----------|
-| **full** | 17 | 0.378 | **0.439** | — |
+| **full** | 17 | 0.378 | **0.439** | - |
 | **M_only** | 7 | 0.241 | **0.497** | **+0.058** |
 | T_only | 6 | 0.064 | 0.412 | −0.027 |
 | M+L | 11 | 0.251 | 0.382 | −0.057 |
@@ -640,11 +640,11 @@ _Correction 2026-05-11_ : résultats corrigés vs STATUS précédent (48.5%/8.3%
 | M+T | 13 | 0.318 | 0.316 | −0.123 |
 | L_only | 4 | −0.138 | 0.051 | −0.388 |
 
-**Résultat contre-intuitif** : M_only (7 features métriques seules) bat le modèle full (+0.058). M+T est pire que M_only — les features T ajoutent du bruit au STGCN sur 209 épisodes train, dégradant la géométrie siamoise. La valeur de T et L est prédictive (précurseurs), pas géométrique (clustering).
+**Résultat contre-intuitif** : M_only (7 features métriques seules) bat le modèle full (+0.058). M+T est pire que M_only, les features T ajoutent du bruit au STGCN sur 209 épisodes train, dégradant la géométrie siamoise. La valeur de T et L est prédictive (précurseurs), pas géométrique (clustering).
 
-**Comparaison avec masquage à l'inférence** : le masquage concluait "M porte l'essentiel, T/L aident à la marge" — biais confirmé (inférence OOD). Les ordres de grandeur changent mais le classement qualitatif (M > T > L) reste cohérent.
+**Comparaison avec masquage à l'inférence** : le masquage concluait "M porte l'essentiel, T/L aident à la marge", biais confirmé (inférence OOD). Les ordres de grandeur changent mais le classement qualitatif (M > T > L) reste cohérent.
 
-### Ablation H3 — impact du masquage sur l'AUROC précurseur (2026-05-13)
+### Ablation H3 : impact du masquage sur l'AUROC précurseur (2026-05-13)
 
 Script : `experiments/ablation/eval_precursor_h3.py`. Masquage à l'inférence sur PrecursorClassifiers pré-entraînés (k* val-optimal). Distinct de l'ablation H1.
 
@@ -652,7 +652,7 @@ Script : `experiments/ablation/eval_precursor_h3.py`. Masquage à l'inférence s
 
 | Condition | Macro-AUROC | Δ vs full |
 |---|---|---|
-| **full** | **0.954** | — |
+| **full** | **0.954** | - |
 | M+L | 0.916 | −0.038 |
 | M_only | 0.756 | −0.198 |
 | T+L | 0.563 | −0.391 |
@@ -660,7 +660,7 @@ Script : `experiments/ablation/eval_precursor_h3.py`. Masquage à l'inférence s
 
 **Features les plus critiques pour H3** (leave-one-out) : `disk_io` (Δ=−0.088), `lexical_entropy` (−0.049), `latency_p99` (−0.042). disk_io est le plus critique malgré 16.7% NaN → argument fort pour ewat_v4.
 
-### Ablation features (masquage à l'inférence — labels corrigés)
+### Ablation features (masquage à l'inférence : labels corrigés)
 
 _Note : ablation par feature = mesure de sensibilité du modèle entraîné, pas importance causale. À interpréter comme "quelles features le modèle full exploite-t-il le plus", non comme "quelles features seraient les plus importantes si réentraîné"._
 
@@ -668,7 +668,7 @@ _Note : ablation par feature = mesure de sensibilité du modèle entraîné, pas
 
 **Paires redondantes** : `latency_p99`↔`span_dur_p99` (ρ=0.936), `error_rate_http`↔`abnormal_span_rate` (ρ=0.927)
 
-### Comparaison architectures encodeur — STGCN vs SimCLR vs GAT
+### Comparaison architectures encodeur : STGCN vs SimCLR vs GAT
 
 Toutes les architectures entraînées sur ewat_v3 (graine 42), évaluées avec la méthodologie corrigée (nearest centroid pour H1, k* sur val pour H3).
 
@@ -695,21 +695,21 @@ python -m experiments.typing.train --encoder-checkpoint experiments/encoder/gat/
 python -m experiments.precursor.train --typing-dir experiments/typing/gat --encoder-dir experiments/encoder/gat --output experiments/precursor/gat ...
 ```
 
-### Analyse des clusters — NMI, pureté, SHAP validation
+### Analyse des clusters : NMI, pureté, SHAP validation
 
-- **NMI (cluster ↔ scénario) = 0.518** — alignement modéré avec les labels Chaos Mesh (attendu pour un clustering non supervisé)
-- **Pureté moyenne = 0.503** — C6 (drift_config_change) : 0.800 ; C0 (fail_slow_cpu) : 0.286 (mélange de types)
+- **NMI (cluster ↔ scénario) = 0.518** : alignement modéré avec les labels Chaos Mesh (attendu pour un clustering non supervisé)
+- **Pureté moyenne = 0.503** : C6 (drift_config_change) : 0.800 ; C0 (fail_slow_cpu) : 0.286 (mélange de types)
 - **Heatmap** : `experiments/typing/scenario_cluster_heatmap.png`
 - **Interprétabilité (2026-05-11)** : ρ_Spearman(gradient×input, permutation) = **−0.34** (anti-corrélé) → gradient×input **invalidé**. Les fiches `experiments/typing/fiches/cluster_*.json` ont été régénérées avec `method='permutation_importance'` (50 shuffles, drop silhouette moyen par feature et par cluster). Top features globaux : net_sat, latency_p99, disk_io > latency_cv > span_dur_p99. retry_rate, log_warn_rate, queue_depth ≈ 0 (candidats à la suppression ewat_v4). Script : `experiments/typing/permutation_importance.py`.
 - **KernelSHAP validation (2026-05-13)** : ρ_Spearman(SHAP, permutation_importance) > 0 pour **9/10 clusters** (seuil ≥ 7) → fiches permutation_importance **validées**. Seul C3 (noisy_neighbor) discordant (ρ=−0.07). Fiches SHAP : `experiments/typing/fiches/cluster_*_shap.json`. Script : `experiments/typing/kernel_shap_importance.py`.
 
-### H2b — Régime θ_{drift∩anomaly}
+### H2b : Régime θ_{drift∩anomaly}
 
 **H2b PASS** (par critère formel), mais résultat nuancé :
-- Le DriftDetector (fenêtre 5 steps) déclenche sur **presque tous** les épisodes (drift% = 0.51–1.00 même sur anomalies pures)
+- Le DriftDetector (fenêtre 5 steps) déclenche sur **presque tous** les épisodes (drift% = 0.51-1.00 même sur anomalies pures)
 - Le seuil d'alerte 0.4 déclenche sur quasiment tous les épisodes (alert% ≈ 1.00 sur la plupart)
-- L'overlap est donc trivialement élevé partout (≥ 50%) — le critère ">30%" est trop permissif
-- C8 (faulty_deploy_overlap) : drift%=0.85, alert%=0.92, overlap%=0.77 — cohérent avec θ_{drift∩anomaly}
+- L'overlap est donc trivialement élevé partout (≥ 50%), le critère ">30%" est trop permissif
+- C8 (faulty_deploy_overlap) : drift%=0.85, alert%=0.92, overlap%=0.77, cohérent avec θ_{drift∩anomaly}
 - Absence de clusters "drift pur" (drift% élevé ET alert% faible) : la suppression d'alerte n'est pas fonctionnelle sur épisodes courts
 
 Conclusion H2b : renforce H2a. L'échec de la discrimination drift/anomalie vient de la durée d'épisode trop courte (~21 steps), pas d'un défaut de conception.
@@ -717,9 +717,9 @@ Conclusion H2b : renforce H2a. L'échec de la discrimination drift/anomalie vien
 **H2b critère strict** (2026-05-13, `experiments/h2_overlap/eval_strict.py`) :
 - Fisher exact C8 vs drift pur (C5+C6+C9) : OR=1.48, **p=0.35** → non significatif. H2b PASS reste trivial.
 - Sensibilité threshold : à seuil 0.7, seulement 6/10 clusters passent (C0, C1, C3, C5, C8, C9).
-- **Timing** : l'alerte précurseur précède le drift flag dans **85–100% des cas** (timing_gap médian < 0 pour tous les clusters). Le DriftDetector est un indicateur tardif, pas précoce.
+- **Timing** : l'alerte précurseur précède le drift flag dans **85-100% des cas** (timing_gap médian < 0 pour tous les clusters). Le DriftDetector est un indicateur tardif, pas précoce.
 
-### Transfert zero-shot — RCAEval RE2-OB (90 épisodes, 30 types de pannes)
+### Transfert zero-shot : RCAEval RE2-OB (90 épisodes, 30 types de pannes)
 
 **Protocole** : application du pipeline EWAT (encodeur STGCN + scaler + centroides ewat_v3) sur les données RCAEval sans réentraînement. RCAEval utilise le même Online Boutique avec 6 services EWAT, mais sur un cluster K8s différent, 48 steps/épisode vs. 21 pour ewat_v3.
 
@@ -734,7 +734,7 @@ Conclusion H2b : renforce H2a. L'échec de la discrimination drift/anomalie vien
 
 **Meilleur résultat (instance + M_only)** : H1 ✓ PASS (sil=0.684), H3 ✗ FAIL.
 L'encodeur regroupe 81/90 épisodes RCAEval dans C2 (resource_leak ewat_v3) avec pureté 0.80-1.00
-— mais TOUS les types de panne (cpu, mem, delay...) mappent sur le même cluster. Détection
+- mais TOUS les types de panne (cpu, mem, delay...) mappent sur le même cluster. Détection
 d'anomalie générique ✓, discrimination par type ✗.
 
 **H3 AUROC ≈ 0.5 systématiquement** : les précurseurs ewat_v3 (~21 steps) ne reconnaissent
@@ -747,7 +747,7 @@ Few-shot transfer nécessaire pour H3.
 
 Rapport complet : `experiments/rcaeval/results.md`
 
-### Transfert few-shot — RCAEval Stratégie A (2026-05-13)
+### Transfert few-shot : RCAEval Stratégie A (2026-05-13)
 
 Script : `experiments/rcaeval/eval_fewshot.py`. Re-fit du StandardScaler sur n_few épisodes RCAEval, encodeur + classifieurs ewat_v3 conservés. n_repeats=5.
 

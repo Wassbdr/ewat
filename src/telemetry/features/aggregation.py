@@ -1,6 +1,6 @@
 """Aggregation functions for reducing pod-level samples to service-level features.
 
-Rules (per CLAUDE.md):
+Rules:
 - Saturation (CPU, RAM, net_sat, disk_io, queue_depth) → max
 - Rates (error_rate, warn_rate, retry_rate, abnormal_rate) → volume-weighted sum
 - Latency (latency_p99, span_dur_p99) → P99 on the *union* of raw duration lists
