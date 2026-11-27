@@ -6,9 +6,10 @@
 #   - vhs >= 0.10 (charmbracelet/vhs) + ttyd + ffmpeg   (only for demo.gif / demo.mp4)
 #
 # Outputs (showcase/):
-#   results/episode.json     task 2 — one synthetic episode, end to end
-#   results/benchmark.json   task 3 — 250 seeded synthetic episodes
+#   results/episode.json     task 2 - one synthetic episode, end to end
+#   results/benchmark.json   task 3 - 250 seeded synthetic episodes
 #   poster.png               1280x720 timeline of the episode
+#   showcase.json            results refreshed from benchmark.json (role and text kept)
 #   demo.mp4, demo.gif       terminal run of the episode, then the chart
 #
 # Usage: bash showcase/make_showcase.sh [--no-video]
@@ -29,6 +30,7 @@ ewat demo --scenario "$SCENARIO" --seed "$SEED" \
 
 echo "== 3/4 synthetic benchmark (50 episodes x 5 scenarios, seeds 0-49)"
 ewat benchmark --episodes 50 --seed0 0 --out showcase/results/benchmark.json
+python showcase/build_showcase_json.py
 
 if [[ "${1:-}" == "--no-video" ]]; then exit 0; fi
 
@@ -38,7 +40,7 @@ for tool in vhs ttyd ffmpeg; do
 done
 tmp=showcase/.cache
 mkdir -p "$tmp"
-vhs showcase/demo.tape                       # → showcase/.cache/terminal.mp4
+vhs showcase/demo.tape                       # -> showcase/.cache/terminal.mp4
 # terminal run, then the poster for 6 s with a fade-in
 ffmpeg -y -loglevel error -i "$tmp/terminal.mp4" -loop 1 -t 6 -i showcase/poster.png \
   -filter_complex "[0:v]scale=1280:720,setsar=1,fps=25[a];[1:v]scale=1280:720,setsar=1,fps=25,fade=in:0:12[b];[a][b]concat=n=2:v=1[v]" \
