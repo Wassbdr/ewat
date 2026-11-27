@@ -13,40 +13,32 @@ ewat demo --plot poster.png   # ≈ 20 s : entraîne sur données synthétiques,
 ## Résultats clés
 
 **Mesurés dans ce dépôt, données synthétiques** : `ewat benchmark --episodes 50` (ou `bash showcase/make_showcase.sh`).
-Setup : générateur `ewat.synthetic`, 250 épisodes (5 scénarios × 50, graines d'évaluation 0–49, graines d'entraînement 10000–10029), 6 services × 17 features, pas de 30 s, Intel Xeon 8 threads, CPU seul, sans GPU.
+Setup : générateur `ewat.synthetic`, 250 épisodes (5 scénarios × 50, graines d'évaluation 0-49, graines d'entraînement 10000-10029), 6 services × 17 features, pas de 30 s, Intel Xeon 8 threads, CPU seul, sans GPU.
 
 | Mesure | Valeur |
 |---|---|
-| Fausses alertes sur drift inoffensif (rampe de trafic ×1.4–2.2) | **0 %** (0/50) ; MMD seul sans typage : 100 % |
+| Fausses alertes sur drift inoffensif (rampe de trafic ×1.4-2.2) | **0 %** (0/50) ; MMD seul sans typage : 100 % |
 | Pannes détectées (4 types, 200 épisodes) | **90 %** (180/200) |
 | Type de panne correct (pannes détectées) | **100 %** (180/180) |
 | Délai de détection médian / p90 | **150 s** / 663 s |
-| Latence par pas (MMD + typage), p50 / p95 | **0,19 ms** / 1,6 ms |
+| Latence par pas (MMD + typage), p50 / p95 | **0,18 ms** / 1,5 ms |
 
 | Panne injectée | Détectée | Type correct | Délai médian |
 |---|---|---|---|
-| `fail_slow_latency` (latence ×2,5–5 sur un service) | 96 % | 100 % | 120 s |
+| `fail_slow_latency` (latence ×2,5-5 sur un service) | 96 % | 100 % | 120 s |
 | `intermittent_error` | 100 % | 100 % | 120 s |
 | `cpu_starvation` | 88 % | 100 % | 150 s |
 | `resource_leak` (fuite mémoire lente) | 76 % | 100 % | 630 s |
 
 Ces chiffres valent pour un générateur synthétique dont les pannes sont nettes : ils montrent que la chaîne complète fonctionne et ce qu'elle mesure, pas sa performance en production. Détail par épisode : [`showcase/results/benchmark.json`](showcase/results/benchmark.json).
 
-**Historiques, cluster Kubernetes interne** (stage Devoteam, dataset `ewat_v3`, non redistribuable, non rejoués ici, détail dans [`docs/results.md`](docs/results.md)) :
-
-| Hypothèse | Résultat |
-|---|---|
-| H1 structurabilité des types | silhouette test **0,414** (seuil 0,3), PASS |
-| H2 drift vs panne par look-through | FPR 0,67 contre 0,73 sans look-through, **FAIL** (épisodes de ~21 pas, trop courts) |
-| H3 précurseurs typés | AUROC test moyen **0,952**, 8 types sur 10, PASS |
-
-Sur des épisodes synthétiques de ~110 pas, le look-through qui échouait en H2 sépare drift et panne : cela va dans le sens de la limite L1 (épisodes trop courts), sans la prouver sur données réelles.
+Les résultats obtenus sur le cluster Kubernetes interne du stage ne peuvent pas être rejoués ici (données non publiques) : ils sont dans [`docs/historical_results.md`](docs/historical_results.md).
 
 ## Comment ça marche
 
 ```mermaid
 flowchart LR
-    S["métriques S(t)<br/>6 services × 17"] --> Z["z-score robuste<br/>vs fenêtre de référence"]
+    S["métriques S(t)<br/>6 services × 17"] --> Z["z-score médiane/MAD<br/>vs fenêtre de référence"]
     A["graphe d'appels A(t)"] --> E
     Z --> M{"MMD² (RFF)<br/>W_ref vs W_cur ≥ ε ?"}
     M -- non --> N["normal"]
@@ -88,7 +80,7 @@ de pannes.
 EWAT n'est pas du RCA : le RCA est post-mortem (Où, Pourquoi), EWAT est de
 l'early warning (Quoi, Dans combien de temps, avant la panne).
 
-> **Vous reprenez le projet ?** Commencez par [`HANDOVER.md`](HANDOVER.md) —
+> **Vous reprenez le projet ?** Commencez par [`HANDOVER.md`](HANDOVER.md)
 > installation, trois parcours possibles, ce dont vous n'héritez pas, et les
 > pièges à connaître. Index de la documentation : [`docs/README.md`](docs/README.md).
 
@@ -105,7 +97,7 @@ make lint
 
 Après `pip install -e .`, les paquets `ewat`, `telemetry`, `graph` et `utils`
 sont importables : **`PYTHONPATH=src` n'est pas nécessaire** et les commandes de
-ce README s'exécutent depuis la racine. Seul le code de `v5/` fait exception —
+ce README s'exécutent depuis la racine. Seul le code de `v5/` fait exception
 il s'exécute depuis `v5/` avec `PYTHONPATH=../src`, parce qu'il importe `src/`
 en dehors du paquet installé.
 
@@ -133,7 +125,7 @@ Scope réduit aux services effectivement observables sur les 3 modalités
 
 ## Pipeline dataset: Record → Build → Assemble
 
-> **Pour collecter un dataset, commencer par [`docs/COLLECTE.md`](docs/COLLECTE.md)** —
+> **Pour collecter un dataset, commencer par [`docs/COLLECTE.md`](docs/COLLECTE.md)**
 > point d'entrée unique : prérequis, trois phases, provenance des 18 features,
 > catalogue des scénarios, pièges connus, et marche à suivre pour une nouvelle
 > campagne. Le présent README décrit le pipeline tel qu'il était en v4 (6 services,
@@ -170,10 +162,10 @@ Trois modes d'accès aux backends (`--endpoint-mode`) :
 - **`in-cluster`**: exécution depuis un pod du namespace `ewat`.
 
 Option `--manage-port-forwards` : ouvre et **renouvelle** un port-forward
-dédié avant chaque dump d'épisode, puis le ferme. Robuste aux tunnels SPDY
+dédié avant chaque dump d'épisode, puis le ferme. Solide aux tunnels SPDY
 qui se dégradent après 1-2 h.
 
-Robustesse :
+Solidité :
 - **Checkpoint** append-only (`checkpoint.jsonl`) : reprise idempotente après
   crash ou SIGINT, les épisodes déjà validés sont skip.
 - **Graceful shutdown** : SIGINT/SIGTERM laisse l'épisode en cours finir
@@ -284,7 +276,7 @@ Détail des évolutions et des décisions de conception : [`docs/evolution.md`](
 Spring Cloud) au lieu d'Online Boutique, système plus riche, base publique, bugs réels
 documentés (F1-F22). Tout est dans `v5/` (loadgen, chaos, collect, deploy). Schéma
 **S(t) ∈ ℝ^{T×41×18}** (dataset publié en v5.1 ; le builder produit v5.2, seul M[9]
-diffère — cf. [`docs/COLLECTE.md`](docs/COLLECTE.md) §2). Runbook complet :
+diffère, cf. [`docs/COLLECTE.md`](docs/COLLECTE.md) §2). Runbook complet :
 [`v5/LAUNCH.md`](v5/LAUNCH.md).
 
 Trois namespaces (`tt`, `tt-b`, `tt-c`) = 3 runners parallèles (~720 ép, **~7-9 j**). Contrainte
@@ -380,4 +372,4 @@ Limites détaillées, causes et pistes : [`docs/limitations.md`](docs/limitation
 - Les fuites lentes (`resource_leak`) sont détectées tard (médiane 630 s) et 24 % ne le sont pas pendant les 15 min de panne : elles ressemblent à un drift.
 - Le modèle de démonstration est entraîné uniquement sur le générateur synthétique ; l'API attend 6 services et 17 features.
 - Hors périmètre de cette version : transfert entre clusters, réentraînement sur données réelles, nouveaux modèles.
-- Prochaines étapes : rejouer le benchmark sur un dataset public d'incidents microservices, ajouter des drifts inoffensifs supplémentaires (déploiement progressif, changement de config), mesurer la robustesse aux features manquantes.
+- Prochaines étapes : rejouer le benchmark sur un dataset public d'incidents microservices, ajouter des drifts inoffensifs supplémentaires (déploiement progressif, changement de config), mesurer la solidité aux features manquantes.
