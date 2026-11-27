@@ -1,4 +1,4 @@
-# EWAT — Architecture du code
+# EWAT : Architecture du code
 
 Où se trouve quoi, et pourquoi c'est découpé ainsi. Pour la formalisation
 mathématique, voir [`formalisation.md`](formalisation.md) ; pour produire un
@@ -23,17 +23,17 @@ découpage à comprendre avant tout le reste.
 quand un script d'expérience produit de la logique réutilisable, elle remonte
 dans `src/ewat/<étape>/` avec ses tests.
 
-## 2. `src/` — la bibliothèque
+## 2. `src/` - la bibliothèque
 
 ### Le pipeline EWAT, étapes 0 → 3
 
 ```
 S(t) ∈ ℝ^{T×N×F}
     │
-    ├─ Étape 0   DriftDetector — MMD-RFF, look-through          src/ewat/drift/
+    ├─ Étape 0   DriftDetector: MMD-RFF, look-through          src/ewat/drift/
     ├─ Étape 1   STGCNEncoder → z_e ∈ ℝ^64                      src/ewat/encoder/
     ├─ Étape 2   SiameseTyper + clustering → cluster C_i        src/ewat/typing/
-    ├─ Étape 2b  OntologyGraph — temporel + TE-KSG + χ²         src/ewat/ontology/
+    ├─ Étape 2b  OntologyGraph: temporel + TE-KSG + χ²         src/ewat/ontology/
     ├─ Étape 3   PrecursorClassifier → p̂_i(t), k*_i             src/ewat/precursor/
     └─ Sortie    Alert(t) = (C_i, p̂_i(t), k*_i, fiche_{C_i})    src/ewat/alerts/
 ```
@@ -46,8 +46,8 @@ S(t) ∈ ℝ^{T×N×F}
 | `src/ewat/ontology/` | 2b | 244 | Relations temporelles, causales (TE-KSG), co-occurrence χ², export OWL/RDF, raisonnement HermiT, requêtes SPARQL |
 | `src/ewat/precursor/` | 3 | 37 | Classifieurs one-vs-rest `{lr, lr_tuned, rf, svc}`, sélection de `k*` |
 | `src/ewat/alerts/` | sortie | 38 | `Alert`, `AlertAssembler` (intègre scaler + DriftDetector) |
-| `src/ewat/openset/` | — | 23 | Mahalanobis, OpenMax — rejet des types inconnus |
-| `src/ewat/baselines/` | — | — | USAD (baseline publiée, KDD 2020) |
+| `src/ewat/openset/` | - | 23 | Mahalanobis, OpenMax, rejet des types inconnus |
+| `src/ewat/baselines/` | - | - | USAD (baseline publiée, KDD 2020) |
 
 ### Télémétrie : la distinction collecteurs / extracteurs
 
@@ -70,7 +70,7 @@ Le reste de `src/telemetry/` (109 tests) : `signal_builder.py` assemble S(t),
 différenciées, `feature_names.py` est le **registre des schémas** du projet.
 
 > **Trois schémas coexistent** dans `feature_names.py` : `v4` (17 features),
-> `v5.1` (18) et `v5.2` (18). Résolvez-les par `get_schema(version)` — les
+> `v5.1` (18) et `v5.2` (18). Résolvez-les par `get_schema(version)` - les
 > constantes de module (`FEATURE_NAMES`, `SIGNAL_DIM`, les index) décrivent v4
 > par rétrocompatibilité et ne sont pas la référence v5.
 >
@@ -81,11 +81,11 @@ différenciées, `feature_names.py` est le **registre des schémas** du projet.
 
 ### Graphe et utilitaires
 
-- `src/graph/` — construction de G(t) : adjacence pondérée `w_E(t) ∈ ℝ³`
+- `src/graph/` - construction de G(t) : adjacence pondérée `w_E(t) ∈ ℝ³`
   (volume, latence médiane, taux d'erreur), sérialisation, validation.
-- `src/utils/` — `seeding.py` (déterminisme), `serialization.py`.
+- `src/utils/` - `seeding.py` (déterminisme), `serialization.py`.
 
-## 3. `scripts/` — le pipeline dataset
+## 3. `scripts/` - le pipeline dataset
 
 Trois phases découplées, jamais en boucle. Détail opérationnel dans
 [`COLLECTE.md`](COLLECTE.md).
@@ -93,7 +93,7 @@ Trois phases découplées, jamais en boucle. Détail opérationnel dans
 | Phase | Script | Entrée → sortie |
 |---|---|---|
 | 1. Record | `record_episode.py` | cluster → `data/raw*/<ep>/` |
-| 2. Build | `build_features.py` (v1–v4), `v5/collect/build_features_v5.py` (v5) | dumps → `data/features/<set>/` |
+| 2. Build | `build_features.py` (v1-v4), `v5/collect/build_features_v5.py` (v5) | dumps → `data/features/<set>/` |
 | 3. Assemble | `assemble_dataset.py` | features → `data/datasets/<nom>/` |
 | Contrôle | `validate_raw.py`, `validate_dataset.py`, `validate_v4.py`, `validate_v5.py` | portes qualité |
 
@@ -107,14 +107,14 @@ avec audit de fuite d'infrastructure), `enforce_heldout_v5.py`.
 `impute_features.py`, `adapt_rcaeval.py`…). Ce ne sont pas des points d'entrée du
 pipeline : ils documentent des correctifs appliqués une fois à un dataset donné.
 
-## 4. `v5/` — l'infrastructure de collecte Train Ticket
+## 4. `v5/` - l'infrastructure de collecte Train Ticket
 
 Autonome, avec sa propre documentation ([`../v5/README.md`](../v5/README.md),
 [`../v5/LAUNCH.md`](../v5/LAUNCH.md), [`../v5/PREFLIGHT.md`](../v5/PREFLIGHT.md)).
 
 | Sous-paquet | Rôle |
 |---|---|
-| `loadgen/` | Générateur de charge — fork vendorisé de `train-ticket-auto-query`, patché pour un login sans CAPTCHA |
+| `loadgen/` | Générateur de charge, fork vendorisé de `train-ticket-auto-query`, patché pour un login sans CAPTCHA |
 | `chaos/` | Injection : `catalog.yaml` (28 scénarios + 5 bugs réels) et `inject.py` |
 | `collect/` | Orchestration de campagne, featurisation (schéma v5.2), sondes, reprise, monitoring santé |
 | `deploy/` | Déploiement Train Ticket et NodePorts de télémétrie |
@@ -122,7 +122,7 @@ Autonome, avec sa propre documentation ([`../v5/README.md`](../v5/README.md),
 Ce code s'exécute **depuis `v5/`** avec `PYTHONPATH=../src`, contrairement au
 reste du dépôt.
 
-## 5. `experiments/` — la recherche
+## 5. `experiments/` - la recherche
 
 Un répertoire par question. Le **code** est versionné (87 scripts) ; les
 **sorties** (JSON, npy, pt, PNG, runs MLflow, rapports de run) ne le sont pas.
@@ -142,7 +142,7 @@ Un répertoire par question. Le **code** est versionné (87 scripts) ; les
 
 > **Ce répertoire n'était pas versionné jusqu'au 2026-08.** Le `.gitignore`
 > excluait `experiments/` au niveau du répertoire, ce qui neutralisait les
-> négations placées ensuite — git ne descend jamais dans un répertoire exclu.
+> négations placées ensuite, git ne descend jamais dans un répertoire exclu.
 > 57 des 65 scripts manquaient au dépôt. Si vous ajoutez une exception de
 > ré-inclusion sous un répertoire exclu, **vérifiez-la avec `git add --dry-run`**.
 
@@ -166,10 +166,10 @@ Défauts identifiés, non corrigés, à traiter en connaissance de cause.
 
 | Où | Quoi | Effet |
 |---|---|---|
-| `v5/loadgen/runner.py:92` | `logger` non défini (`F821`) | **`NameError` sur le chemin d'échec du login admin** — la campagne plante là où elle devrait seulement avertir |
+| `v5/loadgen/runner.py:92` | `logger` non défini (`F821`) | **`NameError` sur le chemin d'échec du login admin** : la campagne plante là où elle devrait seulement avertir |
 | `v5/loadgen/atomic_queries.py` (×9) | `if response.status_code is not 200` (`F632`) | Comparaison d'identité sur un littéral : le comportement dépend de l'internement des petits entiers en CPython. Code vendorisé FudanSELab, laissé aligné sur l'amont |
 | `v5/loadgen/queries.py:276` | `!= None` (`E711`) | Sans effet ici, mais fragile |
-| `v5/loadgen/atomic_queries.py:8-12` | Cookie de session et JWT en dur | Placeholders de démonstration amont (JWT expiré en 2021), pas des identifiants du cluster — mais présents dans un fichier versionné |
+| `v5/loadgen/atomic_queries.py:8-12` | Cookie de session et JWT en dur | Placeholders de démonstration amont (JWT expiré en 2021), pas des identifiants du cluster, mais présents dans un fichier versionné |
 | `build_features_v5.py` vs `ewat_v5` | Le builder émet **v5.2**, le dataset publié est **v5.1** | Refeaturiser change M[9] (`jvm_threads_blocked` → `jvm_threads_live`) ; les chiffres deviennent incomparables et `validate_v5` accepte les deux sans alerter |
 | `src/ewat/typing/saliency_explainer.py` | ρ_Spearman(gradient, permutation) = −0,34 | Méthode gradient non validée ; les fiches de cluster restent indicatives |
 

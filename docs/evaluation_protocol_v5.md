@@ -1,4 +1,4 @@
-# Protocole d'évaluation EWAT v5 (Train Ticket) — FIGÉ AVANT LES DONNÉES
+# Protocole d'évaluation EWAT v5 (Train Ticket) : FIGÉ AVANT LES DONNÉES
 
 _Rédigé le 2026-06-11, pendant la collecte (audit 2026-06). Ce protocole est
 figé avant l'arrivée des données pour exclure toute adaptation a posteriori
@@ -6,19 +6,19 @@ du protocole aux résultats. Tout écart sera documenté comme amendement daté.
 
 ## 0. Décisions structurantes (actées, audit 2026-06)
 
-**T1 — Chaîne prédictive sans STGCN.** La chaîne prédictive officielle v5 est
+**T1, Chaîne prédictive sans STGCN.** La chaîne prédictive officielle v5 est
 `S(t) → instance norm → LR-OvR` (C1 : STGCN 0.863 < B2 0.920 ; A5 : IC paired
 de Δ contient 0). Le STGCN est évalué uniquement comme module de
-*clustering/ontologie* (H1, fiches, TE) — il n'entre plus dans les chiffres
+*clustering/ontologie* (H1, fiches, TE), il n'entre plus dans les chiffres
 prédictifs headline.
 
-**T2 — Cible primaire = labels indépendants.** Toutes les métriques headline
+**T2, Cible primaire = labels indépendants.** Toutes les métriques headline
 sont calculées contre les scénarios Chaos Mesh et les bugs F (vérité terrain
 indépendante). Les évaluations sur labels EWAT (auto-référentes, L9) sont
 reléguées en diagnostic interne du clustering, clairement étiquetées
 « circulaire ».
 
-**T3 — K acté.** K = 10 fixe (`cluster_embeddings(fixed_k=10)`) pour toute
+**T3, K acté.** K = 10 fixe (`cluster_embeddings(fixed_k=10)`) pour toute
 comparaison multi-graines ; HDBSCAN (`k_selection_method="hdbscan"`) en
 diagnostic de sensibilité. Plus aucune sélection argmax-silhouette dans un
 résultat headline (Phase K : K ∈ [9, 15] instable, accord Tibshirani 4/10).
@@ -35,7 +35,7 @@ résultat headline (Phase K : K ∈ [9, 15] instable, accord Tibshirani 4/10).
 - Aucun épisode held-out dans aucun fold d'entraînement (vérifié par
   `validate_v5 --dataset` : fuite = échec de la porte).
 
-## 2. Métriques — systématiques pour tout résultat
+## 2. Métriques : systématiques pour tout résultat
 
 | Métrique | Obligatoire | Référence |
 |---|---|---|
@@ -43,20 +43,20 @@ résultat headline (Phase K : K ∈ [9, 15] instable, accord Tibshirani 4/10).
 | **macro-PR-AUC + détail par scénario** | oui (E3) | M-6 : la PR-AUC démasque ce que l'AUROC lisse (B2 v4 : AUROC 0.920 / PR-AUC 0.587) |
 | **Calibration : Brier + ECE (10 bins) + reliability** | oui (E2) | tout seuil opérationnel exige ECE < 0.10 ou recalibration isotonique fittée sur val |
 | Filtre reportable n_pos ≥ 5 | oui (E8) | les clusters sous le seuil sont « non concluants » |
-| Stress tests A1–A5 | oui | [evaluation_protocol.md](evaluation_protocol.md) §Stress tests |
-| Robustesse NaN (courbe AUROC vs taux injecté) | oui (E9) | protocole `experiments/audit2026/nan_robustness` |
+| Stress tests A1-A5 | oui | [evaluation_protocol.md](evaluation_protocol.md) §Stress tests |
+| Solidité NaN (courbe AUROC vs taux injecté) | oui (E9) | protocole `experiments/audit2026/nan_robustness` |
 
 Tests statistiques : cadre unifié d'[evaluation_protocol.md](evaluation_protocol.md)
 §Cadre des tests statistiques (McNemar/Wilcoxon/Fisher/BCa/permutation,
 correction Holm ou BH).
 
-## 3. Drift (étape 0) — dernière chance, critères de sortie
+## 3. Drift (étape 0) : dernière chance, critères de sortie
 
 ε_drift v3 (0.5226) est mort : recalibrations v4_strat → AUC 0.315 (fenêtres
 10/10) et 0.284 (5/5), pires que le hasard. Sur v5 (T ≈ 120) :
 
 1. Recalibrer via `experiments/drift_separation/calibrate` avec fenêtres
-   {5, 10, 20} — l'ε retenu va dans `drift_calibration.json` (jamais en dur :
+   {5, 10, 20}, l'ε retenu va dans `drift_calibration.json` (jamais en dur :
    M1, l'AlertAssembler refuse un détecteur sans calibration).
 2. `sigma_policy="keep"` (M2) partout.
 3. **Critère de sortie** : si AUC < 0.65 sur les trois tailles de fenêtres,
@@ -73,7 +73,7 @@ scientifique principale de v5. Protocole comparatif M13 :
   Mahalanobis (`ewat.openset.mahalanobis`), energy-based (−logsumexp des
   logits LR).
 - Évaluation : unknown-AUROC (held-out vs test connu), top-1 unknown rate,
-  dégradation closed-set (< 2 pp tolérés) — protocole C3 inchangé, 15 folds.
+  dégradation closed-set (< 2 pp tolérés), protocole C3 inchangé, 15 folds.
 - Headline open-set : la méthode gagnante sur unknown-AUROC, avec IC.
 
 ## 5. Typage / clustering (valeur géométrique du STGCN)
@@ -82,7 +82,7 @@ scientifique principale de v5. Protocole comparatif M13 :
   200 permutations, Δ vs null + p empirique) et IC bootstrap.
 - Checkpoint siamois sélectionné sur silhouette val (M6). Le constat v4
   (best_epoch = 1 : le contrastif n'améliore pas la géométrie héritée de
-  l'encodeur) est à re-tester sur v5 — si reproduit, le siamois passe en
+  l'encodeur) est à re-tester sur v5, si reproduit, le siamois passe en
   composant optionnel.
 - Encodeur : self-loops actifs (M4), d_feat=18 résolu depuis metadata (D1).
 
@@ -98,7 +98,7 @@ scientifique principale de v5. Protocole comparatif M13 :
 
 - **USAD** (KDD 2020, `ewat.baselines.usad`) : volet détection (score
   d'anomalie, fenêtres normales vs injection) + volet typage (LR sur latents)
-  — protocole `experiments/sota/usad_eval`, featurisation identique à B2.
+  - protocole `experiments/sota/usad_eval`, featurisation identique à B2.
 - z-score max (naïve), B0 aléatoire.
 - Extension souhaitable post-stage : TranAD (ROADMAP axe B).
 
@@ -119,5 +119,5 @@ scientifique principale de v5. Protocole comparatif M13 :
 5. Drift §3 (critère de sortie).
 6. Typage H1 + fiches (STGCN, K=10) ; multiseed 10 graines si budget.
 7. Open-set §4 sur held-out A/B.
-8. Stress tests A1–A5 + robustesse NaN.
+8. Stress tests A1-A5 + solidité NaN.
 9. STATUS/results/limitations mis à jour ; chiffres figés pour le rapport.

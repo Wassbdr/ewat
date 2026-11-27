@@ -1,7 +1,7 @@
 # Synthèse collecte et construction du dataset EWAT
 
 Date : 2026-04-22 (dernière mise à jour)
-Auteur : Wassim Badraoui — stage Devoteam
+Auteur : Wassim Badraoui, stage Devoteam
 
 ## 1) Objectif
 
@@ -18,7 +18,7 @@ l'évolution du pipeline, les blocages rencontrés et les solutions adoptées.
 
 ## 2) Évolution du pipeline (du prototype unique au découplage 3-phases)
 
-### 2.1 V0 — collecteur monolithique (abandonné)
+### 2.1 V0 : collecteur monolithique (abandonné)
 
 - Un unique `scripts/collect_labeled.py` et `scripts/snapshot_collector.py`
   interrogeaient Prometheus, Jaeger, Loki à chaque tick et calculaient
@@ -27,7 +27,7 @@ l'évolution du pipeline, les blocages rencontrés et les solutions adoptées.
   manquante, fenêtre mal choisie) obligeait à **relancer la collecte entière**
   sur le cluster, qui est coûteuse et non reproductible (le cluster évolue).
 
-### 2.2 V1 — découplage Record → Build → Assemble (actuel)
+### 2.2 V1 : découplage Record → Build → Assemble (actuel)
 
 Refactor majeur : les deux scripts monolithiques ont été supprimés au profit
 de trois phases indépendantes.
@@ -68,7 +68,7 @@ Conséquences concrètes :
 - Fix BFS : ajout d'un `visited set` pour éviter les boucles infinies sur
   spans cycliques.
 
-### 2.5 Chaos Mesh — complétion du registry
+### 2.5 Chaos Mesh : complétion du registry
 
 - Scripts bash autonomes pour les drifts bénins : `drift_scale_up.sh`,
   `drift_rolling_deploy.sh`, `drift_config_change.sh`, `drift_traffic_ramp.sh`,
@@ -92,7 +92,7 @@ Après la fin de la fenêtre de recovery, le script **dumpe** le range complet
 enregistrant, par modalité : chemin du gzip, sha256, taille, elapsed, erreurs
 par service, `queries_ok`, compteurs (`n_traces_total`, `n_lines`).
 
-## 4) Robustesse (ajouts récents — avril 2026)
+## 4) Solidité (ajouts récents : avril 2026)
 
 Ces ajouts sont la réponse aux premières campagnes réelles, qui ont révélé
 deux modes d'échec : la dégradation des port-forwards SPDY et les crashes
@@ -102,11 +102,11 @@ ponctuels du runner.
 
 Au lieu de forcer un seul mode, `--endpoint-mode` expose :
 
-- `nodeport` — accès direct via NodePort (Prometheus, Jaeger, Loki) sur un
+- `nodeport` - accès direct via NodePort (Prometheus, Jaeger, Loki) sur un
   worker Ready. **Mode recommandé** pour toute campagne > 1 h car il évite
   totalement le SPDY.
-- `local-portforward` — consomme des forwards ouverts manuellement.
-- `in-cluster` — exécution depuis un pod du namespace `ewat` (DNS interne).
+- `local-portforward` - consomme des forwards ouverts manuellement.
+- `in-cluster` - exécution depuis un pod du namespace `ewat` (DNS interne).
 
 ### 4.2 Port-forwards gérés par le script (`--manage-port-forwards`)
 
@@ -140,7 +140,7 @@ Contrôle immédiat de chaque manifest :
 
 Un épisode qui échoue reçoit un marker `.quality_failed`, n'est **pas**
 checkpointé, et sera rejoué au run suivant. Le contrôle de campagne se fait
-via `scripts/validate_raw.py` (nouveau) qui lit uniquement les manifests —
+via `scripts/validate_raw.py` (nouveau) qui lit uniquement les manifests
 rapide même sur 300 épisodes.
 
 ### 4.6 Reproductibilité
@@ -177,7 +177,7 @@ dans le pipeline de features.
   Loki OK.
 - **Premier run historique** : `data/raw/run_20260416_112413/` (monolithique
   V0, conservé pour référence, non exploité pour l'entraînement).
-- **Features / datasets** : pas encore construits à partir de `raw_new` — on
+- **Features / datasets** : pas encore construits à partir de `raw_new` - on
   rejoue la campagne en mode NodePort d'abord pour avoir les 3 modalités.
 
 ## 7) Recommandations config (VM 4 CPU / 64 Go, NodePort)
@@ -222,7 +222,7 @@ span_cache_ttl_s: 120
 - **Services canoniques** : figés à 6 services effectivement observables
   sur les 3 modalités.
 - **Chaos** : 14 scénarios couvrant les 4 régimes θ, y compris drift∩anomaly.
-- **Robustesse** : checkpoint idempotent, graceful shutdown, quality gate,
+- **Solidité** : checkpoint idempotent, graceful shutdown, quality gate,
   timeouts chaos, trois modes d'accès aux backends (NodePort / port-forward /
   in-cluster), port-forwards renouvelés par épisode, script de validation
   dédié aux dumps bruts.
