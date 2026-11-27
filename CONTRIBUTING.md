@@ -8,7 +8,7 @@ Architecture du code : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 make dev            # pip install -e ".[dev]"
-make test           # pytest tests/ — 773 tests (770 unitaires + 3 d'intégration)
+make test           # pytest tests/: 773 tests (770 unitaires + 3 d'intégration)
 make lint           # ruff check src scripts tests experiments
 ```
 
@@ -32,7 +32,7 @@ cd v5 && PYTHONPATH=../src python -m collect.run_campaign ...
 - Chaque étape du pipeline est un module indépendant et testable.
 - Configuration par Hydra (`configs/default.yaml`), tracking par MLflow.
 - Tout résultat s'accompagne d'un intervalle de confiance et d'un test
-  statistique. **Un résultat négatif est une contribution** — le dépôt en
+  statistique. **Un résultat négatif est une contribution** : le dépôt en
   contient plusieurs (H2a, transfert RCAEval), ne les cachez pas.
 - Figures publiables : matplotlib/seaborn, sortie vectorielle.
 
@@ -57,7 +57,7 @@ méthodologique identifiée, et l'enfreindre invalide silencieusement un résult
   panne). Le projet frère `matrix_simple` traite l'autre moitié du problème.
 - **Jamais Granger, toujours Transfer Entropy** (estimateur KSG, Kraskov 2004),
   avec seuil par bootstrap de permutation et correction FDR.
-- **Jamais de mise à zéro du signal pendant un drift** — toujours le mécanisme
+- **Jamais de mise à zéro du signal pendant un drift** : toujours le mécanisme
   de look-through. Couper le signal détruit précisément l'information qu'on
   cherche à évaluer.
 - **Jamais de moyenne simple pour agréger** au niveau service : saturation → max,
@@ -101,9 +101,6 @@ Le compte de stage est **namespace-admin sur `ewat`**, pas cluster-admin.
   `cattle-system`, `cattle-*`).
 - Jamais de `--force` ni de `--grace-period=0` sans raison explicite.
 - Le `kubeconfig` n'est **pas** dans le dépôt (voir `HANDOVER.md` § Accès cluster).
-
-Les permissions d'autonomie accordées à un agent sont détaillées dans
-[`agents.md`](agents.md).
 
 ## Workflow d'une nouvelle expérience
 

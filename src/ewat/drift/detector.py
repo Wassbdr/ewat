@@ -25,7 +25,7 @@ from typing import Literal
 import numpy as np
 import numpy.typing as npt
 
-from src.ewat.drift.mmd import RFFKernel
+from ewat.drift.mmd import RFFKernel
 
 
 @dataclass

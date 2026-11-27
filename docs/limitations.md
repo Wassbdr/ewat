@@ -1,14 +1,14 @@
-# EWAT — Limites, causes, conclusions et améliorations possibles
+# EWAT : Limites, causes, conclusions et améliorations possibles
 
-_Document établi le 2026-05-11 — mis à jour 2026-05-21 (Phase 8 ontologie OWL)_
+_Document établi le 2026-05-11, mis à jour 2026-05-21 (Phase 8 ontologie OWL)_
 
 ---
 
 ## 1. Vue d'ensemble
 
-Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour, organisées par couche. Pour chaque limite, on explicite : (a) la nature du problème, (b) pourquoi il existe, (c) ce qu'on peut en conclure, et (d) les améliorations possibles ou déjà appliquées. Les corrections issues de l'audit (P0–P2) sont indiquées comme telles.
+Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour, organisées par couche. Pour chaque limite, on explicite : (a) la nature du problème, (b) pourquoi il existe, (c) ce qu'on peut en conclure, et (d) les améliorations possibles ou déjà appliquées. Les corrections issues de l'audit (P0-P2) sont indiquées comme telles.
 
-**Lecture rapide** — les limites les plus structurantes :
+**Lecture rapide** : les limites les plus structurantes :
 
 | # | Limite | Impact | Statut |
 |---|--------|--------|--------|
@@ -16,32 +16,32 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 | L2 | Un seul split, pas de cross-validation | Variance sous-estimée | Ouvert |
 | L3 | 5 graines seulement | CIs fragiles | Étendu à 10 (P1) |
 | L4 | Baselines B1/B2 > EWAT en AUROC | Valeur ajoutée STGCN = structuration, pas discrimination | Résultat assumé |
-| L5 | Ablation sans réentraînement | Conclusions = robustesse géométrique, pas importance | Corrigé (P2) |
+| L5 | Ablation sans réentraînement | Conclusions = solidité géométrique, pas importance | Corrigé (P2) |
 | L6 | TE-KSG = somme univariée | Sous-estime la synergie entre features | Corrigé + activée multivariate sur cascades (Phase 8) |
-| L7 | 0 relations causales, 0 co-occurrence | Ontologie réduite aux transitions temporelles | ✅ Résolu Phase 8 — 3 causales + 19 co-occurrences (cf. L3.3) |
+| L7 | 0 relations causales, 0 co-occurrence | Ontologie réduite aux transitions temporelles | ✅ Résolu Phase 8, 3 causales + 19 co-occurrences (cf. L3.3) |
 | L8 | disk_io 16.7% NaN | 1 service sur 6 incomplet | Ouvert (ewat_v4) |
 
 ---
 
 ## 2. Limites des données
 
-### L2.1 — Épisodes trop courts (~21 steps, ~10.5 min)
+### L2.1 : Épisodes trop courts (~21 steps, ~10.5 min)
 
-**Problème.** Les épisodes collectés dans ewat_v3 font en moyenne 21 steps (30 s/step = 10.5 min). C'est insuffisant pour le mécanisme de look-through qui nécessite un warm-up du DriftDetector (fenêtre ref = 5 steps + post-drift = 3–6 steps), soit ~8 steps avant d'être opérationnel. Sur 21 steps, il reste ~13 steps utiles.
+**Problème.** Les épisodes collectés dans ewat_v3 font en moyenne 21 steps (30 s/step = 10.5 min). C'est insuffisant pour le mécanisme de look-through qui nécessite un warm-up du DriftDetector (fenêtre ref = 5 steps + post-drift = 3-6 steps), soit ~8 steps avant d'être opérationnel. Sur 21 steps, il reste ~13 steps utiles.
 
 **Pourquoi.** Les scénarios Chaos Mesh étaient configurés avec une durée fixe de ~10 min pour maximiser le nombre d'épisodes collectables dans le temps de stage. Le trade-off débit vs. durée a privilégié la diversité (15 scénarios × 20 rép.) au détriment de la profondeur temporelle.
 
 **Conclusions.**
 - H2 (look-through) échoue (p=0.27) non par défaut de conception mais par manque de signal temporel.
 - H2b passe trivialement car le DD déclenche sur presque tous les épisodes (overlap > 50% partout).
-- Les FA alertes (100% aux seuils 0.3–0.5) sont causées par le fait que les classifieurs tirent avant que le DD n'ait le temps de discriminer drift vs. anomalie.
+- Les FA alertes (100% aux seuils 0.3-0.5) sont causées par le fait que les classifieurs tirent avant que le DD n'ait le temps de discriminer drift vs. anomalie.
 - Le lead time de 3 min (point opérationnel seuil 0.7) est le maximum observable sur des épisodes de 10 min.
 
 **Amélioration.** ewat_v4 avec épisodes ≥ 40 steps (~20 min), ce qui donnerait ~30 steps utiles post warm-up et permettrait de réhabiliter H2.
 
 ---
 
-### L2.2 — disk_io 16.7% NaN (product-catalog)
+### L2.2 : disk_io 16.7% NaN (product-catalog)
 
 **Problème.** Le nœud `observit-cluster1-workers-58w74-mwxb2` est en état NotReady. Le service `product-catalog` y est schedulé, et Prometheus ne collecte pas ses métriques disk_io.
 
@@ -56,7 +56,7 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ---
 
-### L2.3 — Reconstruction histogramme stochastique
+### L2.3 : Reconstruction histogramme stochastique
 
 **Problème.** La reconstruction des features métriques depuis les histogrammes Prometheus (`aggregation.py`) utilisait `np.random.uniform` non seedé. Deux exécutions de `build_features` produisaient des features M(t) légèrement différentes pour les mêmes dumps bruts.
 
@@ -64,11 +64,11 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.** La reproductibilité bit-exact des features n'était pas garantie avant correction. L'impact pratique est faible (variation infra-bruit) mais c'est un défaut de rigueur.
 
-**Amélioration.** ✅ Corrigé (P1) — graine propagée depuis `configs/collection.yaml`.
+**Amélioration.** ✅ Corrigé (P1), graine propagée depuis `configs/collection.yaml`.
 
 ---
 
-### L2.4 — Fenêtres M/T/L désalignées temporellement
+### L2.4 : Fenêtres M/T/L désalignées temporellement
 
 **Problème.** Les features métriques (M) sont collectées en nearest-sample dans une plage temporelle, les traces (T) et logs (L) en sliding windows fermées en `t`. Il n'y a pas de garantie que les 17 features d'un même pas de temps correspondent au même instant physique à ±15 s près.
 
@@ -80,22 +80,22 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ---
 
-### L2.5 — Split unique, pas de cross-validation
+### L2.5 : Split unique, pas de cross-validation
 
-**Problème.** Tous les résultats reposent sur un unique split stratifié 209/45/45 (train/val/test). Avec n=45 en test et des clusters C6/C9 contenant 1–2 épisodes, les AUROC test sont instables.
+**Problème.** Tous les résultats reposent sur un unique split stratifié 209/45/45 (train/val/test). Avec n=45 en test et des clusters C6/C9 contenant 1-2 épisodes, les AUROC test sont instables.
 
 **Pourquoi.** Le pipeline 3-phases (record → build → assemble) est coûteux en temps. La cross-validation aurait nécessité de réentraîner le pipeline complet (encodeur + typage + précurseurs) K fois, soit ~K × 2h CPU. Le choix d'un split unique était pragmatique.
 
 **Conclusions.**
 - Les intervalles de confiance reportés (via bootstrap 5 graines) sous-estiment la variance liée au split.
-- C6 et C9 ont des AUROC NaN par insuffisance d'échantillons test — c'est un artefact du split, pas un échec du modèle.
+- C6 et C9 ont des AUROC NaN par insuffisance d'échantillons test, c'est un artefact du split, pas un échec du modèle.
 - La variabilité inter-graines (sil_test de 0.414 à 0.662) est partiellement due au split fixe.
 
-**Amélioration.** Cross-validation stratifiée 5-fold avec réentraînement complet, ou au minimum, 2–3 splits aléatoires différents pour mesurer la variance liée au split.
+**Amélioration.** Cross-validation stratifiée 5-fold avec réentraînement complet, ou au minimum, 2-3 splits aléatoires différents pour mesurer la variance liée au split.
 
 ---
 
-### L2.6 — Quality gate Phase 1 trop laxe
+### L2.6 : Quality gate Phase 1 trop laxe
 
 **Problème.** Le seuil `trace_nan_max=0.9` dans `validate_dataset` autorise jusqu'à 90% de NaN traces pour un épisode. Un épisode avec 85% de traces manquantes passe la validation.
 
@@ -107,7 +107,7 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ---
 
-### L2.7 — Listes de scénarios incohérentes entre configs
+### L2.7 : Listes de scénarios incohérentes entre configs
 
 **Problème.** `configs/collection.yaml` (15 scénarios) et `configs/default.yaml` (autre liste) ont des listes de scénarios potentiellement différentes.
 
@@ -121,7 +121,7 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ## 3. Limites statistiques
 
-### L3.1 — TE-KSG = somme des TE univariés
+### L3.1 : TE-KSG = somme des TE univariés
 
 **Problème.** L'implémentation de la Transfer Entropy dans `causal.py` calcule la TE pour chaque feature individuellement puis les somme. Ce n'est **pas** la TE multivariée dans ℝ¹⁷. La somme ignore la synergie et la redondance entre features, et surestime l'information causale transmise.
 
@@ -129,13 +129,13 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.**
 - Le résultat « 0 relations causales » est cohérent avec la limitation : la somme univariée surestime TE → si même cette surestimation ne détecte rien, la TE réelle est encore plus faible.
-- L'absence de causalité TE-KSG n'est pas un résultat négatif exploitable tel quel — c'est partiellement un artefact méthodologique.
+- L'absence de causalité TE-KSG n'est pas un résultat négatif exploitable tel quel, c'est partiellement un artefact méthodologique.
 
 **Amélioration.** ✅ Documenté comme limitation dans la formalisation. Pour ewat_v4, épisodes plus longs + TE multivariée KSG (k-NN dans ℝ¹⁷) ou TE conditionnelle partielle.
 
 ---
 
-### L3.2 — TE calculée sur la moyenne d'épisodes (biais écologique)
+### L3.2 : TE calculée sur la moyenne d'épisodes (biais écologique)
 
 **Problème.** Les séries temporelles de chaque épisode sont empilées puis moyennées (`stack.mean(axis=0)`) avant le calcul de TE. Cela collapse la variance inter-épisodes et introduit un biais écologique (la relation au niveau moyen ne reflète pas les relations individuelles).
 
@@ -143,11 +143,11 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.** La TE estimée reflète le comportement « moyen » d'un cluster, pas le comportement individuel des épisodes. Cela amplifie les patterns partagés et masque les variations.
 
-**Amélioration.** ✅ Corrigé (P0) — p-value corrigée `(1+count)/(1+M)`, BH-FDR. Limitation documentée.
+**Amélioration.** ✅ Corrigé (P0), p-value corrigée `(1+count)/(1+M)`, BH-FDR. Limitation documentée.
 
 ---
 
-### L3.3 — Ontologie vide (0 causales, 0 co-occurrence) — ✅ Résolu (Phase 8)
+### L3.3 : Ontologie vide (0 causales, 0 co-occurrence) : ✅ Résolu (Phase 8)
 
 **Problème.** L'ontologie initiale ne contenait que 22 relations temporelles (dont 10 self-loops triviaux) et zéro relation causale ou de co-occurrence.
 
@@ -166,12 +166,12 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 - **Score validation chiffrée** : 8/10 critères atteints (`experiments/ontology_v2/results.md`).
 
 **Limites résiduelles** (acceptées) :
-- Seulement 3 causales (cible ≥ 15 du plan) — corpus synthétique petit (n_per_pair = 5). Scaling à n_per_pair ≥ 15 attendu pour passer le critère.
+- Seulement 3 causales (cible ≥ 15 du plan), corpus synthétique petit (n_per_pair = 5). Scaling à n_per_pair ≥ 15 attendu pour passer le critère.
 - La synthèse reste synthétique : validation finale recommandée sur ewat_v4 avec collecte multi-scénario réelle (injection simultanée sur services différents).
 
 ---
 
-### L3.4 — Bootstrap : reproductibilité et méthode
+### L3.4 : Bootstrap : reproductibilité et méthode
 
 **Problème.** Le bootstrap dans `utils/bootstrap.py` utilisait `rng=None` par défaut (graines aléatoires), et n'implémentait que le percentile simple (pas BCa). Pour des AUROC proches de 1.0 (ex. C4=1.000), l'IC percentile est dégénéré.
 
@@ -179,23 +179,23 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.** Les IC rapportés avant correction n'étaient pas reproductibles. Le percentile simple sous-estime la largeur de l'IC pour des statistiques proches des bornes (0 ou 1).
 
-**Amélioration.** ✅ Corrigé (P0) — `rng` explicite obligatoire, BCa ajouté pour AUROC. Tests unitaires.
+**Amélioration.** ✅ Corrigé (P0)`rng` explicite obligatoire, BCa ajouté pour AUROC. Tests unitaires.
 
 ---
 
-### L3.5 — Multiplicité non corrigée dans l'ablation
+### L3.5 : Multiplicité non corrigée dans l'ablation
 
 **Problème.** Les tests de Wilcoxon dans l'ablation (7 modalités + 17 leave-one-out = 24 tests) étaient réalisés sans correction de multiplicité. Un p < 0.05 sur 24 tests donne un taux de faux positifs attendu de 1.2.
 
-**Pourquoi.** Oubli standard — la correction était appliquée à l'ontologie mais pas à l'ablation.
+**Pourquoi.** Oubli standard, la correction était appliquée à l'ontologie mais pas à l'ablation.
 
 **Conclusions.** Certaines features déclarées « significatives » à p < 0.05 pourraient être des faux positifs (ex. `disk_io` à p=0.026 est marginal après Holm).
 
-**Amélioration.** ✅ Corrigé (P0) — Holm/FDR appliqué.
+**Amélioration.** ✅ Corrigé (P0), Holm/FDR appliqué.
 
 ---
 
-### L3.6 — H2 : paired t-test sur indicatrices binaires
+### L3.6 : H2 : paired t-test sur indicatrices binaires
 
 **Problème.** Le test de H2 utilise un t-test apparié de Student sur des variables indicatrices (0/1). Le t-test suppose une distribution continue et approximativement normale, ce qui n'est pas le cas.
 
@@ -209,7 +209,7 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ## 4. Limites de modélisation
 
-### L4.1 — STGCN = GCN statique malgré le nom
+### L4.1 : STGCN = GCN statique malgré le nom
 
 **Problème.** Le code du STGCN moyenne la matrice d'adjacence sur la dimension temporelle (`adj_mean = adjacency.mean(dim=1)`) puis la re-broadcast. Le graphe est donc statique, contrairement à la formalisation qui annonce un G(t) dynamique.
 
@@ -219,11 +219,11 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 - La divergence code/formalisation est un risque de crédibilité face à un relecteur.
 - L'impact sur les performances est inconnu sans ablation A(t) vs. A_mean.
 
-**Amélioration.** ✅ Corrigé (P1) — STGCN dynamique implémenté, `adj_mean` conservé comme variant ablation.
+**Amélioration.** ✅ Corrigé (P1), STGCN dynamique implémenté, `adj_mean` conservé comme variant ablation.
 
 ---
 
-### L4.2 — Padding non masqué dans le pooling
+### L4.2 : Padding non masqué dans le pooling
 
 **Problème.** Le pooling global `z = h.mean(dim=(1,2))` incluait les zéros du padding pour les épisodes plus courts que le maximum du batch. Les embeddings étaient biaisés vers 0 proportionnellement au ratio de padding.
 
@@ -231,23 +231,23 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.** Les épisodes courts (< max_len) avaient des embeddings systématiquement plus proches de l'origine. Si la longueur corrèle avec le type d'anomalie, le clustering pourrait partiellement capturer la longueur plutôt que le signal.
 
-**Amélioration.** ✅ Corrigé (P1) — pooling masqué avec `lengths` fournis par `collate_episodes`.
+**Amélioration.** ✅ Corrigé (P1), pooling masqué avec `lengths` fournis par `collate_episodes`.
 
 ---
 
-### L4.3 — Clustering Euclidien sur embeddings L2-normalisés
+### L4.3 : Clustering Euclidien sur embeddings L2-normalisés
 
 **Problème.** Le clustering hiérarchique (Ward, silhouette Euclidienne) est appliqué sur des embeddings L2-normalisés (sortie siamois). Sur une sphère, la distance Euclidienne et la distance cosinus ne sont pas équivalentes. K* optimal pourrait être biaisé.
 
 **Pourquoi.** Ward est le clustering par défaut de scikit-learn et le plus courant dans la littérature de clustering hiérarchique. Le passage à une métrique cosinus nécessiterait un algorithme différent (spherical k-means).
 
-**Conclusions.** Le K* = 10 obtenu par Ward pourrait ne pas être optimal au sens de la géométrie de la sphère. La silhouette rapportée (0.414–0.519 test) est potentiellement sous-estimée par la métrique inadaptée.
+**Conclusions.** Le K* = 10 obtenu par Ward pourrait ne pas être optimal au sens de la géométrie de la sphère. La silhouette rapportée (0.414-0.519 test) est potentiellement sous-estimée par la métrique inadaptée.
 
-**Amélioration.** ✅ Comparaison faite (P2) — Ward Euclidien vs. spherical/cosine. K* validé.
+**Amélioration.** ✅ Comparaison faite (P2), Ward Euclidien vs. spherical/cosine. K* validé.
 
 ---
 
-### L4.4 — Pas de hard-negative mining
+### L4.4 : Pas de hard-negative mining
 
 **Problème.** Le sampler de paires pour le siamois tire les négatifs uniformément, sans prioriser les paires proches dans l'espace latent (hard negatives). Après quelques epochs, la plupart des négatifs sont triviaux et n'apportent plus de gradient utile.
 
@@ -255,13 +255,13 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.** La qualité des embeddings sature probablement avant ce qu'un mining plus agressif permettrait. L'écart STGCN/SimCLR (0.954 → 0.964 AUROC) pourrait être partiellement lié à ce facteur.
 
-**Amélioration.** ✅ Implémenté (P2) — hard/semi-hard negative mining dans `EpisodePairSampler`.
+**Amélioration.** ✅ Implémenté (P2), hard/semi-hard negative mining dans `EpisodePairSampler`.
 
 ---
 
-### L4.5 — Précurseurs LR sans `class_weight` + fallback 0.5
+### L4.5 : Précurseurs LR sans `class_weight` + fallback 0.5
 
-**Problème.** Les classifieurs LogisticRegression des précurseurs n'utilisent pas `class_weight="balanced"`, malgré un déséquilibre de classes évident (C6/C9 : 1–2 épisodes positifs). De plus, le fallback pour les clusters dégénérés renvoie 0.5 au lieu de la prévalence empirique.
+**Problème.** Les classifieurs LogisticRegression des précurseurs n'utilisent pas `class_weight="balanced"`, malgré un déséquilibre de classes évident (C6/C9 : 1-2 épisodes positifs). De plus, le fallback pour les clusters dégénérés renvoie 0.5 au lieu de la prévalence empirique.
 
 **Pourquoi.** Oubli. La valeur 0.5 est la valeur par défaut « neutre », mais elle est incorrecte pour des prévalences faibles.
 
@@ -271,7 +271,7 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ---
 
-### L4.6 — MMD-RFF biaisé + calibration désalignée
+### L4.6 : MMD-RFF biaisé + calibration désalignée
 
 **Problème.** L'estimateur MMD-RFF n'utilise pas la version unbiased, et l'imputation par moyenne de colonne crée une asymétrie ref/cur si la proportion de NaN diffère. De plus, ε_drift=0.5226 est calibré sur le début d'épisode (ref = premiers steps), alors que le détecteur en streaming peut recalibrer en cours de route.
 
@@ -283,7 +283,7 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ---
 
-### L4.7 — Saliency « SHAP » invalide (ρ = −0.34 vs. permutation)
+### L4.7 : Saliency « SHAP » invalide (ρ = −0.34 vs. permutation)
 
 **Problème.** L'explainer `shap_explainer.py` (renommé `saliency_explainer.py` post-audit) implémentait `gradient × input`, pas SHAP. La corrélation avec la permutation importance est négative (ρ = −0.34), ce qui signifie que les attributions gradient et permutation sont **contradictoires**.
 
@@ -294,13 +294,13 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 - Seule la permutation importance est utilisable pour les interprétations publiées.
 - Les features critiques identifiées par ablation (trace_depth, lexical_entropy, latency_p99) sont les seules attributions fiables.
 
-**Amélioration.** ✅ Renommé (P0). KernelSHAP implémenté sur 1–2 clusters pour validation croisée.
+**Amélioration.** ✅ Renommé (P0). KernelSHAP implémenté sur 1-2 clusters pour validation croisée.
 
 ---
 
 ## 5. Limites de l'inférence online (AlertAssembler)
 
-### L5.1 — Topologie et hyperparamètres hardcodés
+### L5.1 : Topologie et hyperparamètres hardcodés
 
 **Problème.** L'AlertAssembler hardcodait `n_nodes=6`, `epsilon_drift=0.5226`, `rff_dim=256`, `post_drift_window_s=3`. Aucun chargement depuis les artefacts d'entraînement.
 
@@ -308,11 +308,11 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.** Le code était inutilisable hors ewat_v3 et fragile à toute évolution du dataset.
 
-**Amélioration.** ✅ Corrigé (P0) — chargement depuis artefacts.
+**Amélioration.** ✅ Corrigé (P0), chargement depuis artefacts.
 
 ---
 
-### L5.2 — Mismatch fenêtre précurseur train vs. inférence
+### L5.2 : Mismatch fenêtre précurseur train vs. inférence
 
 **Problème.** Le `PrecursorDataset` (train) filtre les steps `regime == "normal"` pour construire la fenêtre de k steps, tandis que l'AlertAssembler (inférence) prend les `signal[-k:]` quel que soit le régime. Cela crée un distribution shift à l'inférence.
 
@@ -320,25 +320,25 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.** Le classifieur est entraîné sur des fenêtres « normales » mais reçoit en inférence des fenêtres potentiellement contaminées par la phase anomalie. L'impact est un sous-comptage des alertes en début d'anomalie et un sur-comptage en phase tardive.
 
-**Amélioration.** ✅ Corrigé (P0) — fenêtre alignée.
+**Amélioration.** ✅ Corrigé (P0), fenêtre alignée.
 
 ---
 
-### L5.3 — Coût O(C) au lieu de O(max k)
+### L5.3 : Coût O(C) au lieu de O(max k)
 
 **Problème.** L'AlertAssembler exécutait un forward STGCN par cluster, alors que tous les clusters partageant le même k* peuvent être encodés en un seul forward.
 
 **Pourquoi.** Implémentation itérative, pas optimisée.
 
-**Conclusions.** Latence d'inférence inutilement élevée : K forwards au lieu de |distinct k*| (typiquement 3–4 valeurs distinctes sur K=10).
+**Conclusions.** Latence d'inférence inutilement élevée : K forwards au lieu de |distinct k*| (typiquement 3-4 valeurs distinctes sur K=10).
 
-**Amélioration.** ✅ Corrigé (P0) — groupement par k*.
+**Amélioration.** ✅ Corrigé (P0), groupement par k*.
 
 ---
 
 ## 6. Limites de conception expérimentale
 
-### L6.1 — 5 graines, pas de k-fold
+### L6.1 : 5 graines, pas de k-fold
 
 **Problème.** Les résultats multi-graines utilisent 5 graines (`[42, 123, 456, 789, 1337]`) avec `np.std` brute. Pas de SE bootstrap sur les agrégats, pas de k-fold.
 
@@ -346,25 +346,25 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.**
 - L'affirmation « 0.973 ± 0.012 » utilise l'écart-type sur 5 points, ce qui est une estimation très bruitée de la vraie variance.
-- La variabilité sil_test (0.414–0.662) sur 5 graines est large et pourrait se resserrer ou s'élargir avec plus de graines.
+- La variabilité sil_test (0.414-0.662) sur 5 graines est large et pourrait se resserrer ou s'élargir avec plus de graines.
 
 **Amélioration.** ✅ Étendu à 10 graines (P1) avec SE bootstrap sur les agrégats.
 
 ---
 
-### L6.2 — Ablation sans réentraînement
+### L6.2 : Ablation sans réentraînement
 
-**Problème.** L'ablation par modalité et leave-one-out masquait les features **à l'inférence** sur un modèle entraîné avec les 17 features. Cela mesure la robustesse du modèle au masquage, pas l'importance fonctionnelle des features.
+**Problème.** L'ablation par modalité et leave-one-out masquait les features **à l'inférence** sur un modèle entraîné avec les 17 features. Cela mesure la solidité du modèle au masquage, pas l'importance fonctionnelle des features.
 
 **Pourquoi.** L'ablation avec réentraînement complet nécessitait ~41h CPU (7 conditions modalités × 5 graines + 17 conditions LOO × 5 graines).
 
-**Conclusions.** Les features « non significatives » (cpu_util p=0.246, ram_util p=0.074) pourraient être significatives si le modèle avait appris à les utiliser en l'absence des features dominantes. La conclusion valide est : « le modèle est géométriquement robuste au masquage de ces features ».
+**Conclusions.** Les features « non significatives » (cpu_util p=0.246, ram_util p=0.074) pourraient être significatives si le modèle avait appris à les utiliser en l'absence des features dominantes. La conclusion valide est : « le modèle est géométriquement solide au masquage de ces features ».
 
-**Amélioration.** ✅ Ablation rigoureuse avec réentraînement (P2) — 5 graines par condition.
+**Amélioration.** ✅ Ablation rigoureuse avec réentraînement (P2), 5 graines par condition.
 
 ---
 
-### L6.3 — Baselines B1/B2 supérieures en AUROC
+### L6.3 : Baselines B1/B2 supérieures en AUROC
 
 **Problème.** Les baselines précurseurs B1 (features brutes sans STGCN, AUROC=0.966) et B2 (k-means brut + LR, AUROC=0.975) surpassent EWAT (0.951) en AUROC moyen. Cet argument se retourne contre le projet si mal présenté.
 
@@ -375,11 +375,11 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 - B1/B2 ne découvrent rien : ils réapprennent les labels que le siamois a créés.
 - L'AUROC n'est pas la bonne métrique pour mesurer la contribution du STGCN.
 
-**Amélioration.** ✅ Baseline scénario direct (P2) — LR sur signal brut → label scénario chaos (15 classes), indépendamment des labels EWAT. Compare la valeur ajoutée du clustering vs. la prédiction directe du scénario.
+**Amélioration.** ✅ Baseline scénario direct (P2), LR sur signal brut → label scénario chaos (15 classes), indépendamment des labels EWAT. Compare la valeur ajoutée du clustering vs. la prédiction directe du scénario.
 
 ---
 
-### L6.4 — Pas de validation externe (dataset public)
+### L6.4 : Pas de validation externe (dataset public)
 
 **Problème.** Tous les résultats sont obtenus sur un unique dataset privé (ewat_v3, cluster Devoteam). Aucune validation sur un dataset public de microservices.
 
@@ -393,7 +393,7 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ## 7. Limites d'ingénierie et infrastructure
 
-### L7.1 — MLflow déclaré mais jamais utilisé
+### L7.1 : MLflow déclaré mais jamais utilisé
 
 **Problème.** MLflow est déclaré dans `pyproject.toml` et `configs/default.yaml` mais aucun `import mlflow` n'existe dans le code hors des répertoires `mlruns/` créés en passant.
 
@@ -401,11 +401,11 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.** La promesse de tracking d'expériences est creuse. Les hyperparamètres et métriques sont dispersés dans des fichiers JSON/YAML, pas centralisés.
 
-**Amélioration.** ✅ Corrigé (P1) — Hydra `@hydra.main` + MLflow tracking branché dans encoder/typing/precursor.
+**Amélioration.** ✅ Corrigé (P1), Hydra `@hydra.main` + MLflow tracking branché dans encoder/typing/precursor.
 
 ---
 
-### L7.2 — Hydra sous-utilisé
+### L7.2 : Hydra sous-utilisé
 
 **Problème.** Les scripts utilisaient `OmegaConf.load` direct au lieu de `@hydra.main`. Pas de composition de configs, pas de groupes, pas de `multirun`.
 
@@ -413,11 +413,11 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.** L'absence de composition rend difficile la gestion d'expériences multi-conditions (ablation, multi-graines, multi-architectures).
 
-**Amélioration.** ✅ Corrigé (P1) — migration vers `@hydra.main`.
+**Amélioration.** ✅ Corrigé (P1), migration vers `@hydra.main`.
 
 ---
 
-### L7.3 — Hyperparamètres dupliqués
+### L7.3 : Hyperparamètres dupliqués
 
 **Problème.** `d_feat=17`, `n_nodes=6`, `d_hidden=64` sont répétés dans `precursor/train.py`, `ablation/run.py`, `alerts/assembler.py`. Toute évolution (ex. passage à 15 features) nécessite une synchronisation manuelle.
 
@@ -429,7 +429,7 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ---
 
-### L7.4 — Tests d'intégration absents
+### L7.4 : Tests d'intégration absents
 
 **Problème.** 302 tests unitaires, mais aucun test d'intégration end-to-end vérifiant que record → build → assemble → train → eval produit des résultats déterministes.
 
@@ -437,11 +437,11 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Conclusions.** La reproductibilité end-to-end n'est vérifiée que manuellement. Un changement dans un module amont (ex. aggregation.py) pourrait casser les résultats sans être détecté.
 
-**Amélioration.** ✅ Corrigé (P1) — test d'intégration tiny-fixture (4 épisodes synthétiques, 5 epochs, vérification déterminisme à graine fixée).
+**Amélioration.** ✅ Corrigé (P1), test d'intégration tiny-fixture (4 épisodes synthétiques, 5 epochs, vérification déterminisme à graine fixée).
 
 ---
 
-### L7.5 — `pickle.load` sans validation
+### L7.5`pickle.load` sans validation
 
 **Problème.** Les checkpoints (encoder, precursor, assembler) sont chargés via `pickle.load` sans validation des classes attendues. Risque de sécurité en production (arbitrary code execution).
 
@@ -453,7 +453,7 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ---
 
-### L7.6 — Expériences scratch non nettoyées
+### L7.6 : Expériences scratch non nettoyées
 
 **Problème.** Les répertoires `typing_test/`, `typing_test2/`, `encoder_test/`, `precursors/`, `latency/`, `clustering/` sont des résidus d'expériences exploratoires, non documentés.
 
@@ -467,7 +467,7 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ## 8. Limites de la contribution scientifique
 
-### L8.1 — Divergence formalisation / implémentation
+### L8.1 : Divergence formalisation / implémentation
 
 **Problème.** Plusieurs divergences entre `docs/formalisation.md` et le code :
 - La formalisation annonce un STGCN avec G(t) dynamique → le code utilisait A_mean.
@@ -476,13 +476,13 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 **Pourquoi.** La formalisation a été écrite comme cible théorique. L'implémentation a fait des compromis pragmatiques.
 
-**Conclusions.** Les divergences ont été progressivement réduites par les corrections P0–P2 (STGCN dynamique, TE documentée, χ² corrigé). Le rapport doit clairement distinguer la formulation théorique du périmètre validé expérimentalement.
+**Conclusions.** Les divergences ont été progressivement réduites par les corrections P0-P2 (STGCN dynamique, TE documentée, χ² corrigé). Le rapport doit clairement distinguer la formulation théorique du périmètre validé expérimentalement.
 
 **Amélioration.** ✅ Largement corrigé. Documenter explicitement les écarts résiduels dans le rapport de stage (section « limites et perspectives »).
 
 ---
 
-### L8.2 — EWAT n'est pas du RCA mais la frontière est floue
+### L8.2 : EWAT n'est pas du RCA mais la frontière est floue
 
 **Problème.** EWAT est positionné comme early warning (Quoi, Dans combien de temps), distinct du RCA (Où, Pourquoi). Mais le typage (Étape 2) et l'ontologie (Étape 2b) s'approchent du « Quoi » au point de frôler le « Pourquoi ». Un relecteur pourrait arguer que le typage est une forme de diagnostic, pas de warning.
 
@@ -494,7 +494,7 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ---
 
-### L8.3 — Scope fixe : 6 services, 1 topologie
+### L8.3 : Scope fixe : 6 services, 1 topologie
 
 **Problème.** Le pipeline EWAT est validé sur exactement 6 services avec une topologie fixe. La scalabilité à des architectures plus grandes (50+ services) ou dynamiques (auto-scaling, service mesh) n'est pas démontrée.
 
@@ -506,35 +506,35 @@ Ce document recense **l'ensemble des limites connues** du projet EWAT à ce jour
 
 ---
 
-## 9. Tableau de synthèse — statut des corrections
+## 9. Tableau de synthèse : statut des corrections
 
-## L9 — Circularité d'évaluation H3 (P0, ajouté 2026-05-26)
+## L9 : Circularité d'évaluation H3 (P0, ajouté 2026-05-26)
 
 ### Diagnostic
 
 L'AUROC=0.973 ± 0.012 (5 graines baseline) et 0.987 ± 0.011 (10 graines config optimisée) reportés pour H3 **mesurent la prédiction des labels cluster produits par EWAT lui-même** depuis l'embedding STGCN. La cible (cluster C_i) est dérivée du même pipeline (encodeur + siamois) qu'on évalue. C'est une évaluation **circulaire** : le pipeline retrouve son propre partitionnement.
 
-### Preuves de la circularité (Phase A — stress tests)
+### Preuves de la circularité (Phase A : stress tests)
 
 | Test | Verdict |
 |---|---|
 | **B1 (raw features, labels EWAT)** | AUROC = 0.966 → les labels EWAT sont triviallement recoverables depuis le signal brut, sans encodeur |
 | **A1 distant-window** (Δ far−near sur labels EWAT) | −0.007 → pas de précursion, fenêtre déplacée donne le même AUROC → fuite signature scénario |
-| **A2 LOSO precursor-only** | top-1 sur scénario inédit = 0.51 ± 0.38 (polarisé : 4×100%, 4×0%) — pas de généralisation |
+| **A2 LOSO precursor-only** | top-1 sur scénario inédit = 0.51 ± 0.38 (polarisé : 4×100%, 4×0%), pas de généralisation |
 | **A5 paired Δ(B4−B3)** | Δ = +0.005, IC 95% = [−0.031, +0.044] **contient 0** → l'encodeur STGCN n'apporte rien en prédiction agrégée vs LR sur features brutes |
 
 Voir `experiments/h3_robustness/results.md` pour les chiffres complets et `STATUS.md` section "Stress tests H3" pour les détails.
 
-### Solution adoptée (Phase B + C — 2026-05-26)
+### Solution adoptée (Phase B + C : 2026-05-26)
 
 Pivot de la cible d'évaluation : les **15 scénarios Chaos Mesh** (vérité terrain indépendante) remplacent les clusters EWAT auto-référents comme métrique principale.
 
 | Évaluation honnête | AUROC | IC 95% bootstrap |
 |---|---|---|
-| **B2 — LR-OvR (sans STGCN) sur v4_strat** | **0.920** | [0.878, 0.956] |
+| **B2, LR-OvR (sans STGCN) sur v4_strat** | **0.920** | [0.878, 0.956] |
 | **B1 best (instance norm + last)** | **0.941** | [0.909, 0.970] |
 | LOSO macro-AUROC (15 folds, v4_strat) | 0.930 | ± 0.007 |
-| **C1 — STGCN end-to-end** | 0.863 | [0.823, 0.905] |
+| **C1, STGCN end-to-end** | 0.863 | [0.823, 0.905] |
 | C2-A1 distant-window STGCN ChaosMesh | Δ(far−near) = **−0.116** ⇒ précursion réelle |
 
 ### Limitation résiduelle
@@ -554,11 +554,11 @@ Voir `experiments/architecture_v2/openset/` pour les chiffres finaux.
 
 ---
 
-## L10 — Surentraînement siamois sur ewat_v4 (P1, ajouté 2026-05-26)
+## L10 : Surentraînement siamois sur ewat_v4 (P1, ajouté 2026-05-26)
 
 ### Diagnostic
 
-Sur ewat_v4 (262 train, 60 val, 57 test stratifié temporel ou 270/60/45 stratifié strict), le SiameseTyper converge en `best_epoch = 2–7` (vs ~47 sur ewat_v3 avec 209 train). H1 silhouette test = **0.467 ± 0.156** sur 6 graines (vs 0.782 ± 0.065 sur v3) — graine 789 = 0.216 FAIL.
+Sur ewat_v4 (262 train, 60 val, 57 test stratifié temporel ou 270/60/45 stratifié strict), le SiameseTyper converge en `best_epoch = 2-7` (vs ~47 sur ewat_v3 avec 209 train). H1 silhouette test = **0.467 ± 0.156** sur 6 graines (vs 0.782 ± 0.065 sur v3), graine 789 = 0.216 FAIL.
 
 ### Cause probable
 
@@ -575,8 +575,8 @@ Le dataset v4 est à la fois plus grand (262 vs 209 train) et plus diversifié (
 
 **Confirmation multi-seed (Phase H, 10 graines)** :
 - best_epoch siamois reste ≤ 7 sur **10/10 graines** malgré `mining=semi-hard` (Step 6 fix)
-- sil_test = 0.691 ± 0.115 (range [0.521, 0.839]) — variance plus large que sur v3 (0.78 ± 0.07)
-- K_optimal varie de **9 à 15** (Phase K.1) — ni silhouette ni Tibshirani gap statistic ne stabilise (agreement 4/10 seeds)
+- sil_test = 0.691 ± 0.115 (range [0.521, 0.839]), variance plus large que sur v3 (0.78 ± 0.07)
+- K_optimal varie de **9 à 15** (Phase K.1), ni silhouette ni Tibshirani gap statistic ne stabilise (agreement 4/10 seeds)
 
 **Le surentraînement est donc structurel, pas un bug de mining**. Causes probables (à valider en future itération) :
 1. n_train = 270 trop petit pour un siamois profond
@@ -594,7 +594,7 @@ Voir `experiments/multiseed/phase_h/{k_selection_comparison.md,variance_analysis
 
 ---
 
-## L11 — Latence end-to-end (P1, ✅ résolu 2026-05-26)
+## L11 : Latence end-to-end (P1, ✅ résolu 2026-05-26)
 
 ### Diagnostic et mesure
 
@@ -609,11 +609,11 @@ Budget formel `formalisation.md` : Étape 0 < 1 s, Étape 1+2 < 2 s, Étape 3 < 
 | Étape 3 (précurseurs) | 1.85 ms | 3.91 ms | 1000 ms | 🟢 |
 | **TOTAL** | **9.26 ms** | **13.28 ms** | **5000 ms** | **🟢** |
 
-Verdict : **GREEN** — 375× sous budget. SLA défendable en production CPU. À ré-évaluer sur GPU et à charge réelle (concurrence de requêtes).
+Verdict : **GREEN** : 375× sous budget. SLA défendable en production CPU. À ré-évaluer sur GPU et à charge réelle (concurrence de requêtes).
 
 ---
 
-## L12 — OpenMax mitigé (P1, ouvert)
+## L12 : OpenMax mitigé (P1, ouvert)
 
 ### Diagnostic
 
@@ -628,8 +628,8 @@ OpenMax (Bendale & Boult 2016) suppose que les scénarios inédits sont "loin" d
 
 ### Alternatives à évaluer en travail futur
 
-- **Mahalanobis-OOD** (Lee et al. 2018) : distance de Mahalanobis sur représentations gaussiennes — plus robuste sur features corrélées.
-- **Energy-based OOD** (Liu et al. 2020) : utiliser l'énergie négative du log-sum-exp des logits — meilleure séparation in/out.
+- **Mahalanobis-OOD** (Lee et al. 2018) : distance de Mahalanobis sur représentations gaussiennes, plus solide sur features corrélées.
+- **Energy-based OOD** (Liu et al. 2020) : utiliser l'énergie négative du log-sum-exp des logits, meilleure séparation in/out.
 - **ODIN** (Liang et al. 2017) : temperature scaling + input perturbations.
 
 ### État
@@ -638,7 +638,7 @@ Documenté, OpenMax actuel = baseline. À étendre `src/ewat/openset/` avec ces 
 
 ---
 
-## L13 — Service graph N=6 (P2, ouvert — future work)
+## L13 : Service graph N=6 (P2, ouvert : future work)
 
 ### Diagnostic
 
@@ -656,7 +656,7 @@ Future work : valider sur un dataset plus large (RCAEval RE2 ou collecte sur un 
 
 ---
 
-## L14 — Validation cross-cluster nulle (P2, ouvert — future work)
+## L14 : Validation cross-cluster nulle (P2, ouvert : future work)
 
 ### Diagnostic
 
@@ -677,7 +677,7 @@ Stratégie B fine-tuning sur quelques épisodes du cluster cible (C-2 dans le pl
 
 ---
 
-## L15 — Retraining cycle opérationnel non défini (P2, ouvert)
+## L15 : Retraining cycle opérationnel non défini (P2, ouvert)
 
 ### Diagnostic
 
@@ -694,7 +694,7 @@ Future work : implémenter un détecteur de drift de distribution (différent du
 
 ---
 
-## L16 — Hardcoded 17 features, pas d'auto-discovery (P2, ouvert)
+## L16 : Hardcoded 17 features, pas d'auto-discovery (P2, ouvert)
 
 ### Diagnostic
 
@@ -711,7 +711,7 @@ Future work : implémenter un sélecteur de features automatique (mRMR, SHAP-bas
 
 ---
 
-## L17 — Ontologie sans validation expert / RCA réelle (P1, ouvert)
+## L17 : Ontologie sans validation expert / RCA réelle (P1, ouvert)
 
 ### Diagnostic
 
@@ -735,8 +735,8 @@ Phase 8 a produit une ontologie OWL/RDF avec 29 classes ancrées littérature (S
 
 Brièvement documentées pour transparence méthodologique :
 
-- **m-1** Variance inter-graines large (±24% sur H1 baseline 5 graines). Mitigé en config optimisée (±0.065 sur 10 graines). Sur ewat_v4 (±0.156 sur 6 graines), c'est plus marqué — voir L10.
-- **m-2** Pas de pré-registration des stress tests A1–A5 ; ils ont été conçus *a posteriori* en réponse à la critique du maître de stage. Bonne pratique pour future itérations : pre-registration OSF / arXiv preprint.
+- **m-1** Variance inter-graines large (±24% sur H1 baseline 5 graines). Mitigé en config optimisée (±0.065 sur 10 graines). Sur ewat_v4 (±0.156 sur 6 graines), c'est plus marqué, voir L10.
+- **m-2** Pas de pré-registration des stress tests A1-A5 ; ils ont été conçus *a posteriori* en réponse à la critique du maître de stage. Bonne pratique pour future itérations : pre-registration OSF / arXiv preprint.
 - **m-3** Pas de correction de multiplicité sur 15 scénarios (FWER non contrôlé). Bootstrap CIs sont marginaux, pas joints. Bonferroni-Holm appliqué seulement sur l'ablation feature-wise.
 - **m-4** Pas de power analysis a priori. Power post-hoc disponible via [experiments/bench/power_analysis.py](experiments/bench/power_analysis.py) : 5/10 clusters reportables (n_pos ≥ 5), power moyenne 1.0 sur ces 5.
 - **m-5** Pas de retraining cycle (voir L15).
@@ -746,7 +746,7 @@ Brièvement documentées pour transparence méthodologique :
 
 ---
 
-## 9. Tableau de synthèse — statut des corrections
+## 9. Tableau de synthèse : statut des corrections
 
 | Correction | Priorité | Statut | Impact |
 |---|---|---|---|
@@ -775,11 +775,11 @@ Brièvement documentées pour transparence méthodologique :
 | GAT vs GCN | P2 | ✅ | sil_test +0.083 |
 | Baseline scénario direct | P2 | ✅ | Valeur ajoutée clarifiée |
 | ewat_v4 (OTel SDK) | P2 | ✅ | disk_io 0% NaN |
-| Cross-validation k-fold | — | ❌ Ouvert | Variance du split non mesurée |
-| Validation GAIA | — | ❌ Ouvert | Généralisabilité inconnue |
-| LR class_weight=balanced | — | ❌ Ouvert | Clusters minoritaires |
-| McNemar pour H2 | — | ❌ Ouvert | Test plus adapté |
-| pickle → torch safe load | — | ❌ Ouvert | Sécurité production |
+| Cross-validation k-fold | - | ❌ Ouvert | Variance du split non mesurée |
+| Validation GAIA | - | ❌ Ouvert | Généralisabilité inconnue |
+| LR class_weight=balanced | - | ❌ Ouvert | Clusters minoritaires |
+| McNemar pour H2 | - | ❌ Ouvert | Test plus adapté |
+| pickle → torch safe load | - | ❌ Ouvert | Sécurité production |
 
 ---
 
@@ -787,23 +787,23 @@ Brièvement documentées pour transparence méthodologique :
 
 ### Ce que les limites nous apprennent
 
-1. **La durée d'épisode est le facteur limitant principal.** H2 échoue, H2b est trivial, la FA est élevée — tout converge vers le même problème : ~21 steps ne suffisent pas pour le look-through. C'est un résultat en soi : EWAT nécessite un minimum de ~30 steps utiles pour que sa cascade fonctionne.
+1. **La durée d'épisode est le facteur limitant principal.** H2 échoue, H2b est trivial, la FA est élevée, tout converge vers le même problème : ~21 steps ne suffisent pas pour le look-through. C'est un résultat en soi : EWAT nécessite un minimum de ~30 steps utiles pour que sa cascade fonctionne.
 
-2. **La valeur du STGCN est dans la structuration, pas dans la discrimination.** Les baselines B1/B2 le montrent clairement : prédire un label est facile, **découvrir** un label est la vraie contribution. EWAT crée une taxonomie de 10 types depuis 15 scénarios — c'est une réduction de complexité exploitable opérationnellement.
+2. **La valeur du STGCN est dans la structuration, pas dans la discrimination.** Les baselines B1/B2 le montrent clairement : prédire un label est facile, **découvrir** un label est la vraie contribution. EWAT crée une taxonomie de 10 types depuis 15 scénarios, c'est une réduction de complexité exploitable opérationnellement.
 
 3. **L'ontologie est limitée par le design expérimental, pas par l'algorithme.** Les 0 relations causales et co-occurrence sont la conséquence logique d'épisodes mono-scénario. Le pipeline ontologique est correctement implémenté (post-corrections), il manque simplement de données multi-scénario pour s'exprimer.
 
-4. **Les corrections statistiques (P0) n'ont pas changé les résultats.** χ² corrigé → toujours 0. TE corrigée → toujours 0. Holm sur l'ablation → mêmes features critiques. Ce n'est pas un argument de solidité (les résultats étaient déjà nuls), mais ça confirme que les conclusions négatives sont robustes.
+4. **Les corrections statistiques (P0) n'ont pas changé les résultats.** χ² corrigé → toujours 0. TE corrigée → toujours 0. Holm sur l'ablation → mêmes features critiques. Ce n'est pas un argument de solidité (les résultats étaient déjà nuls), mais ça confirme que les conclusions négatives sont solides.
 
 5. **La reproductibilité était partiellement factice avant P0/P1.** Graines non propagées, histogrammes stochastiques, bootstrap non seedé. Les résultats étaient qualitativement stables mais pas bit-exact reproductibles. C'est maintenant corrigé.
 
 ### Forces préservées
 
-- Pipeline 3-phases atomique avec checkpoints append-only — qualité production.
+- Pipeline 3-phases atomique avec checkpoints append-only, qualité production.
 - 302 tests unitaires + test d'intégration end-to-end.
 - Résultats négatifs (H2, H2-bis) assumés et interprétés scientifiquement.
-- Correction méthodologique documentée (nearest centroid, k* sur val) — démarche exemplaire.
-- Séparation `collectors/` online vs `extractors/` offline — bonne abstraction.
+- Correction méthodologique documentée (nearest centroid, k* sur val), démarche exemplaire.
+- Séparation `collectors/` online vs `extractors/` offline, bonne abstraction.
 - Scope graphe (6 services) explicitement assumé, pas un oubli.
 
 ## 9. Limites révélées ou levées par l'audit 2026-06
@@ -815,8 +815,8 @@ _Section ajoutée le 2026-06-11. Réfs : `docs/audit_2026_06.md` (40 points),
 
 | Limite | Avant | Après audit 2026-06 |
 |---|---|---|
-| L2/L6.1 — variance inter-split jamais mesurée | Ouverte | **Quantifiée (E5)** : B2 = 0.969 ± 0.011 sur 5 splits shuffled vs 0.920 temporel — le split officiel est *conservateur* |
-| Sensibilité aux NaN inconnue | Ouverte | **Quantifiée (E9)** : −1.3 pp AUROC à 20 % de NaN injectés, −8.3 pp à 50 % — robuste |
+| L2/L6.1, variance inter-split jamais mesurée | Ouverte | **Quantifiée (E5)** : B2 = 0.969 ± 0.011 sur 5 splits shuffled vs 0.920 temporel, le split officiel est *conservateur* |
+| Sensibilité aux NaN inconnue | Ouverte | **Quantifiée (E9)** : −1.3 pp AUROC à 20 % de NaN injectés, −8.3 pp à 50 %, solide |
 | Pas de borne supérieure | Ouverte | **Oracle (E6)** : fit-on-all = 1.0 → le gap 0.920→1.0 est rattrapable (pas de chevauchement irréductible) ; borne légale train+val = 0.962 |
 | Pas de baseline publiée | Ouverte | **USAD (E1)** implémenté + évalué au protocole B2 (`experiments/sota/usad`) |
 | K instable [9,15] | Ouverte (Phase K) | **K=10 fixe** (`fixed_k`) + HDBSCAN disponible (M8) |
@@ -824,21 +824,21 @@ _Section ajoutée le 2026-06-11. Réfs : `docs/audit_2026_06.md` (40 points),
 
 ### Nouvelles limites (à assumer dans le rapport)
 
-**L9.1 — PR-AUC du headline = 0.587.** Le macro-AUROC B2 (0.920) masque une
+**L9.1, PR-AUC du headline = 0.587.** Le macro-AUROC B2 (0.920) masque une
 précision médiocre à n_pos = 3/scénario : macro-PR-AUC = 0.587 sur le split
-temporel (0.80–0.91 sur splits shuffled — le décalage temporel pénalise
+temporel (0.80-0.91 sur splits shuffled, le décalage temporel pénalise
 surtout la précision). Les deux chiffres doivent être reportés ensemble (E3).
 
-**L9.2 — Probabilités des précurseurs non calibrées.** ECE = 0.120 sur le
+**L9.2, Probabilités des précurseurs non calibrées.** ECE = 0.120 sur le
 pipeline retrainé (E2) : le point opérationnel « seuil 0.7 » de l'ancien
 rapport n'est pas transférable. La recalibration isotonique (fittée sur val)
-ramène l'ECE à 0.021 — prérequis de toute table seuil/FA/lead. Constat
+ramène l'ECE à 0.021, prérequis de toute table seuil/FA/lead. Constat
 associé : sur le pipeline retrainé v4_strat, FA drift = 100 % à tous les
-seuils avec lead ≈ 14,5 min ≈ toute la phase pré-injection — l'« alerte » se
+seuils avec lead ≈ 14,5 min ≈ toute la phase pré-injection, l'« alerte » se
 comporte en identificateur de scénario dès les premiers steps (cohérent A1),
 pas en précurseur temporel.
 
-**L9.3 — Le contrastif n'améliore pas la géométrie (≥ v4_strat).** Avec la
+**L9.3, Le contrastif n'améliore pas la géométrie (≥ v4_strat).** Avec la
 sélection de checkpoint sur silhouette val (M6), le meilleur checkpoint est
 **l'époque 1** quelle que soit la marge (sweep 1.5/1.8/2.0) ; la silhouette
 se dégrade ensuite (0.816 → 0.666 → 0.613 → 0.466). L10 (« best_epoch~3 »)
@@ -846,17 +846,17 @@ sous-estimait le phénomène : la géométrie vient de l'encodeur pré-entraîn�
 (+ self-loops M4), le siamois n'y ajoute au mieux qu'une époque d'ajustement.
 À re-tester sur v5 ; si reproduit, le siamois devient optionnel.
 
-**L9.4 — Drift falsifié au niveau calibration.** Recalibrations v4_strat :
-AUC = 0.315 (fenêtres 10/10) et 0.284 (5/5) — pires que le hasard (les
+**L9.4, Drift falsifié au niveau calibration.** Recalibrations v4_strat :
+AUC = 0.315 (fenêtres 10/10) et 0.284 (5/5), pires que le hasard (les
 anomalies décalent la distribution PLUS que les drifts bénins). H2a n'est pas
 un problème de réglage ; critère de sortie défini dans le protocole v5 §3.
 
-**L9.5 — Couverture des clusters en test avec K=10.** Sur la graine 42
+**L9.5, Couverture des clusters en test avec K=10.** Sur la graine 42
 retrainée, 4 clusters sur 10 n'ont aucun positif test (assignation
-nearest-centroid concentrée) — le filtre reportable n_pos ≥ 5 (E8) ne laisse
+nearest-centroid concentrée), le filtre reportable n_pos ≥ 5 (E8) ne laisse
 que 4 clusters reportables. Conséquence du couple (K fixe, n_test = 45).
 
-**L9.6 — La missingness n'apporte pas de gain en features (D3).** Δ AUROC
+**L9.6, La missingness n'apporte pas de gain en features (D3).** Δ AUROC
 = +0.0005, IC paired contient 0 : l'imputation à 0 post-instance-norm code
 déjà la missingness pour le LR. Résultat négatif propre.
 

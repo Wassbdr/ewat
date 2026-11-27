@@ -1,4 +1,4 @@
-# Incident Report — Cluster observit-cluster1 — 2026-06-06
+# Incident Report : Cluster observit-cluster1 : 2026-06-06
 
 _Rédigé à 19h08 (CEST) suite à la session de diagnostic en direct._
 
@@ -25,7 +25,7 @@ réussis=186/710 (~26%)  échecs=156  buildés=85
 | Heure (CEST) | Événement |
 |---|---|
 | ~13h20 UTC (15h20) | `jnk2v` bascule NotReady définitivement (après 8 jours de flapping) |
-| ~15h20 | `loki-0` (monitoring-metrics) passe Pending — Loki mort |
+| ~15h20 | `loki-0` (monitoring-metrics) passe Pending, Loki mort |
 | ~15h50 | Détection : 156 échecs, runners en boucle de pause |
 | 18h29 | Lancement du diagnostic |
 | ~18h50 | Analyse des `.raw_failed` et état cluster |
@@ -37,7 +37,7 @@ réussis=186/710 (~26%)  échecs=156  buildés=85
 
 ## Causes racines identifiées
 
-### 🔴 #1 — Disque plein sur `jnk2v` (cause primaire, ancienne)
+### 🔴 #1 : Disque plein sur `jnk2v` (cause primaire, ancienne)
 
 **Nœud** : `observit-cluster1-workers-58w74-jnk2v` (172.16.203.91)
 
@@ -55,18 +55,18 @@ NodeNotReady         x11  over 8d  kubelet  Node status is now: NodeNotReady
 
 ---
 
-### 🔴 #2 — Deadlock de scheduling
+### 🔴 #2 : Deadlock de scheduling
 
 Répartition des 8 nœuds au moment du diagnostic :
 
 | Nœud | IP | Status | Schedulable | Raison |
 |---|---|---|---|---|
-| `9bwls` | 172.16.203.12 | Ready | ❌ | Cordonné juin 3 — intentionnel (VM campagne) |
+| `9bwls` | 172.16.203.12 | Ready | ❌ | Cordonné juin 3, intentionnel (VM campagne) |
 | `dkhfv` | 172.16.203.232 | Ready | ✅ | "Too many pods" (pod count limit) |
 | `gvx5k` | 172.16.203.191 | Ready | ✅ | "Too many pods" (pod count limit) |
 | `jnk2v` | 172.16.203.91 | NotReady→Ready | ✅ | Disque plein, flapping |
-| `jz7mn` | 172.16.203.196 | Ready | ❌ | Cordonné depuis **juin 5** — 16% RAM, raison inconnue |
-| masters ×3 | — | Ready | ❌ | Taint control-plane/etcd |
+| `jz7mn` | 172.16.203.196 | Ready | ❌ | Cordonné depuis **juin 5** : 16% RAM, raison inconnue |
+| masters ×3 | - | Ready | ❌ | Taint control-plane/etcd |
 
 Message scheduler :
 ```
@@ -77,11 +77,11 @@ Message scheduler :
   2 → "unschedulable" (9bwls + jz7mn)
 ```
 
-Seul `jnk2v` pouvait accueillir des pods — mais il est NotReady. **119 pods bloqués.**
+Seul `jnk2v` pouvait accueillir des pods, mais il est NotReady. **119 pods bloqués.**
 
 ---
 
-### 🔴 #3 — Loki `monitoring-metrics/loki-0` Pending depuis 115 min
+### 🔴 #3 : Loki `monitoring-metrics/loki-0` Pending depuis 115 min
 
 `loki-0` est un StatefulSet avec PVC probablement lié à `jnk2v`. Quand `jnk2v` est NotReady, le pod ne peut pas reschedule → Loki mort → tous les épisodes collectés depuis ~13h30 UTC ont `logs=0`.
 
@@ -91,9 +91,9 @@ monitoring-metrics  loki-0  0/1  Pending  115m
 
 ---
 
-### 🟠 #4 — Pattern `prom=0` (cause historique, intermittente)
+### 🟠 #4 : Pattern `prom=0` (cause historique, intermittente)
 
-**~80 épisodes** sur la période juin 3–6 ont échoué à cause de `prom=0` alors que traces et logs étaient corrects. Cause : `jnk2v` flappait NotReady → lors de ses cycles d'instabilité, Prometheus ne scrapait plus les pods qui étaient en cours d'éviction → pulls vides.
+**~80 épisodes** sur la période juin 3-6 ont échoué à cause de `prom=0` alors que traces et logs étaient corrects. Cause : `jnk2v` flappait NotReady → lors de ses cycles d'instabilité, Prometheus ne scrapait plus les pods qui étaient en cours d'éviction → pulls vides.
 
 ---
 
@@ -107,7 +107,7 @@ monitoring-metrics  loki-0  0/1  Pending  115m
 | `traces=✅ logs=0 prom=✅` | ~22 | Loki down ou timeout |
 | `traces=12 logs=N prom=0` | ~25 | Pods Pending → JVM ne génère que 12 traces internes |
 | `traces=0 logs=0 prom=0` | ~15 | Collecte totale échouée |
-| `exception: port-forward` | ~12 | Historique avant migration NodePort (juin 3–4) |
+| `exception: port-forward` | ~12 | Historique avant migration NodePort (juin 3-4) |
 | `exception: Connection reset` | ~5 | Réseau instable lors du pull |
 
 ### Par scénario (top échecs)
@@ -131,8 +131,8 @@ monitoring-metrics  loki-0  0/1  Pending  115m
 
 | Catégorie | Nombre | Condition |
 |---|---|---|
-| Repull Prometheus | **83** | traces+logs OK, prom=0 — données dans rétention Prometheus (~15j) |
-| Repull Loki | **22** | traces+prom OK, logs=0 — après recovery de `loki-0` |
+| Repull Prometheus | **83** | traces+logs OK, prom=0, données dans rétention Prometheus (~15j) |
+| Repull Loki | **22** | traces+prom OK, logs=0, après recovery de `loki-0` |
 
 ---
 
@@ -154,7 +154,7 @@ des ressources cluster sans produire d'épisodes valides.
 
 ## Actions en attente (admin cluster requis)
 
-### 🔴 Priorité 1 — Nettoyer le disque de `jnk2v`
+### 🔴 Priorité 1 : Nettoyer le disque de `jnk2v`
 
 ```bash
 # Sur le nœud jnk2v (SSH ou console Rancher)
@@ -164,11 +164,11 @@ crictl rmi --prune          # purge images inutilisées containerd
 systemctl restart containerd
 ```
 
-### 🔴 Priorité 2 — Uncordon `jz7mn`
+### 🔴 Priorité 2 : Uncordon `jz7mn`
 
 ```bash
 kubectl --context observit-cluster1 uncordon observit-cluster1-workers-58w74-jz7mn
-# jz7mn : 16% RAM, 9% CPU — nœud le plus sain, cordonné depuis juin 5 sans raison connue
+# jz7mn : 16% RAM, 9% CPU: nœud le plus sain, cordonné depuis juin 5 sans raison connue
 # Son uncordon soulagerait dkhfv (76%) et gvx5k (78%) qui sont au pod limit
 ```
 
@@ -185,7 +185,7 @@ Implémenté depuis dans `v5/collect/repull_failed.py`, qui couvre les deux sour
 
 ### Script repull Loki (22 épisodes)
 
-Même principe mais via `loki-np` (NodePort 32701) — à lancer après recovery de `loki-0`.
+Même principe mais via `loki-np` (NodePort 32701), à lancer après recovery de `loki-0`.
 
 ---
 
@@ -193,17 +193,17 @@ Même principe mais via `loki-np` (NodePort 32701) — à lancer après recovery
 
 ```bash
 kubectl top nodes:
-  9bwls   14% CPU  31% RAM  (SchedulingDisabled — VM campagne)
+  9bwls   14% CPU  31% RAM  (SchedulingDisabled: VM campagne)
   dkhfv   48% CPU  76% RAM  (schedulable, pod limit)
   gvx5k   64% CPU  77% RAM  (schedulable, pod limit)
   jnk2v   <unknown>          (revenu Ready à ~19h, flapping)
-  jz7mn   10% CPU  16% RAM  (SchedulingDisabled — à uncordon)
+  jz7mn   10% CPU  16% RAM  (SchedulingDisabled: à uncordon)
 
 Pods Pending : 119 (en cours de résorption si jnk2v tient)
 Loki-0 (monitoring-metrics) : Pending (suit jnk2v)
 Prometheus NodePort :32700 : ✅ Ready
 Jaeger tt  :32688 : ✅ OK (~25 services)
-Jaeger tt-b :32690 : ⚠️  Dégradé (2 services seulement — était sur jnk2v)
+Jaeger tt-b :32690 : ⚠️  Dégradé (2 services seulement: était sur jnk2v)
 Jaeger tt-c :32692 : ✅ OK (~30 services)
 ```
 

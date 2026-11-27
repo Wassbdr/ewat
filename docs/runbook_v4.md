@@ -1,4 +1,4 @@
-# EWAT v4 — Runbook de collecte
+# EWAT v4 : Runbook de collecte
 
 Cible de qualité (issue audit, P2) :
 
@@ -46,13 +46,13 @@ que **tous les services canoniques** (`frontend`, `recommendation`, `cart`,
 1. embarquent un OTel SDK avec exporter OTLP pointant sur l'endpoint
    ci-dessus ;
 2. exposent une métrique `container_fs_writes_bytes_total` (ou équivalent)
-   visible par Prometheus — c'est la métrique qui alimentait `disk_io` et
+   visible par Prometheus, c'est la métrique qui alimentait `disk_io` et
    qui était massivement NaN en v3.
 
 Patches type :
 
 ```yaml
-# k8s/apps/otel-demo-values.yaml — ajout dans chaque deployment
+# k8s/apps/otel-demo-values.yaml: ajout dans chaque deployment
 env:
   - name: OTEL_EXPORTER_OTLP_ENDPOINT
     value: "http://otel-collector.ewat.svc.cluster.local:4317"
@@ -84,16 +84,16 @@ kubectl exec -n cattle-monitoring-system deploy/rancher-monitoring-prometheus --
 ## 5. Lancement campagne v4
 
 ```bash
-# Phase 1 — record (peut tourner pendant ~6.4 jours selon configs)
+# Phase 1: record (peut tourner pendant ~6.4 jours selon configs)
 python -m scripts.record_episode --config configs/collection_v4.yaml --endpoint-mode nodeport
 
-# Phase 2 — features avec graine déterministe
+# Phase 2: features avec graine déterministe
 python -m scripts.build_features \
     --config configs/collection_v4.yaml \
     --raw-root data/raw_v4 \
     --feature-set v4
 
-# Phase 3 — assemblage avec stratification cluster-aware
+# Phase 3: assemblage avec stratification cluster-aware
 python -m scripts.assemble_dataset \
     --feature-set v4 \
     --output-dir data/datasets/ewat_v4 \

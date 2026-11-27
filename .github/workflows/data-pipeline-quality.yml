@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .[dev]
+          pip install -e .[dev,serve]
 
       # experiments/ est linté depuis qu'il est versionné (cf. .gitignore).
       # v5/ est traité à part : 11 défauts connus et non corrigés (F632 x9,
@@ -42,3 +42,8 @@ jobs:
       - name: Integration tests (determinism)
         run: |
           python -m pytest tests/integration -q
+
+      - name: Synthetic early-warning smoke run
+        run: |
+          ewat demo --plot /tmp/poster.png
+          ewat benchmark --episodes 3

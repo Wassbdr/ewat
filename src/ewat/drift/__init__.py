@@ -1,8 +1,8 @@
 """EWAT — Step 0: MMD-RFF drift detection with look-through."""
 
-from src.ewat.drift.calibration import calibrate_epsilon, save_calibration
-from src.ewat.drift.detector import DriftDetector, DriftResult
-from src.ewat.drift.mmd import RFFKernel
+from ewat.drift.calibration import calibrate_epsilon, save_calibration
+from ewat.drift.detector import DriftDetector, DriftResult
+from ewat.drift.mmd import RFFKernel
 
 __all__ = [
     "RFFKernel",

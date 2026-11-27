@@ -1,4 +1,4 @@
-# EWAT — Formalisation mathématique
+# EWAT : Formalisation mathématique
 
 ## Graphe de services
 
@@ -18,7 +18,7 @@ Agrégation intra-service (par composante) :
 
 S(t) ∈ ℝ^{N×17} = [M(t) | T(t) | L(t)]
 
-M(t) ∈ ℝ^{N×7} — Métriques (sources : Prometheus existant + OTel Metrics) :
+M(t) ∈ ℝ^{N×7}, Métriques (sources : Prometheus existant + OTel Metrics) :
 1. CPU utilisation
 2. RAM utilisation
 3. Latence P99
@@ -27,15 +27,15 @@ M(t) ∈ ℝ^{N×7} — Métriques (sources : Prometheus existant + OTel Metrics
 6. Disk I/O (IOPS + throughput)
 7. Longueur de file d'attente (pending requests, queue depth)
 
-T(t) ∈ ℝ^{N×6} — Traces (source : OTel Collector, spans OTLP) :
-1. Durée P99 des spans (`span_dur_p99`) — P99 sur l'union des durées brutes de tous les pods du service
+T(t) ∈ ℝ^{N×6}, Traces (source : OTel Collector, spans OTLP) :
+1. Durée P99 des spans (`span_dur_p99`), P99 sur l'union des durées brutes de tous les pods du service
 2. Taux de spans anormaux
 3. Profondeur de trace
 4. Fan-out
 5. Taux de retry (spans retentés / total)
 6. Variance de latence (coefficient de variation)
 
-L(t) ∈ ℝ^{N×4} — Logs (source : OTel Collector, logs OTLP) :
+L(t) ∈ ℝ^{N×4}, Logs (source : OTel Collector, logs OTLP) :
 1. Taux d'erreurs (ERROR / total)
 2. Taux de warnings
 3. Anomalie sémantique : e(ℓ) = SentenceBERT(ℓ) ∈ ℝ^384, score = distance moyenne au centroïde normal μ_v
@@ -47,7 +47,7 @@ L(t) ∈ ℝ^{N×4} — Logs (source : OTel Collector, logs OTLP) :
 
 Quatre régimes, pas trois. θ_{drift∩anomaly} modélise les déploiements défectueux (simultanément drift et anomalie). Traité par le mécanisme de look-through (étape 0).
 
-S(t) ∼ D_{θ(t)}(G(t)) — le signal n'est pas une somme additive.
+S(t) ∼ D_{θ(t)}(G(t)), le signal n'est pas une somme additive.
 
 **Correspondance θ ↔ labels du dataset** (`labels.parquet`, colonne `regime`) :
 - `normal` → θ_normal (phase de référence, avant injection)
@@ -58,7 +58,7 @@ S(t) ∼ D_{θ(t)}(G(t)) — le signal n'est pas une somme additive.
 
 ## Pipeline EWAT
 
-**Étape 0 — Détection de drift (MMD-RFF, O(nD))**
+**Étape 0, Détection de drift (MMD-RFF, O(nD))**
 MMD²(W_ref, W_cur) via Random Fourier Features, φ : ℝ^d → ℝ^D.
 Filtrage avec look-through :
 - MMD² < ε_drift → signal transmis tel quel
@@ -66,24 +66,24 @@ Filtrage avec look-through :
 - MMD² ≥ ε_drift + test post-drift négatif → RECALIBRATE (W_ref ← W_cur)
 ε_drift calibré par injection de drifts bénins via Chaos Mesh.
 
-**Étape 1 — Encodeur STGCN**
+**Étape 1, Encodeur STGCN**
 z_e = Enc_θ(S̃_{[t-W, t+δ]}, G(t)) ∈ ℝ^{d_e}
 Convolution avec matrice d'adjacence pondérée par w_E(t).
 
-**Étape 2 — Typage contrastif**
+**Étape 2, Typage contrastif**
 Réseau siamois : d_φ(z_i, z_j) → 0 si même type Chaos Mesh, → 1 sinon.
 Clustering hiérarchique agglomératif → C = {C_1, ..., C_K}.
 Interprétabilité : saliency (gradient × input) → fiche par type.
 *Limitation* : ρ_Spearman(gradient, permutation importance) = −0.34 sur ewat_v3 → méthode gradient non validée. Les fiches restent indicatives ; une validation croisée par KernelSHAP est prévue.
 
-**Étape 2b — Ontologie**
+**Étape 2b, Ontologie**
 O = (C, R), trois types de relations :
 - Temporelles : C_i →^{Δt,σ} C_j
-- Causales : Transfer Entropy (estimateur KSG, Kraskov et al. 2004), n_min = 30, seuil par permutation bootstrap (FDR Benjamini–Hochberg). Pas de Granger.
+- Causales : Transfer Entropy (estimateur KSG, Kraskov et al. 2004), n_min = 30, seuil par permutation bootstrap (FDR Benjamini-Hochberg). Pas de Granger.
   *Limitation* : implémentation actuelle = somme des TE univariés par feature (TE(X_j → Y)) moyennée sur les épisodes. Sous-estime la synergie entre features (biais écologique). La TE multivariée dans ℝ¹⁷ est une extension future.
-- Co-occurrence : χ² Yates 2×2 (4 cellules) avec fallback Fisher exact si expected < 5, correction Holm–Bonferroni.
+- Co-occurrence : χ² Yates 2×2 (4 cellules) avec fallback Fisher exact si expected < 5, correction Holm-Bonferroni.
 
-**Étape 3 — Précurseurs typés**
+**Étape 3, Précurseurs typés**
 p̂_i(t) = f_i(S̃_{[t-k,t]}, G(t)) ∈ [0,1], k ∈ {2, 5, 10, 20, 30, 60} min
 k*_i = argmax_k AUROC(f_i, k)
 
@@ -94,17 +94,17 @@ k*_i = argmax_k AUROC(f_i, k)
 
 ## Hypothèses et falsification
 
-**H1 — Structurabilité**
+**H1, Structurabilité**
 Silhouette < 0.3 en held-out sur 5 graines × 5 splits → falsifié.
 Compléments : gap statistic, BIC/GMM.
 Seuil justifié par Kaufman & Rousseeuw (1990).
 
-**H2a — Séparabilité du drift (look-through)**
+**H2a, Séparabilité du drift (look-through)**
 Pas de réduction significative du FPR à rappel constant (p > 0.05, Student) → falsifié.
 *Résultat* : ❌ FAIL (p=0.27 sur signal brut, p=0.978 sur embeddings STGCN). Résultat négatif
 honnête : épisodes ~21 steps trop courts pour la confirmation temporelle post-drift.
 
-**H2b — Identification du régime θ_{drift∩anomaly}**
+**H2b, Identification du régime θ_{drift∩anomaly}**
 Reformulation positive de H2 : le pipeline EWAT identifie-t-il correctement le régime
 θ_{drift∩anomaly} (drift bénin + anomalie simultanés), distinct du drift pur et de l'anomalie pure ?
 
@@ -117,21 +117,21 @@ Opérationnalisation :
 - Test : Fisher exact ou proportion bootstrap sur les taux de chevauchement.
 - Script : `experiments/h2_overlap/eval.py`
 
-**H3 — Prédictibilité**
+**H3, Prédictibilité**
 AUROC par type < baseline générique (0.5) ∀k → falsifié.
-k* sélectionné sur val (pas test) — évaluation sur test uniquement.
+k* sélectionné sur val (pas test), évaluation sur test uniquement.
 Compléments : bootstrap 95% CI sur AUROC, comparaison avec baselines B1 (features brutes)
-et B2 (k-means brut) — script `experiments/baselines/precursor_baselines.py`.
+et B2 (k-means brut), script `experiments/baselines/precursor_baselines.py`.
 
 **Ablation**
 Par modalité (M, T, L, paires, triplet). Par feature (leave-one-out, Wilcoxon signé). Redondance : |ρ| > 0.9.
-Ablation rigoureuse : réentraînement complet par condition — `experiments/ablation/run_retrain.py`.
+Ablation rigoureuse : réentraînement complet par condition`experiments/ablation/run_retrain.py`.
 
 ## Références
-- Fu et al. (2025) — Survey RCA microservices, gap benchmark/production
-- Myrtollari et al. (2025) — Concept drift-aware anomaly detection for K8s
-- Hinder et al. (2024) — Concept drift in unsupervised data streams
-- Kaufman & Rousseeuw (1990) — Justification seuil silhouette
-- Kraskov et al. (2004) — Estimateur KSG pour Transfer Entropy
-- Tibshirani et al. (2001) — Gap statistic
-- Gregg (2013) — Méthodologie USE, queue depth comme leading indicator
+- Fu et al. (2025), Survey RCA microservices, gap benchmark/production
+- Myrtollari et al. (2025), Concept drift-aware anomaly detection for K8s
+- Hinder et al. (2024), Concept drift in unsupervised data streams
+- Kaufman & Rousseeuw (1990), Justification seuil silhouette
+- Kraskov et al. (2004), Estimateur KSG pour Transfer Entropy
+- Tibshirani et al. (2001), Gap statistic
+- Gregg (2013), Méthodologie USE, queue depth comme leading indicator
