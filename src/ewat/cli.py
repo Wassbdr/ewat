@@ -58,7 +58,7 @@ def cmd_demo(a) -> int:
         shown_phase = ph
         score = s.mmd2 / s.epsilon
         typ = f"{s.predicted} p={s.probability:.2f}" if s.predicted else ""
-        flag = "  ◀ ALERT " + str(s.alert_type) if s.alert and s is run.first_alert else ""
+        flag = "  ◀ ALERT" if s.alert and s is run.first_alert else ""
         print(f"t={s.t:3d} {ph:6s} MMD²/ε={score:5.2f} {_bar(score)} {s.regime:12s} {typ}{flag}")
         if a.delay:
             time.sleep(a.delay)
@@ -77,7 +77,7 @@ def cmd_demo(a) -> int:
         )
     lat = run.array("latency_ms")
     print(
-        f"replay of {len(run.steps)} steps: {wall * 1000:.0f} ms total, "
+        f"processed {len(run.steps)} steps: {wall * 1000:.0f} ms total, "
         f"{np.median(lat):.2f} ms/step median (CPU)"
     )
     if a.out:
