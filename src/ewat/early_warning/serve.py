@@ -9,7 +9,7 @@ import time
 
 import numpy as np
 
-from ewat.synthetic.generator import SERVICES, call_graph_adjacency
+from ewat.synthetic.generator import SERVICES, call_graph_adjacency, generate_episode
 from telemetry.feature_names import FEATURE_NAMES
 
 try:
@@ -51,6 +51,8 @@ def pipeline():
     global _pipe
     if _pipe is None:
         _pipe = get_pipeline(log=False)
+        warm = generate_episode("fail_slow_latency", 0)  # first torch call is slow
+        _pipe.run(warm.signal, warm.adjacency)
     return _pipe
 
 
