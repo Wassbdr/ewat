@@ -1,0 +1,67 @@
+{
+  "slug": "ewat",
+  "title": "EWAT: early warning and anomaly typing for microservices",
+  "tagline": "Tells harmless drift (a load ramp) apart from a real failure in microservice metrics, then names the failure type.",
+  "problem": "Microservice metrics drift all the time: traffic ramps, scale-ups and deploys move every distribution. A plain drift detector turns each of these into an alert, so on-call engineers learn to ignore it. EWAT asks two questions instead: is this change harmless, and if not, which kind of fault is it?",
+  "approach": "A two-sample MMD test with random Fourier features compares a reference window with the last five 30 s steps of a 6-service × 17-feature signal; its threshold is the 99.5 % quantile of normal-regime MMD². When the gate opens, an STGCN encoder over the call graph and a Siamese projection embed the window and a Mahalanobis classifier types it. Drift typed harmless for 6 steps replaces the reference (look-through) without alerting; a fault confirmed for 2 steps raises a typed alert.",
+  "stack": ["Python", "PyTorch", "NumPy", "scikit-learn", "FastAPI", "matplotlib", "vhs", "ffmpeg"],
+  "demo": {
+    "gif": "showcase/demo.gif",
+    "mp4": "showcase/demo.mp4",
+    "poster": "showcase/poster.png",
+    "kind": "synthetic",
+    "caption": "`ewat demo` computes live on a seeded synthetic episode (no cluster data): MMD drift score per step, the traffic ramp typed as harmless drift and absorbed, then a latency fault on the `ad` service raising a fail_slow_latency alert 120 s after onset; the timeline chart follows."
+  },
+  "reproduce": [
+    "pip install \".[serve]\" --extra-index-url https://download.pytorch.org/whl/cpu",
+    "ewat demo --plot poster.png",
+    "ewat benchmark --episodes 50",
+    "bash showcase/make_showcase.sh"
+  ],
+  "results": [
+    {
+      "label": "False alarms on harmless drift (traffic ramp ×1.4–2.2)",
+      "value": "0 % (0/50); MMD alone without typing: 100 %",
+      "command": "ewat benchmark --episodes 50 --seed0 0",
+      "setup": "synthetic ewat.synthetic, eval seeds 0–49 per scenario, train seeds 10000–10029, Intel Xeon 8 threads, CPU only"
+    },
+    {
+      "label": "Faults detected (4 fault types)",
+      "value": "90 % (180/200)",
+      "command": "ewat benchmark --episodes 50 --seed0 0",
+      "setup": "synthetic ewat.synthetic, 200 fault episodes, eval seeds 0–49 per type, Intel Xeon 8 threads, CPU only"
+    },
+    {
+      "label": "Fault-type accuracy on detected faults",
+      "value": "100 % (180/180)",
+      "command": "ewat benchmark --episodes 50 --seed0 0",
+      "setup": "synthetic ewat.synthetic, eval seeds 0–49 per type, Intel Xeon 8 threads, CPU only"
+    },
+    {
+      "label": "Median / p90 detection delay",
+      "value": "150 s / 663 s (resource leak median 630 s)",
+      "command": "ewat benchmark --episodes 50 --seed0 0",
+      "setup": "synthetic ewat.synthetic, 30 s steps, eval seeds 0–49, Intel Xeon 8 threads, CPU only"
+    },
+    {
+      "label": "Per-step latency (MMD gate + typing)",
+      "value": "p50 0.19 ms, p95 1.6 ms",
+      "command": "ewat benchmark --episodes 50 --seed0 0",
+      "setup": "synthetic, 250 episodes, Intel Xeon 8 threads, CPU only, torch 2.11.0+cpu"
+    },
+    {
+      "label": "Historical, internal cluster: typed precursors (H3)",
+      "value": "mean test AUROC 0.952 on 8 of 10 types; not re-run here",
+      "command": "python scripts/run_pipeline.py --dataset data/datasets/ewat_v3 (internal data, not in the repo)",
+      "setup": "internal Kubernetes cluster (Devoteam internship), dataset ewat_v3, not redistributable"
+    }
+  ],
+  "limits": [
+    "Synthetic faults are clean and their classes are known at training time; the numbers show the pipeline works, not production accuracy.",
+    "Slow resource leaks look like drift: 24 % are missed within the 15-minute fault phase and the median delay is 630 s.",
+    "On the internal cluster, the look-through drift/fault separation (H2) failed on ~21-step episodes; it has not been re-validated on real data.",
+    "The demo model is trained on synthetic data only and the API expects 6 services × 17 features."
+  ],
+  "role": "TODO",
+  "repo": "https://github.com/Wassbdr/ewat"
+}
